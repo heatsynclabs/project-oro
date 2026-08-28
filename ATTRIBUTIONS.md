@@ -29,7 +29,7 @@ not glossed over.
 | [heatsynclabs/Open_Access_Control_Ethernet](https://github.com/heatsynclabs/Open_Access_Control_Ethernet) | **No licence file.** Header credits Will Bradley and Short Tie, 2013, branched from `zyphlar/Open_Access_Control_Ethernet`, upstream by Arclight and Danozano. | The controller wire protocol that the door service speaks, and the EEPROM slot model. No firmware code is copied. |
 | [heatsynclabs/new-hsl](https://github.com/heatsynclabs/new-hsl) | **No licence file.** | The GANTRY v1.1 design tokens in `src/styles/tokens.css`, which our token layer is a superset of, and the event category colour mapping. |
 | [heatsynclabs/hsl-members-site](https://github.com/heatsynclabs/hsl-members-site) | MIT, HeatSync Labs, 2025 | Reviewed as prior art. Nothing copied. |
-| [heatsynclabs/hsl_door_api_poller](https://github.com/heatsynclabs/hsl_door_api_poller) | MIT, Jeff Sittler, 2024 | A consumer of `space_api.json`, so it defines a contract we must not break. Nothing copied. |
+| [mindblender/hsl_door_api_poller](https://github.com/mindblender/hsl_door_api_poller) | MIT, Jeff Sittler, 2024 | A consumer of `space_api.json`, so it defines a contract we must not break. Nothing copied. |
 | [virgilvox/hackerspace-management](https://github.com/virgilvox/hackerspace-management) | MIT, 2026 | Reviewed as prior art. |
 | `hsl-forge` brand skill package | Internal HeatSync Labs work product | The GANTRY v2.0 token layer, the logo set, and the voice rules and word lists that `tools/voice-check/` extends. |
 

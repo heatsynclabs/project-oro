@@ -100,18 +100,22 @@ bylaws rule that card access needs the $50 level is data rather than a constant 
 code. The legacy integer survives on the member row as `legacy_member_level`, so
 the migration stays auditable.
 
-### 1.5 Two approval mechanisms, deliberately not unified
+### 1.5 One approval mechanism, covering admin access only
 
-| | `approvals` | `card_proposals` |
-|---|---|---|
-| Rule source | New policy, this project | Bylaws, existing |
-| Decided by | A second admin, never the proposer | Majority of card members at HYH, minimum five |
-| Timing | Immediate | Posted at least two weeks ahead |
-| Extra obligation | None | The nominator is mentor for six months |
+`approvals` gates granting a role that can itself grant roles. That is the whole
+of it.
 
-Unifying them would hide that one is a real governance process with a quorum and a
-mentorship obligation. The admin portal shows both, labelled with their different
-authority.
+**Card access is deliberately not modelled as a workflow.** The bylaws process
+for it happens in a room and on a mailing list: a cardholder nominates, the
+proposal is posted publicly two weeks ahead, and card members vote at Hack Your
+Hackerspace. Encoding that as a state machine with quorum counting and vote
+tallies would be building a governance system, which is not what this project is
+for. The system records the outcome: a card exists, or it does not, with the
+usual `issued_at` and `revoked_at`.
+
+The eligibility rule that the members site does need, two months at a card
+eligible tier, lives in `governance_parameters` so it can be corrected without a
+migration.
 
 ---
 
@@ -121,10 +125,10 @@ The obvious design puts the bylaws numbers in `CHECK` constraints: quorum five,
 fourteen days notice, two months tenure. That is wrong, and the wrong version
 looks more rigorous, which is why it needs saying at length.
 
-The card access rules changed three times in eight months. The waiting period went
-from six months to two. The nomination limit was deleted. A resubmission carve out
-was added. Under hardcoded constraints each of those is a migration written by a
-developer, tested, and deployed.
+The card access waiting period changed from six months to two, and the public
+site still says six. Under a hardcoded constraint that correction is a migration
+written by a developer, tested, and deployed. It should be somebody editing a
+number.
 
 That rebuilds a failure the lab has already named in its own review of bespoke
 systems: building for exactly what you think you need today makes it far more
@@ -137,18 +141,15 @@ citing the bylaws section or vote that set it, plus a history table. A trigger
 reads them at validation time. The guarantee is the same as a constraint: an
 approved proposal that did not meet quorum cannot be recorded by any path,
 including a script. What changes is that amending the bylaws is an admin editing a
-number rather than a deployment. `db/tests/card_proposals.sql` proves it by
-raising quorum to eight mid test and watching a previously valid proposal get
-refused.
+number rather than a deployment.
 
 A trigger is weaker than a constraint in exactly one way, worth stating:
 `ALTER TABLE ... DISABLE TRIGGER` turns it off, while a `CHECK` must be dropped.
 Both need the table owner, and neither is reachable by the application role.
 
-**What stays a hard constraint:** `nominator_is_not_nominee`, and
-`approver_is_not_proposer`. Those are not policy parameters. They are the
-definition of what a second person means, and no bylaws amendment makes self
-approval acceptable.
+**What stays a hard constraint:** `approver_is_not_proposer`. That is not a
+policy parameter. It is the definition of what a second person means, and no
+bylaws amendment makes self approval acceptable.
 
 ---
 

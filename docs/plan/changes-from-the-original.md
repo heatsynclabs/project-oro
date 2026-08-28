@@ -39,7 +39,7 @@ and the archive, and defects found by running the design rather than reading it.
 | Vanilla HTML, CSS, JS, no framework | CSS first theme, Vue only where accessibility state demands it | The consumers are split: Astro plus Vue, React 19 plus Tailwind 4, and Rails ERB. Only CSS reaches all of them |
 | `cards.id` is the EEPROM slot | `controller_slot` is a separate constrained column | Your adapter instruction made this possible. Stops a 2013 Arduino's 200 slot ceiling being the primary key of a table that outlives it |
 | "The two admin rule", presented as an existing lab rule | A new policy, labelled as new, covering admin role changes only | No two admin rule exists in the bylaws, the Rules page, or the legacy app. The two signature rule people remember is about money |
-| Card grants through the two admin queue | Card access through `card_proposals`: the real bylaws process | Majority of at least five card members at HYH, posted two weeks ahead, nominator is mentor for six months |
+| Card grants through the two admin queue | Card issue is an ordinary admin action; the vote happens at HYH and the system records the outcome | The two approver rule covers admin access, which is what was asked for. Modelling the bylaws vote as a workflow would be building a governance platform |
 | Six months to card eligibility | Two months, read from `governance_parameters` | The membership voted the change. The public site is stale |
 | Door service as one Python module | Door API, a controller port, an adapter, and a conformance suite | Directed. The Arduino is expected to be replaced; the API should not change when it is |
 | Secrets in GitHub Environments | SOPS with age in git, GitHub holds no deploy credentials | The system must not need GitHub to run or to be rebuilt |
@@ -85,8 +85,8 @@ change, with the reason.
   adapter exists to prevent. Show the card and its state; the tag is masked to the
   last four.
 - **The line "Grants and revokes need two admins by lab rule" is wrong** and needs
-  replacing. Card access needs a nomination by a cardholder and a vote of at least
-  five card members at Hack Your Hackerspace.
+  replacing. Card access is decided by a vote of card members at Hack Your
+  Hackerspace, not by two admins.
 - **Certifications card.** Stands, and gains expiry and revocation, which the
   mockup does not show and which matter for a laser and a welder.
 - Worth adding: **card eligibility**. The system knows the date and what is still
@@ -94,12 +94,11 @@ change, with the reason.
 
 ### Admin portal
 
-- **The approvals queue is doing two different jobs and needs to be two queues.**
-  The mockup shows `grant_card` and `revoke_card` in the two admin queue. Card
-  access is not a two admin decision, it is a community vote. So: one queue for
-  admin role changes, needing a second admin, and one for card proposals, showing
-  the posting date, the two week clock, the meeting, the quorum, and the outcome.
-  Each labelled with its authority, because they look alike and are not alike.
+- **The approvals queue holds admin access changes only.** The mockup shows
+  `grant_card` and `revoke_card` in it. Card access is not a two admin decision,
+  it is a vote of card members at Hack Your Hackerspace, so issuing a card is an
+  ordinary admin action with a note recording the vote. The queue keeps its
+  second admin requirement for role changes, which is what it is for.
 - **Members directory.** Stands. The "Level" column becomes the tier name.
 - **Member detail.** Stands. "Propose role change" is right. "Propose card grant"
   becomes "Nominate for card access", and the UI says what that commits the

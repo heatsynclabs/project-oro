@@ -9,22 +9,6 @@ BEGIN;
 -- asymmetry is deliberate and it is the same one the API design describes.
 ALTER TABLE approvals      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE approvals      FORCE  ROW LEVEL SECURITY;
-ALTER TABLE card_proposals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE card_proposals FORCE  ROW LEVEL SECURITY;
-
-CREATE POLICY admin_reads_approvals ON approvals FOR SELECT
-  USING (is_admin(current_member_id()));
-CREATE POLICY admin_writes_approvals ON approvals FOR INSERT
-  WITH CHECK (is_admin(current_member_id()));
-CREATE POLICY admin_decides_approvals ON approvals FOR UPDATE
-  USING (is_admin(current_member_id()));
-
-CREATE POLICY member_reads_card_proposals ON card_proposals FOR SELECT
-  USING (current_member_id() IS NOT NULL);
-CREATE POLICY member_nominates ON card_proposals FOR INSERT
-  WITH CHECK (nominator_id = current_member_id());
-CREATE POLICY admin_records_outcome ON card_proposals FOR UPDATE
-  USING (is_admin(current_member_id()) OR nominator_id = current_member_id());
 
 COMMENT ON TABLE cards IS
   'A physical RFID card. Its identity is a uuid; controller_slot is the EEPROM '

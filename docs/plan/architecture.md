@@ -304,9 +304,10 @@ Covered in `docs/plan/data-model.md`. The three decisions that shape everything:
 - A card is not a slot. `cards.controller_slot` holds the EEPROM address, so the
   2013 hardware's 200 slot ceiling is not the primary key of a table that will
   outlive it.
-- Two approval mechanisms, not one. Admin access changes need a second admin,
-  which is a **new policy** this project introduces. Card access needs a vote of
-  card members at Hack Your Hackerspace, which is the existing bylaws process.
+- One approval mechanism, covering admin access changes only, which is a **new
+  policy** this project introduces. Card access is decided by a vote of card
+  members at Hack Your Hackerspace. That happens in a room and the system records
+  the outcome rather than running the process.
 
 ## 7. Backups
 

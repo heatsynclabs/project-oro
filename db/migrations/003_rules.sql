@@ -89,49 +89,5 @@ CREATE TRIGGER role_grant_rules
   BEFORE INSERT OR UPDATE ON member_roles
   FOR EACH ROW EXECUTE FUNCTION enforce_role_grant_rules();
 
--- The bylaws card access process. Numbers come from governance_parameters, so
--- amending the bylaws is an admin editing a row rather than a deployment.
--- coalesce throughout, because a CHECK constraint passes on NULL and every one
--- of these columns is nullable while a proposal is a draft.
-CREATE FUNCTION enforce_card_proposal_rules() RETURNS trigger
-LANGUAGE plpgsql AS $$
-DECLARE
-  quorum      integer := (SELECT (value::text)::integer FROM governance_parameters
-                           WHERE key = 'card_access.quorum');
-  notice_days integer := (SELECT (value::text)::integer FROM governance_parameters
-                           WHERE key = 'card_access.notice_days');
-BEGIN
-  IF NEW.status NOT IN ('approved','rejected') THEN RETURN NEW; END IF;
-
-  IF NEW.meeting_date IS NULL OR NEW.posted_at IS NULL THEN
-    RAISE EXCEPTION 'A decided proposal needs a posted date and a meeting date.';
-  END IF;
-  IF NEW.meeting_date < (NEW.posted_at AT TIME ZONE 'America/Phoenix')::date + notice_days THEN
-    RAISE EXCEPTION 'The bylaws require % days notice. Posted %, meeting %.',
-      notice_days, NEW.posted_at, NEW.meeting_date;
-  END IF;
-  IF NEW.status <> 'approved' THEN RETURN NEW; END IF;
-
-  IF coalesce(NEW.cardholders_present, 0) < quorum THEN
-    RAISE EXCEPTION 'The bylaws require % card members present. Recorded %.',
-      quorum, coalesce(NEW.cardholders_present, -1);
-  END IF;
-  IF NEW.votes_for IS NULL OR NEW.votes_against IS NULL THEN
-    RAISE EXCEPTION 'An approved proposal must record the vote counts.';
-  END IF;
-  IF NEW.votes_for <= NEW.votes_against THEN
-    RAISE EXCEPTION 'The bylaws require a simple majority. Recorded % for, % against.',
-      NEW.votes_for, NEW.votes_against;
-  END IF;
-  IF NEW.votes_for + NEW.votes_against > NEW.cardholders_present THEN
-    RAISE EXCEPTION 'More votes (%) than card members present (%).',
-      NEW.votes_for + NEW.votes_against, NEW.cardholders_present;
-  END IF;
-  RETURN NEW;
-END $$;
-
-CREATE TRIGGER card_proposal_rules
-  BEFORE INSERT OR UPDATE ON card_proposals
-  FOR EACH ROW EXECUTE FUNCTION enforce_card_proposal_rules();
 
 COMMIT;

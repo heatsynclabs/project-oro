@@ -202,10 +202,9 @@ slot.
 1. Admin portal: member list, member detail, roles, certifications, cards.
 2. The two approver flow for admin access changes, enforced by the database
    constraint and mirrored by a service check that produces a readable refusal.
-3. The card proposal flow: the real bylaws process. Quorum and notice come from
-   `governance_parameters` and are enforced by a trigger, **not** by `CHECK`
-   constraints, so amending the bylaws is an admin editing a row rather than a
-   developer writing a migration. Reasoning in `data-model.md` section 2.
+3. Card issue and revoke, with a reason required on revoke. Deciding who gets a
+   card is the lab's existing bylaws process and happens in a room; the system
+   records the outcome rather than running the vote.
 4. Waiver status for hosts and instructors: the boolean, without the personal
    information behind it.
 

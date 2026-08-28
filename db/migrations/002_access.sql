@@ -202,27 +202,6 @@ CREATE UNIQUE INDEX member_roles_one_grant_per_approval
   ON member_roles (approval_id) WHERE approval_id IS NOT NULL;
 CREATE INDEX member_roles_live ON member_roles (member_id) WHERE revoked_at IS NULL;
 
-CREATE TABLE card_proposals (
-  id                  bigserial PRIMARY KEY,
-  nominee_id          uuid NOT NULL REFERENCES members(id),
-  nominator_id        uuid NOT NULL REFERENCES members(id),
-  posted_at           timestamptz,
-  meeting_date        date,
-  cardholders_present integer,
-  votes_for           integer,
-  votes_against       integer,
-  status              text NOT NULL DEFAULT 'draft'
-                      CHECK (status IN ('draft','posted','approved','rejected','withdrawn')),
-  outcome_note        text,
-  mentorship_ends_on  date,
-  created_at          timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT nominator_is_not_nominee CHECK (nominator_id <> nominee_id)
-);
-COMMENT ON TABLE card_proposals IS
-  'The bylaws card access process. Quorum, notice period, and tenure are read '
-  'from governance_parameters at validation time rather than hardcoded, '
-  'because the bylaws change and a bylaws change must not require a developer.';
-
 CREATE TABLE payments (
   id            bigserial PRIMARY KEY,
   member_id     uuid REFERENCES members(id),

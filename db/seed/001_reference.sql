@@ -17,15 +17,9 @@ INSERT INTO roles (id,name,description,grants_roles) VALUES
   ('host','Host','Hosts open hours. May check waiver status',false);
 
 INSERT INTO governance_parameters (key,value,unit,source,effective) VALUES
-  ('card_access.quorum','5','card members',
-   'Bylaws, CARD ACCESS: minimum five card members present','2025-03-01'),
-  ('card_access.notice_days','14','days',
-   'Bylaws, CARD ACCESS: proposal posted at least two weeks ahead','2025-03-01'),
   ('card_access.tenure_months','2','months',
    'Membership vote replacing the board six month figure. DATE UNCONFIRMED: two research passes disagree (2025-05-22 against 2025-12-13). Both agree the value is two months. Check the bylaws page history.','2025-05-22'),
   ('card_access.min_tier','"basic"',NULL,
-   'Bylaws, CARD ACCESS: paying member at the $50 level or higher','2025-03-01'),
-  ('card_access.mentorship_months','6','months',
-   'Bylaws, CARD ACCESS: nominator is mentor and responsible party','2025-03-01');
+   'Bylaws, CARD ACCESS: paying member at the $50 level or higher','2025-03-01');
 
 COMMIT;

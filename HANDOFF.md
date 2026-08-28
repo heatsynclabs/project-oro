@@ -31,7 +31,7 @@ This table is the single place this is tracked. Update it as things land.
 | Thing | State |
 |---|---|
 | `db/migrations/` schema, rules, RLS, immutability | **Built.** Applies clean from nothing |
-| `db/tests/` and `db/tests/run.sh` | **Built.** 79 assertions, deterministic |
+| `db/tests/` and `db/tests/run.sh` | **Built.** 70 assertions, deterministic |
 | `db/seed/001_reference.sql` | **Built.** Tiers, roles, governance parameters |
 | `tools/voice-check/` prose gate | **Built.** 74 tests |
 | `.githooks/commit-msg` | **Built.** Install it, see section 3 |
@@ -51,7 +51,7 @@ This table is the single place this is tracked. Update it as things land.
 ```sh
 git config core.hooksPath .githooks      # once per clone, enables the commit gate
 
-./db/tests/run.sh                        # rebuilds the schema from nothing, runs 79 assertions
+./db/tests/run.sh                        # rebuilds the schema from nothing, runs 70 assertions
 ./db/tests/run.sh --update               # regenerate expected output, deliberately
 
 python3 tools/voice-check/test_voice_check.py
@@ -148,8 +148,16 @@ parses it with a 1 KB buffer and does not report an error on overflow. It just
 silently stops updating. Serve any newer SpaceAPI version at a new path.
 
 **The two approver rule is not in the bylaws.** It is new, introduced by this
-project. Never let it be described as an existing lab rule. The two signature
-rule people remember is about monetary expenditure.
+project, and it covers admin access changes only. Never let it be described as an
+existing lab rule. The two signature rule people remember is about monetary
+expenditure.
+
+**Card access is not a workflow in this system, on purpose.** The bylaws process
+happens in a room: a cardholder nominates, the proposal is posted two weeks
+ahead, card members vote at Hack Your Hackerspace. An earlier draft modelled that
+as a state machine with quorum counting and vote tallies. It was cut as out of
+scope. Issuing a card is an ordinary admin action with a note. Do not rebuild
+it.
 
 **Card eligibility is two months, not six.** The public site is stale. The date of
 the vote is disputed between two research passes, so the seed row says

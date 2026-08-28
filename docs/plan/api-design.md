@@ -146,12 +146,7 @@ endpoints that use the view.
 | PATCH | `/admin/cards/{id}` | admin | Label, permission mask |
 | POST | `/admin/cards/{id}/revoke` | admin | Revoke. Reason required |
 | POST | `/admin/certifications/{id}/grant` | instructor for that certification, or admin | Grant one |
-| GET | `/admin/approvals` | admin | The two approver queue |
-| GET | `/admin/card-proposals` | member | The card access queue. Readable by all, actionable by cardholders |
-
-Note the asymmetry on the last two rows, and it is deliberate. Role changes are an
-admin matter. Card proposals are a community process that happens in a room, so
-every member can see who is up for a vote.
+| GET | `/admin/approvals` | admin | The two approver queue for admin access changes |
 
 ### 3.4 Hosting and instructing
 
@@ -228,29 +223,29 @@ case, and a separate test proves a direct insert with no approval is refused.
 in the endpoint description, because a system that quietly invents governance is
 how a rewrite loses a vote.
 
-### 3.6 The card access flow
+### 3.6 Issuing a card
 
-The bylaws process, modelled as it actually is.
+Deciding who gets a card is the lab's bylaws process: a cardholder nominates,
+the proposal is posted publicly two weeks ahead, and card members vote at Hack
+Your Hackerspace. **That happens in a room, and this system does not run it.**
+Building a state machine for it would be building a governance platform.
+
+What the system does is record the outcome and provision the hardware.
 
 ```http
-POST /v1/card-proposals                  # any card member
-{ "nominee_id": "…", "note": "…" }
-201 { "id": 12, "status": "draft", "earliest_meeting_date": "2026-09-10" }
+POST /v1/admin/cards
+{ "member_id": "…", "tag_number": "0000C4D9", "label": "front desk spare",
+  "note": "approved at HYH 2026-09-10" }
 
-POST /v1/card-proposals/12/post          # starts the two week clock
-POST /v1/card-proposals/12/record        # after the meeting
-{ "meeting_date": "2026-09-10", "cardholders_present": 7,
-  "votes_for": 6, "votes_against": 1 }
+201 { "id": "…", "controller_slot": 42, "active": true }
 ```
 
-Recording an approval with fewer than five cardholders present is refused by a
-database constraint, not a form validation. So is recording a meeting less than
-fourteen days after posting.
+The slot is assigned by the API as the lowest free value in the addressable
+range. `note` is free text and is where the vote gets referenced.
 
-On approval the system sets `card_proposals.mentorship_ends_on` six months out,
-recording that the nominator is the responsible party until then, and puts the
-card issue on the admin queue. Provisioning stays a
-separate deliberate act.
+Revoking requires a reason, and enqueues a sync rather than waiting for the
+timer, because a stolen card that keeps working until the next tick is a
+different thing from a routine revocation.
 
 ### 3.7 The public endpoint that cannot break
 

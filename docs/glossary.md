@@ -53,11 +53,6 @@ so. Where a term is a hardware fact, the firmware wins.
   cardholders present. The numbers live in `governance_parameters`, not in code,
   because they change.
 
-**nominator**
-: The cardholder who proposes someone for card access. Becomes that person's
-  mentor and responsible party for a six month probationary period. The former
-  limit of one nomination per member per year was deleted in July 2026.
-
 **do-ocracy**
 : Lowercase, hyphenated. The lab's operating principle: the people who do the
   work decide how it is done.
