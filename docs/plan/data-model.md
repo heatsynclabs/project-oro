@@ -231,7 +231,9 @@ decided approval cannot be repointed at a different member afterwards and a gran
 cannot be quietly moved. Without those, the composite key faithfully follows a
 target that was edited after the fact.
 
-Verified in `db/tests/two_approver.sql`, 171 assertions, including every refusal.
+Verified in `db/tests/two_approver.sql`, 24 assertions covering every refusal,
+inside a suite of 171. The count used to read 171 here, which quietly credited
+one file with the whole suite's work.
 
 ### 3.1 The bootstrap hole, which only running it revealed
 

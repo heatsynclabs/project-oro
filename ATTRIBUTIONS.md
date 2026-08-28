@@ -59,20 +59,25 @@ Tracked in `docs/decisions/` and raised with the board before cutover.
 
 ---
 
-## Continuous integration actions
+## Pinned tooling
 
-Hand maintained, because a GitHub Action is not in any lockfile and the
-generator below reads lockfiles. Every action is pinned to a commit rather than
-a moving tag, so a tag repointed at different code cannot change what runs.
+Hand maintained, because none of this is in a lockfile and the generator below
+reads lockfiles. Everything here is pinned to a commit or a digest rather than a
+moving tag, so a tag repointed at different code cannot change what runs.
 
-| Action | Pinned commit | Licence | Used for |
+| Tool | Pinned to | Licence | Used for |
 |---|---|---|---|
-| [actions/checkout](https://github.com/actions/checkout) v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` | MIT, GitHub | Checking out the repository in every job in `.github/workflows/ci.yml`. Version, tag commit, and licence read from the GitHub API on 2026-08-27. |
+| [actions/checkout](https://github.com/actions/checkout) v7.0.1 | commit `3d3c42e5aac5ba805825da76410c181273ba90b1` | MIT, GitHub | Checking out the repository in every job in `.github/workflows/ci.yml`. Version, tag commit and licence read from the GitHub API on 2026-08-27 |
+| [Redocly CLI](https://github.com/Redocly/redocly-cli) 2.49.0 | the npm version, in the workflow and in `HANDOFF.md` | MIT, Redocly Inc. | Validating `docs/api/members-v1.yaml`, in CI and by hand. Chosen in [ADR 0001](./docs/decisions/0001-openapi-toolchain.md), which records how the version and licence were read |
+| [Prism](https://github.com/stoplightio/prism) 5.15.10 | image digest `sha256:586d1f0f94f8d0eaf20b26b8b41f985f2a2d494bea297bd3988c3de3eb87094e`, in `tools/mock/image.sh` | Apache 2.0, Stoplight | Serving the contract as a mock, for the members portal and for CI. Chosen in [ADR 0002](./docs/decisions/0002-mock-server.md) |
 
-Nothing else is used. The jobs run scripts that live in this repository, on the
-runner's own Docker and Python, so the CI configuration stays portable enough to
-be re-implemented on Woodpecker without rewriting the checks themselves. That is
-the exit named in `docs/plan/architecture.md` section 2.
+Every other image the stack runs is named in `compose.yaml` by tag:
+`postgres:18` and `caddy:2-alpine`. Neither is vendored and neither is modified.
+
+The jobs otherwise run scripts that live in this repository, on the runner's own
+Docker, Python and Node, so the CI configuration stays portable enough to be
+re-implemented on Woodpecker without rewriting the checks themselves. That is the
+exit named in `docs/plan/architecture.md` section 2.
 
 ---
 

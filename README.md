@@ -10,13 +10,14 @@ software around the Arduino that unlocks the building. The Arduino itself stays.
 
 ## Status
 
-The database, the contract, the door port, and the machinery that checks all
-three. No portals, and nothing deployed.
+There is something to open in a browser now. `make development` brings up the
+members portal on a laptop, and it reads a mock of the API contract rather than a
+service, because the service is not built. Nothing is deployed.
 
 | | |
 |---|---|
-| Built | Schema and row level security with 171 database assertions, the members API contract, the door controller port with its fake and 104 conformance tests, a Postgres and Caddy stack, CI, a prose gate with 77 tests, a commit hook |
-| Not built | The API service, the door service itself, the three portals, the theme packages |
+| Built | The schema and its row level security, 171 database assertions. The members API contract as OpenAPI, and a mock that serves it. The door controller port with its fake and 104 conformance tests. The GANTRY token layer with a contrast validator. A Postgres and Caddy stack. A members portal, read only, against the mock. CI on seven jobs, a prose gate with 77 tests, a commit hook |
+| Not built | The API service and the identity service, so nothing yet reaches the database over HTTP. The door service itself. The admin and door apps. `gantry-css` and `gantry-vue` |
 
 `HANDOFF.md` tracks this in detail and is the file to update when something
 lands.
@@ -27,21 +28,30 @@ Needs Docker and Python 3.8 or newer. The API contract check also needs Node,
 and nothing else does.
 
 ```sh
-./db/tests/run.sh          # schema from nothing, 171 assertions, about 6 seconds
-./db/tests/run.sh --update # regenerate expected output, deliberately
+./db/tests/run.sh                     # schema from nothing, 171 assertions
+./db/tests/run.sh --update            # regenerate expected output, deliberately
 
-./services/door/tests/run.sh   # the door port, its fake, and 104 conformance tests
+./services/door/tests/run.sh          # the door port, its fake, 104 tests
+./packages/gantry-tokens/tests/run.sh # the theme, every ink on every ground
 
 python3 tools/voice-check/test_voice_check.py
 python3 tools/voice-check/test_regressions.py
 python3 tools/voice-check/test_behaviour.py
 
-./tools/ci/voice-gate.sh   # the prose gate over every tracked file
+./tools/ci/voice-gate.sh              # the prose gate over every tracked file
+
+make mock-test                        # the contract mock, started, called, removed
+make development-test                 # both compose profiles, in a throwaway project
+make portal-test                      # the members portal through Caddy
 ```
 
-`run.sh` creates a throwaway `postgres:18` container, applies every migration
-and seed in order, runs each test file in a transaction that rolls back, and
-removes the container. The door suite needs nothing installed at all.
+`db/tests/run.sh` creates a throwaway `postgres:18` container, applies every
+migration and seed in order, runs each test file in a transaction that rolls
+back, and removes the container. Expect about ten seconds once that image is
+local. The door suite and the theme suite need nothing installed at all.
+
+The three `make` targets need Docker Compose, and each one builds and tears down
+its own project, so none of them touches a stack you have up.
 
 To bring the stack up, copy `.env.example` to `.env`, set every value in it, and
 run `make up`. Nothing in that file has a default and the stack refuses to start
@@ -73,6 +83,8 @@ db/seed/             tiers, roles, governance parameters
 db/tests/            171 assertions, run by db/tests/run.sh
 
 services/door/       the controller port, the fake, the conformance suite
+packages/            gantry-tokens: the theme, and the contrast validator
+apps/members/        the members portal, read only, against the contract mock
 
 docs/api/            the members API contract, as OpenAPI
 docs/plan/           architecture, API design, data model, build order
@@ -82,10 +94,14 @@ docs/glossary.md     domain words. Code uses these exactly
 
 tools/voice-check/   prose gate, run in CI and on every commit message
 tools/ci/            the two checks CI runs that need a git range
+tools/mock/          the pinned mock server, and what proves it serves the contract
+tools/development/   checks over both compose profiles
+tools/members-portal/ checks over the portal, through Caddy
 
-apps/members/        the members portal. A placeholder until somebody builds it
 caddy/               TLS, the health route, and the routes each profile serves
 compose.yaml         Postgres and Caddy. Makefile wraps it
+compose.mock.yaml    the mock, in a profile, so make up never starts it
+.github/workflows/   CI. Seven jobs
 ```
 
 ## Reading order

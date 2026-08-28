@@ -49,7 +49,7 @@ This table is the single place this is tracked. Update it as things land.
 | `compose.yaml`, `compose.mock.yaml`, `Makefile`, `.env.example`, `caddy/` | **Built.** Postgres and Caddy, and a development profile that adds the mock and puts it and `apps/members/` behind Caddy on one origin, over plain HTTP. `make up` on a clean machine, proven |
 | `docs/api/members-v1.yaml` | **Written.** OpenAPI 3.1.1, validates clean. Still needs the review by somebody who did not write it that phase 1 asks for |
 | `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Seven jobs, green on a real runner in 22 seconds |
-| Import boundary and file ceiling linting | Not started. Phase 0. Three files need their exemption listed here when this lands: `docs/api/members-v1.yaml` at 1,923 lines, `packages/gantry-tokens/tokens.css` at 398, and the copy of that token layer the members portal ships at `apps/members/theme/tokens.css`, which is the same 398 lines and the same reason |
+| Import boundary and file ceiling linting | Not started. Phase 0. Three files need an exemption when this lands: `docs/api/members-v1.yaml` at 1,923 lines, `packages/gantry-tokens/tokens.css` at 398, and the copy the portal ships at `apps/members/theme/tokens.css`, same length and same reason. Two functions in `tools/voice-check/checks.py` already break rule 6 and nothing catches them: `_report` takes 7 parameters against a ceiling of 4, and `check_rhythm` is 53 lines against 50. Fix those rather than exempting them |
 | `tools/attributions/generate.py` | Not started. Needs a lockfile first |
 | `docs/runbooks/` | Not started. Created with the first runbook |
 | `CODEOWNERS`, `.sops.yaml` | Not started. Created with the first real name and the first secret |
@@ -83,11 +83,18 @@ make portal-test                         # 22 checks over the members portal, li
 npx @redocly/cli@2.49.0 lint docs/api/members-v1.yaml   # the API contract
 ```
 
-CI runs everything above except `make mock` and `--update`. `tools/ci/` holds the
-two checks that need a git range, so what CI runs is the same script a person
-runs, rather than a copy of it that drifts. The contract lint reports three
-warnings and that is expected; `docs/decisions/0001-openapi-toolchain.md` says
-which and why.
+CI runs most of that block, and the exceptions matter more than the rule.
+`make mock` is a server rather than a check, and `--update` rewrites the expected
+files. Those two could never be jobs. **`make development-test` and
+`make portal-test` could be and are not**, so a change to `caddy/`,
+`compose.yaml`, `compose.mock.yaml` or `apps/members/` is checked only by
+whoever remembers to run them. Section 2 marks both as not in CI. Adding the two
+jobs is small work nobody has done.
+
+`tools/ci/` holds the two checks that need a git range, so what CI runs is the
+same script a person runs rather than a copy of it that drifts. The contract lint
+reports three warnings and that is expected;
+`docs/decisions/0001-openapi-toolchain.md` says which and why.
 
 `make mock` is a foreground server that runs until you stop it, so no CI job
 could run that one. `make mock-test` starts the mock, checks it, and takes it
@@ -100,7 +107,8 @@ starting on a value nobody chose.
 `db/tests/run.sh` needs Docker and nothing else. It creates a throwaway
 `postgres:18` container, applies every migration and seed in order, runs each
 test file in a transaction that rolls back, and removes the container. It leaves
-nothing behind. Expect it to take about twenty seconds.
+nothing behind. Expect about ten seconds once the `postgres:18` image is
+local, and a first run that pulls it takes longer.
 
 Everything should be green. If it is not, that is a real failure: the suite has
 been run more than twenty times consecutively without a flake.
@@ -155,11 +163,15 @@ In order.
    hour in the project, because everything downstream is built against it.
 5. Get pull request 1 reviewed and merged. CI is green on it, so what is left
    there is a person reading the diff.
-6. Add the import boundary and file ceiling linting that phase 0 still owes, and
-   list `docs/api/members-v1.yaml` in its exemptions with a reason. It is 1,923
-   lines and rule 6 wants exemptions named rather than covered by a glob.
+6. Add the import boundary and file ceiling linting that phase 0 still owes. The
+   section 2 row lists what it will find on the first run, including two
+   functions in the prose gate that already break rule 6. Exemptions get named
+   one at a time with a reason, never covered by a glob.
+7. Give `make development-test` and `make portal-test` CI jobs. They are the only
+   two suites nothing gates, which means the compose stack and the portal are
+   checked by memory.
 
-Items 4 to 6 are the code that is left. Items 1 to 3 are not code, and they are
+Items 4 to 7 are the code that is left. Items 1 to 3 are not code, and they are
 the ones that decide whether any of this ships.
 
 ## 7. Traps
