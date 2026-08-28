@@ -63,8 +63,12 @@ Nothing here is a feature. All of it is what makes the rest checkable.
 2. `compose.yaml` with Postgres and Caddy, a `Makefile`, and `.env.example`.
 3. Backup and restore: `pg_dump -Fc` on a timer, restic to an S3 compatible
    endpoint, and the weekly automated restore drill.
-4. A verified restore of the production database onto a staging copy.
-5. The staging copy answers the questions the migration cannot start without:
+4. DNS. Point `id`, `api`, `admin`, and `door` at wherever the stack runs, and
+   leave `members` alone until phase 6. Whoever controls the zone is named in
+   `people-and-custody.md`, because a domain lapsing has already taken the door
+   out once.
+5. A verified restore of the production database onto a staging copy.
+6. The staging copy answers the questions the migration cannot start without:
    duplicate and blank emails, card ids outside 10 to 199, cards pointing at
    users that do not exist, the distribution of bcrypt cost prefixes, whether
    `contracts` holds anything anyone needs, and whether any card carries
@@ -185,10 +189,13 @@ proven by a client using it.
    generated document differs from the committed one.
 2. The service connects as a non superuser and sets the member identity per
    transaction, so the policies apply to it too and there is no bypass to take.
-3. Members portal: profile, membership status, cards, certifications, waiver
-   status, card eligibility.
-4. The migration script, run repeatedly against staging until it is boring.
-5. Seed data that is obviously invented, so nobody mistakes a fixture for a real
+3. Members portal: profile with the fields the current app collects and the
+   member editing their own, membership status, cards, certifications, waiver
+   status, and card eligibility.
+4. The member directory, reading `member_directory` so a hidden phone number
+   cannot leak through a new endpoint.
+5. The migration script, run repeatedly against staging until it is boring.
+6. Seed data that is obviously invented, so nobody mistakes a fixture for a real
    member.
 
 **Exit:** a member signs in with their existing password, sees their own record,
@@ -199,7 +206,8 @@ slot.
 
 ## Phase 4. Admin
 
-1. Admin portal: member list, member detail, roles, certifications, cards.
+1. Admin portal: member list, member detail, roles, certifications, cards, and
+   recording orientation with who ran it.
 2. The two approver flow for admin access changes, enforced by the database
    constraint and mirrored by a service check that produces a readable refusal.
 3. Card issue and revoke, with a reason required on revoke. Deciding who gets a
@@ -209,8 +217,9 @@ slot.
    information behind it.
 
 **Exit:** an admin proposes a role grant, cannot approve it themselves, and a
-second admin approves it, proven at the database level and in the UI. A card
-proposal recorded with four cardholders present is refused by the database.
+second admin approves it, proven at the database level and in the UI. Issuing a
+card assigns the lowest free slot, and a card outside 10 to 199 is refused by the
+database. A member cannot change their own standing or orientation.
 
 **The proposal was posted at the start of phase 1, not here.** The two approver
 rule is a new policy and it needs an HYH vote. Posting it three phases ahead of
@@ -256,10 +265,16 @@ have been green since phase 1.
 7. Serve `/status`, and prove `space_api.json` parity on a test hostname, byte for
    byte against the current output, under 900 bytes so the wall poller's 1 KB
    buffer still parses it.
+8. The door app. Phone first, for members holding an active card: door status,
+   the actions their card allows, and recent remote actions. Rear unlock appears
+   as refused with its reason rather than being hidden, because a control that
+   silently vanishes reads as a bug. Actions are asynchronous, so the button
+   shows a pending state that resolves.
 
 **Exit:** the reconcile loop has run clean for a week in read only mode, then a
 week with writes, and the controller's table matches the database exactly at the
-end of it. `space_api.json` on the test hostname is byte identical to production.
+end of it. A member holding an active card opens the front door from the door app
+and the event appears in their own history. `space_api.json` on the test hostname is byte identical to production.
 The door never blinked.
 
 **Dated.** This phase gets a date when phase 4 exits. If it slips twice, re-cut

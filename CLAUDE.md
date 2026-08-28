@@ -20,23 +20,6 @@ disagree.
 A rule whose gate is not built yet is still the rule. It is enforced by review
 until the gate exists.
 
----|---|
-| `tools/voice-check/` prose gate | **Built.** 74 tests passing |
-| `.githooks/commit-msg` attribution block | **Built.** Install with `git config core.hooksPath .githooks` |
-| `ATTRIBUTIONS.md` prior work table | **Built**, hand maintained |
-| `.github/workflows/ci.yml` | Not built. Phase 0 |
-| Import boundary linting | Not built. Phase 0 |
-| File and function ceilings in lint config | Not built. Phase 0 |
-| `tools/attributions/generate.py` | Not built. Needs a lockfile first |
-| `db/migrations/` schema, rules, and RLS | **Built.** Applies clean from nothing |
-| `db/tests/` and `db/tests/run.sh` | **Built.** 39 assertions, deterministic |
-| `services/door/` and its fake controller | Not built. Phase 1 |
-| `docs/conventions/testing.md`, `style.md`, `assumptions.md` | Not built |
-
-A rule whose gate is not built yet is still the rule. It is enforced by review
-until the gate exists, and the gap is visible here rather than implied to be
-covered.
-
 ---
 
 ## 1. Attribution
@@ -101,7 +84,8 @@ integer columns named `*_id` may point at rows that do not exist. Treat every
 join against migrated data as capable of returning nothing.
 
 *Gate:* review. This one is cultural, and it is the most important rule in the
-file. `docs/conventions/assumptions.md` carries the long form.
+file. There is no gate that can check it, and pretending otherwise would itself
+break the rule.
 
 ---
 
@@ -162,8 +146,7 @@ Test the boundary, not the mock. Prefer a real Postgres in a container over a
 stubbed query builder. Prefer a fake HTTP controller that speaks the real wire
 protocol over a mocked client object.
 
-*Gate:* CI. Plus a required test file alongside every new module; see
-`docs/conventions/testing.md`.
+*Gate:* CI. Plus a required test file alongside every new module.
 
 ---
 
@@ -256,8 +239,7 @@ before fix it during an outage, at night, without asking anyone.
 - No abstraction earns its place until there are three real uses. Two is a
   coincidence.
 
-*Gate:* review, plus the ceilings in rule 6, plus the naming section of
-`docs/conventions/style.md`.
+*Gate:* review, plus the ceilings in rule 6, plus `docs/glossary.md` for naming.
 
 ---
 

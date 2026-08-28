@@ -25,7 +25,7 @@ Sources: `.research/02-repos-rewrites.md`, `.research/05-archive-governance.md`,
 
 ---
 
-## 1. The five decisions
+## 1. The decisions that shape everything
 
 ### 1.1 A member is not an account
 
@@ -118,9 +118,10 @@ answers it.
 are opaque to this system, so moving from a Google Form to something else later
 is a data change rather than a schema change.
 
-This also settles a problem the earlier design had: an imported waiver could not
-satisfy a `document_sha256 NOT NULL`, because a spreadsheet row is not a
-document. There is now nothing to hash.
+It also settles a problem the earlier design had. That draft required a hash of
+the signed document, which an imported waiver could never supply, because a
+spreadsheet row is not a document. No such column exists now and there is nothing
+to hash.
 
 Emergency contact moves back onto the member, which is where the current app
 keeps it, and where it stays current.
@@ -145,7 +146,7 @@ names why, rather than the API being the only thing standing in the way.
 Changing your own email clears its verified date, and you cannot set that date
 yourself.
 
-### 1.5 One approval mechanism, covering admin access only
+### 1.7 One approval mechanism, covering admin access only
 
 `approvals` gates granting a role that can itself grant roles. That is the whole
 of it.
@@ -291,6 +292,12 @@ and asserts the full active card table comes back.
 Every policy gets a test per role including anonymous, and a test of the case it
 must refuse. **A policy without a refusal test is untested**, because a policy that
 returns everything passes every positive test.
+
+One consequence worth stating, because it was a stated payoff of the original
+plan and it survives the move away from PostgREST: row level security makes a
+read only view safe to hand out. A stats kiosk, a board dashboard, or a yearly
+report gets a view and a role with `SELECT` on it, and no application code
+changes. That mechanism belongs to Postgres, not to whatever serves the API.
 
 Door events narrow current behaviour. Today any oriented member can read
 `/door_logs`, so anyone oriented can see everyone's comings and goings. Restricting

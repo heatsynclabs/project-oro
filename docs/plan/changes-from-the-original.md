@@ -121,6 +121,52 @@ change, with the reason.
 Unchanged. Three Zitadel hosted screens wearing the lab brand, and every future
 app reuses them.
 
+## 4a. The original's 22 steps, and where each one went
+
+Nothing was dropped silently. Every step in the original "Step by step" section
+maps to something here, is deliberately rejected with a reason, or is out of
+scope by direction.
+
+| # | Original step | Here | Note |
+|---|---|---|---|
+| 1 | Verified backup, prove it restores | Phase 0 | Unchanged, still the hard gate before anything |
+| 2 | Repo, two GitHub environments, secrets, deploy via Actions | Phase 0 | Changed. Secrets are SOPS with age in git; GitHub runs tests and never holds deploy credentials |
+| 3 | Stand up the droplet, join the tailnet, point DNS | Phase 0 | Changed. No droplet and no tunnel. DNS survives as its own step |
+| 4 | Decide where member PII and signed waivers live | Answered | Waivers stay where the lab already keeps them and this system stores a reference. The remaining PII question is a migration blocker with an owner |
+| 5 | Zitadel and its Postgres behind Caddy | Phase 2 | Kept. One Postgres server, two databases |
+| 6 | Register three PKCE clients, the machine account, audiences | Phase 2 | Kept |
+| 7 | Token lifetimes: ten minute access, rotating refresh | Phase 2 | Kept |
+| 8 | Resolve duplicate emails on staging, export | Phase 0 and the migration blockers | Kept |
+| 9 | Import users into Zitadel, subjects back onto member rows | Phase 2 | Kept |
+| 10 | A cohort of real members signs in on staging | Phase 2 exit | Improved. Split into synthetic accounts for the mechanism and volunteers for reality, because the original criterion needed plaintext nobody has |
+| 11 | Apply the migrations: identity, approvals, policies | **Built** | The schema, its rules and its policies exist and run |
+| 12 | Add PostgREST | Rejected | It has no authentication, emits a schema derived contract, and makes the layering rule structurally false. RLS, the good half, is kept |
+| 13 | Prove isolation across member, admin, anonymous | **Built** | 31 policy assertions, including the anonymous case |
+| 14 | Self hosted runner at the space, reviewer gated | Removed | Followed from dropping GitHub deploys. The door service runs on the VLAN and accepts nothing inbound |
+| 15 | Deploy the door service, verify a sync round trip | Phase 5 | Kept, plus a read only week first |
+| 16 | Serve `/status`, prove `space_api` parity byte for byte | Phase 5 | Kept, plus a 900 byte ceiling the original did not know about |
+| 17 | Members portal: profile, membership, cards, payment method | Phase 3 | Payment method out of scope. Gained certifications, waiver status, card eligibility, and self service profile editing |
+| 18 | Admin portal: member list, roles, approvals queue | Phase 4 | Kept. The queue covers admin access changes only |
+| 19 | Door app: status and controls | Phase 5 | Kept. Actions are asynchronous, so controls resolve from a pending state |
+| 20 | Flip Caddy, route `space_api.json` | Phase 6 | Kept |
+| 21 | Rails read only for a week, then decommission | Phase 6 | Two weeks, and card management is frozen earlier, at the moment writes are enabled |
+| 22 | Drop dead credential columns, confirm the door ran | Phase 6 | Kept |
+
+### Steps this plan adds
+
+- **Post the two approver proposal at the start of phase 1**, three phases before
+  the code that depends on it, so the vote arrives before the work.
+- **Build the door controller port, its fake, and its conformance suite in phase
+  1.** The door ships last and gets de-risked first, because that is where three
+  rewrites stalled.
+- **Freeze card management in the legacy app before enabling reconcile writes.**
+  The original left both systems writing, which silently un-revokes cards.
+- **A driver's seat drill per phase.** Somebody who did not build it runs the
+  core operation from the runbook while the author watches and says nothing.
+- **Named people as a gate.** A phase does not start while the roles it needs are
+  empty.
+- **Fix the two measured token defects** before any component is built on them.
+
 ## 5. What the original did not have at all
 
 - A named owner for anything. `people-and-custody.md` exists because the previous
