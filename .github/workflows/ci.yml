@@ -51,6 +51,26 @@ jobs:
       - name: Port, fake, and conformance suite
         run: ./services/door/tests/run.sh
 
+  tokens:
+    name: Theme contrast
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Standard library only, so there is nothing to install here either. The
+      # script runs the validator's own suite and then the validator over
+      # tokens.css, walking every ink token on every ground on every theme. Ink
+      # means the --ink status family, the --g-ink ground text family that
+      # --color-text-* aliases, and --g-on-accent, which is the accent used as
+      # text on the ground. The phase 1 exit criterion is not that this passes,
+      # it is that it passes and would have caught --ink-warn on a hazard
+      # ground, so one of those tests measures the token layer as it was before
+      # the fix and asserts the checker reports that pair. Another comments the
+      # [data-ground] paint rule out and asserts the suite goes red, because
+      # painting changes no contrast ratio and nothing else would notice.
+      - name: Every ink on every ground
+        run: ./packages/gantry-tokens/tests/run.sh
+
   contract:
     name: API contract
     runs-on: ubuntu-latest

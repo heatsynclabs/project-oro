@@ -289,11 +289,13 @@ not to be the blocker. The blockers are the base layer rules that do not cross:
 `*:focus-visible` and the `:where(input,textarea,select){font-size:16px}` iOS zoom
 guard both fail to reach shadow content, measured in headless Chromium.
 
-Two token defects to fix before any component is built on them, both measured:
-the `--ink-*` status family is never remapped by `[data-ground]`, so `--ink-warn`
-on a hazard ground is amber on amber at a contrast ratio of 1.00; and
-`[data-ground]` remaps variables but paints nothing, so a bare grounded element
-looks like the mechanism is broken when it is not.
+Two token defects had to be fixed before any component was built on them, both
+measured: the `--ink-*` status family was never remapped by `[data-ground]`, so
+`--ink-warn` on a hazard ground was amber on amber at a contrast ratio of 1.00;
+and `[data-ground]` remapped variables and painted nothing, so a bare grounded
+element looked like the mechanism was broken when it was not. Both are fixed in
+`packages/gantry-tokens`, and the validator there is what stops them coming
+back. It walks the theme by ground cross product on every build.
 
 ## 6. Data and access
 

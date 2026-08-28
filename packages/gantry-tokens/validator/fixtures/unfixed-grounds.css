@@ -1,0 +1,170 @@
+/* The theme and ground blocks of GANTRY v2.0 as the hsl-forge brand skill
+   package ships them, before the two defects were fixed. Every declaration is
+   byte for byte the upstream one, from heatsync-brand/assets/gantry-tokens.css,
+   sha256 1511b045c21530e80d995d002d0f45bbfd8d40ec9fbde1add8893a2089d8b1bd.
+   Internal HeatSync Labs work product, per ATTRIBUTIONS.md, and no licence is
+   claimed. The two numbered section banners upstream puts above these blocks
+   are dropped: one of them contains a spaced hyphen the prose gate rejects,
+   and a fixture carrying a suppression comment is no longer a copy of
+   anything.
+
+   This is here so the contrast checker keeps having something it fails on. A
+   checker that has only ever run green proves nothing, and the phase 1 exit
+   criterion in docs/plan/order-of-operations.md is not "it passes", it is
+   "it passes and would have caught --ink-warn on hazard".
+
+   Nothing loads this. Do not fix it. Fixing it is what test_check_contrast.py
+   asserts nobody has done. */
+
+:root,
+:root[data-theme="dark"] {
+  --char:        #15120f;
+  --grime:       #1d1915;
+  --slab:        #26211b;
+  --slab-hi:     #2f2920;
+  --steel:       #3a342b;
+  --steel-hi:    #4a4338;
+
+  --bone:        #ece3d3;
+  --ash:         #a79d8c;
+  --smoke:       #756c5e;
+
+  --hazard:      #f2ab1e;
+  --hazard-deep: #c98714;
+  --hazard-dim:  rgba(242, 171, 30, 0.12);
+  --accent-text: #f2ab1e;
+
+  --rust:        #c2542c;
+  --rust-deep:   #9a3f20;
+  --live:        #5fb892;
+  --fault:       #d24f3a;
+  --idle:        #f2ab1e;
+  --violet:      #9b7fd0;
+  --info:        #5e93c4;
+
+  --tape-dark:   #14110d;
+  --on-dark:     #ece3d3;
+  --on-dark-line: rgba(236, 227, 211, 0.24);
+
+  --grain-op:    0.045;
+  --grain-blend: normal;
+  --shadow:      6px 6px 0 #0a0806;
+  --shadow-sm:   4px 4px 0 #0a0806;
+  --shadow-lg:   10px 10px 0 #0a0806;
+
+  --nav-bg:      rgba(21, 18, 15, 0.94);
+
+  /* text-safe status inks, measured against --char and --slab */
+  --ink-ok:      #7fd0aa;
+  --ink-warn:    #f2ab1e;
+  --ink-err:     #ef7b68;
+  --ink-info:    #8fbde6;
+  --ink-faint:   #9c9384;
+  --ink-ghost:   #6a6255;
+}
+
+
+:root[data-theme="light"] {
+  --char:        #f4efe3;
+  --grime:       #ebe3d3;
+  --slab:        #faf6ec;
+  --slab-hi:     #f0e8d8;
+  --steel:       rgba(28, 24, 18, 0.16);
+  --steel-hi:    #1c1812;
+
+  --bone:        #1c1812;
+  --ash:         #4a4236;
+  --smoke:       #6f6555;
+
+  --hazard:      #f2ab1e;
+  --hazard-deep: #b9740f;
+  --hazard-dim:  rgba(242, 171, 30, 0.18);
+  --accent-text: #97600c;
+
+  --rust:        #c2542c;
+  --rust-deep:   #9a3f20;
+  --live:        #2f8562;
+  --fault:       #b8341f;
+  --idle:        #97600c;
+  --violet:      #6a4fa0;
+  --info:        #35648f;
+
+  --tape-dark:   #14110d;
+  --on-dark:     #ece3d3;
+  --on-dark-line: rgba(236, 227, 211, 0.24);
+
+  --grain-op:    0.05;
+  --grain-blend: multiply;
+  --shadow:      6px 6px 0 #1c1812;
+  --shadow-sm:   4px 4px 0 #1c1812;
+  --shadow-lg:   10px 10px 0 #1c1812;
+
+  --nav-bg:      rgba(244, 239, 227, 0.94);
+
+  --ink-ok:      #216b4d;
+  --ink-warn:    #8a5a09;
+  --ink-err:     #a52d1a;
+  --ink-info:    #2b5578;
+  --ink-faint:   #5f5648;
+  --ink-ghost:   #8a8071;
+}
+
+
+/* ============================================================
+   3. GROUNDS
+   A ground is the surface a block sits on. Setting [data-ground] on
+   any element remaps the semantic tokens for it and everything inside,
+   so a hazard band or a tape plate inside a paper page still resolves
+   legible text without hand-picked colours.
+   ============================================================ */
+:root,
+[data-ground="page"] {
+  --g-bg:      var(--char);
+  --g-raised:  var(--slab);
+  --g-line:    var(--steel);
+  --g-line-hi: var(--steel-hi);
+  --g-ink:     var(--bone);
+  --g-ink-2:   var(--ash);
+  --g-ink-3:   var(--smoke);
+  --g-accent:  var(--hazard);
+  --g-on-accent: var(--accent-text);
+}
+
+[data-ground="raised"] {
+  --g-bg:      var(--slab);
+  --g-raised:  var(--slab-hi);
+  --g-line:    var(--steel);
+  --g-line-hi: var(--steel-hi);
+  --g-ink:     var(--bone);
+  --g-ink-2:   var(--ash);
+  --g-ink-3:   var(--smoke);
+  --g-accent:  var(--hazard);
+  --g-on-accent: var(--accent-text);
+}
+
+/* Always-dark plate. Used for footers, donate bands, kiosk chrome and
+   anything that stays dark when the page flips to paper. */
+[data-ground="plate"] {
+  --g-bg:      var(--tape-dark);
+  --g-raised:  #201b16;
+  --g-line:    var(--on-dark-line);
+  --g-line-hi: rgba(236, 227, 211, 0.4);
+  --g-ink:     var(--on-dark);
+  --g-ink-2:   #b3a996;
+  --g-ink-3:   #8b8271;
+  --g-accent:  var(--hazard);
+  --g-on-accent: #f2ab1e;
+}
+
+/* Full-bleed caution amber. Text on it is always the dark tape ink. */
+[data-ground="hazard"] {
+  --g-bg:      var(--hazard);
+  --g-raised:  #f8bf52;
+  --g-line:    rgba(20, 17, 13, 0.32);
+  --g-line-hi: #14110d;
+  --g-ink:     #14110d;
+  --g-ink-2:   #3d3120;
+  --g-ink-3:   #5c4a2e;
+  --g-accent:  #14110d;
+  --g-on-accent: #14110d;
+}

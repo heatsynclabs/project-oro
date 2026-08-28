@@ -1,0 +1,61 @@
+# Ink and ground pairs that are below 4.5:1 and are accepted for now.
+#
+#   theme | ground | token | ratio | why it is accepted for now
+#
+# A pair that is below the minimum and not listed here fails the build. A pair
+# listed here that has started passing also fails the build, and so does one
+# whose ratio has moved, because an exemption nobody has to revisit is how a
+# list like this becomes a place things go to be forgotten. Run
+# check_contrast.py after any change to tokens.css and it will say which lines
+# to edit.
+#
+# Every line here is a triage decision, not a fix. Three families are left:
+#
+# --ink-ghost is the recessive ink. It is for a disabled control, a placeholder,
+# and text that is present but not being asked for, which is the case WCAG 2.1
+# success criterion 1.4.3 exempts from the minimum. It fails on every ground by
+# design and darkening it would remove the only thing it is for. What is still
+# owed is a rule in gantry-css that stops it being used for body copy, because
+# right now nothing but review prevents that.
+#
+# --ink-panel is a panel background that GANTRY v1.1 in heatsynclabs/new-hsl
+# named as an ink, and this file keeps the name so v1.1 markup still resolves.
+# Nothing sets a text colour to it. It cannot be renamed without breaking the
+# compatibility this layer exists to provide, so it is measured, it fails, and
+# it is listed. The two v1.1 aliases that really are text, --ink-black and
+# --ink-soft, were repointed at the ground inks and now pass everywhere.
+#
+# --g-ink-3 is the tertiary ground ink, which --color-text-tertiary aliases. It
+# is real text and these four pairs are a real defect, not an exemption on
+# principle. The colour values are the brand file's, unchanged in this copy,
+# and moving one is a brand decision rather than a packaging one. Two changes
+# would clear all four: a lighter --smoke in the dark theme, and a darker
+# --g-ink-3 literal on the hazard ground. Neither is made here. Until they are,
+# --color-text-tertiary should not carry anything a person has to read.
+#
+# Counted 2026-08-28 by running check_contrast.py. It measures 112 pairs, of
+# which 16 are below the minimum and every one of them is listed below. The
+# same checker over validator/fixtures/unfixed-grounds.css, which is the layer
+# as the brand package ships it, measures 80 pairs and reports 26 below the
+# minimum. An earlier version of this note quoted 28 and 30 from a research
+# file; neither number is reproducible from anything in this repository, so
+# both are dropped in favour of the two above, which any reader can re-run.
+
+dark  | page   | --ink-ghost | 3.10 | recessive by design, never body copy
+dark  | raised | --ink-ghost | 2.65 | recessive by design, never body copy
+dark  | plate  | --ink-ghost | 3.13 | recessive by design, never body copy
+dark  | hazard | --ink-ghost | 3.49 | recessive by design, never body copy
+light | page   | --ink-ghost | 3.39 | recessive by design, never body copy
+light | raised | --ink-ghost | 3.60 | recessive by design, never body copy
+light | plate  | --ink-ghost | 3.13 | recessive by design, never body copy
+light | hazard | --ink-ghost | 3.49 | recessive by design, never body copy
+
+dark  | page   | --ink-panel | 1.01 | a v1.1 panel background, never a text colour
+dark  | raised | --ink-panel | 1.18 | a v1.1 panel background, never a text colour
+dark  | plate  | --ink-panel | 1.00 | a v1.1 panel background, never a text colour
+light | plate  | --ink-panel | 1.00 | a v1.1 panel background, never a text colour
+
+dark  | page   | --g-ink-3   | 3.61 | brand tertiary ink, owed a lighter --smoke in the dark theme
+dark  | raised | --g-ink-3   | 3.09 | brand tertiary ink, owed a lighter --smoke in the dark theme
+dark  | hazard | --g-ink-3   | 4.29 | brand tertiary ink, owed a darker literal on the hazard ground
+light | hazard | --g-ink-3   | 4.29 | brand tertiary ink, owed a darker literal on the hazard ground
