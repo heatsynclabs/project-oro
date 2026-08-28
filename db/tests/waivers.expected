@@ -1,0 +1,11 @@
+ok   recording that a member signed, and where it is kept
+ok   recording one without saying where the document is
+--   the table holds no personal information at all
+ok   no column mentions a name, address, signature or guardian
+--   what a host or instructor gets to see
+ok   a member who signed shows valid
+ok   a member who never signed has no row at all
+ok   the status view exposes only the fact and the date
+--   an expired waiver stops counting
+ok   recording one that has lapsed
+ok   and it does not make them valid

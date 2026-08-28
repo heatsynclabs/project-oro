@@ -100,6 +100,51 @@ bylaws rule that card access needs the $50 level is data rather than a constant 
 code. The legacy integer survives on the member row as `legacy_member_level`, so
 the migration stays auditable.
 
+### 1.5 A waiver is a reference, not a copy
+
+The system records **that** a member has a signed waiver, when it was signed, and
+**where the document is kept**. It holds nothing that is on the document: no
+name, no address, no phone, no emergency contact, no guardian, no signature, no
+IP.
+
+An earlier draft stored all of that. It was wrong. The lab already keeps waivers
+somewhere, currently a Google Form and its sheet, and copying their contents into
+a second system creates a second store of personal information to protect, keep
+current, and eventually leak, in exchange for nothing. The question the software
+needs to answer is "has this person signed one", and a boolean plus a pointer
+answers it.
+
+`storage` says which system holds it, `reference` says how to find it there. Both
+are opaque to this system, so moving from a Google Form to something else later
+is a data change rather than a schema change.
+
+This also settles a problem the earlier design had: an imported waiver could not
+satisfy a `document_sha256 NOT NULL`, because a spreadsheet row is not a
+document. There is now nothing to hash.
+
+Emergency contact moves back onto the member, which is where the current app
+keeps it, and where it stays current.
+
+### 1.6 A member edits their own profile
+
+Matching the current app, a member may change their name, display name, pronouns,
+phone, postal code, emergency contact, the four social links, their skills, how
+they heard about the lab, and whether their email and phone are visible in the
+directory.
+
+They may also set their own **membership tier**. That is how the current app
+works, and it is right for this lab: membership is a donation rather than a
+subscription, so a person declares a level and arranges payment separately. It
+grants nothing, because card access is decided by a vote of cardholders and not
+by what somebody typed into a form.
+
+What a member may not change: standing, paid through, orientation, the identity
+their account is joined by, and the legacy columns. A trigger refuses those and
+names why, rather than the API being the only thing standing in the way.
+
+Changing your own email clears its verified date, and you cannot set that date
+yourself.
+
 ### 1.5 One approval mechanism, covering admin access only
 
 `approvals` gates granting a role that can itself grant roles. That is the whole
@@ -323,5 +368,5 @@ gives each one an owner.
 - Cards at slot 200 or below 10.
 - Members with a `payee`, somebody paying on another member's behalf. There is
   archive precedent and it needs a home if any rows exist.
-- Waivers with no document. Imported records cannot prove what was signed, so
-  somebody decides whether they are re-signed at the next visit.
+- Where waiver documents live, and what reference identifies one. The import
+  needs a `storage` and a `reference` per row, not the documents themselves.

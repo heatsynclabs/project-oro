@@ -74,45 +74,41 @@ COMMENT ON COLUMN door_events.recorded_at IS
 -- ----------------------------------------------------------------- waivers
 
 CREATE TABLE waivers (
-  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  member_id         uuid REFERENCES members(id),
-  signed_name       text NOT NULL,
-  signed_email      citext NOT NULL,
-  signed_phone      text,
-  signed_address    text,
-  emergency_name    text,
-  emergency_phone   text,
-  emergency_email   citext,
-  is_minor          boolean NOT NULL DEFAULT false,
-  guardian_name     text,
-  document_version  text,
-  document_sha256   text,
-  signed_at         timestamptz NOT NULL,
-  expires_at        timestamptz,
-  signature_ip      inet,
-  legacy_source     text,
-  created_at        timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT minor_needs_guardian
-    CHECK (NOT is_minor OR guardian_name IS NOT NULL),
-  CONSTRAINT new_waivers_record_what_was_signed
-    CHECK (legacy_source IS NOT NULL
-           OR (document_version IS NOT NULL AND document_sha256 IS NOT NULL))
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_id    uuid NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  signed_at    timestamptz NOT NULL,
+  expires_at   timestamptz,
+
+  -- Where the signed document actually lives. This system does not hold it.
+  storage      text NOT NULL,
+  reference    text,
+
+  recorded_by  uuid REFERENCES members(id),
+  note         text,
+  created_at   timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX waivers_member ON waivers (member_id, signed_at DESC);
 
-COMMENT ON COLUMN waivers.document_sha256 IS
-  'Hash of the exact text the person agreed to. Null only for imported '
-  'records: the Google Form used since 2022 stores a spreadsheet row, not a '
-  'document, so there is nothing to hash. A null here means the record proves '
-  'somebody signed something, not what they signed.';
+COMMENT ON TABLE waivers IS
+  'That a member has a signed waiver, when, and where the document is kept. '
+  'The document itself is deliberately NOT stored here and neither is anything '
+  'on it. The lab already holds waivers somewhere (a Google Form and its sheet, '
+  'a paper file), and copying names, addresses, guardians and signatures into a '
+  'second system would create a second thing to protect for no gain.';
+COMMENT ON COLUMN waivers.storage IS
+  'Which system holds the document. For example google-form, paper-file.';
+COMMENT ON COLUMN waivers.reference IS
+  'How to find it there: a form response id, a file id, a drawer label. Opaque '
+  'to this system.';
 
--- Hosts and instructors need to check a waiver exists without seeing what is
--- on it. That is this view, not a permission on the table.
+-- Any member who is hosting or instructing needs to check a waiver exists
+-- without seeing anything about it. That is this view.
 CREATE VIEW waiver_status AS
 SELECT member_id,
        max(signed_at) AS latest_signed_at,
        bool_or(expires_at IS NULL OR expires_at > now()) AS has_valid_waiver
-FROM waivers WHERE member_id IS NOT NULL GROUP BY member_id;
+FROM waivers
+GROUP BY member_id;
 
 -- ---------------------------------------------------------- certifications
 

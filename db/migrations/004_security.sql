@@ -65,6 +65,51 @@ CREATE POLICY member_reads_own_certs ON member_certifications FOR SELECT
 CREATE POLICY admin_reads_all_certs ON member_certifications FOR SELECT
   USING (is_admin(current_member_id()));
 
+-- A member edits their own profile. These are the fields they may not touch,
+-- and the list is short on purpose: everything else is theirs.
+--
+-- tier_id is deliberately NOT protected. In the current app a member picks
+-- their own membership level and then sets up payment separately, because
+-- membership is a donation rather than a subscription. Matching that is
+-- correct, and it grants nothing: card access is decided by a vote, not by
+-- what somebody typed into a form.
+CREATE FUNCTION enforce_profile_self_edit() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  subject text := current_setting('oro.identity_subject', true);
+BEGIN
+  -- No identity on the transaction is a migration, an import, or a maintenance
+  -- script running as the owner. Not member self service.
+  IF subject IS NULL OR subject = '' THEN RETURN NEW; END IF;
+  IF is_admin(current_member_id()) THEN RETURN NEW; END IF;
+
+  IF NEW.identity_subject    IS DISTINCT FROM OLD.identity_subject
+  OR NEW.standing            IS DISTINCT FROM OLD.standing
+  OR NEW.paid_through        IS DISTINCT FROM OLD.paid_through
+  OR NEW.oriented_at         IS DISTINCT FROM OLD.oriented_at
+  OR NEW.oriented_by         IS DISTINCT FROM OLD.oriented_by
+  OR NEW.legacy_id           IS DISTINCT FROM OLD.legacy_id
+  OR NEW.legacy_member_level IS DISTINCT FROM OLD.legacy_member_level
+  OR NEW.deleted_at          IS DISTINCT FROM OLD.deleted_at THEN
+    RAISE EXCEPTION
+      'Membership standing, orientation, and identity are set by an admin, '
+      'not on your own profile.';
+  END IF;
+
+  -- Changing your own email un-verifies it, and you cannot verify it yourself.
+  IF NEW.email IS DISTINCT FROM OLD.email THEN
+    NEW.email_verified_at := NULL;
+  ELSIF NEW.email_verified_at IS DISTINCT FROM OLD.email_verified_at THEN
+    RAISE EXCEPTION 'A member cannot mark their own email verified.';
+  END IF;
+
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER profile_self_edit
+  BEFORE UPDATE ON members
+  FOR EACH ROW EXECUTE FUNCTION enforce_profile_self_edit();
+
 -- The directory. Row visibility is a policy; column visibility cannot be,
 -- because row level security is row level. So the directory endpoints read this
 -- view and never the base table, and the view is what honours email_visible and

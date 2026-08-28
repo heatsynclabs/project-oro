@@ -1,0 +1,25 @@
+WARNING:  Bootstrap grant of admin to dddddddd-0000-0000-0000-000000000002: only 0 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
+--   what a member may change about themselves
+ok   name and display name
+ok   pronouns, phone, postal code
+ok   emergency contact
+ok   skills and how they heard about the lab
+ok   visibility of their own contact details
+ok   their own membership tier, as in the current app
+ok   a social link
+ok   a social link that is not a URL
+--   what only an admin may change
+ok   their own standing
+ok   setting a protected field to the value it already has, which changes nothing
+ok   their own orientation date
+ok   how long they are paid through
+ok   the identity their account is joined by
+ok   marking their own email verified
+--   changing your email un-verifies it
+ok   changing it
+ok   and it is no longer verified
+--   a member cannot edit anybody else, so nothing matches
+ok   updating another member changes no rows
+--   an admin may set what a member may not
+ok   standing
+ok   orientation, recording who ran it

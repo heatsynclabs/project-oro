@@ -88,7 +88,7 @@ Base: `https://api.heatsynclabs.org/v1`
 | PATCH | `/me` | member | Own editable fields. Contact, visibility, pronouns, skills |
 | GET | `/me/cards` | member | Own cards. Tag numbers masked to the last 4 |
 | GET | `/me/certifications` | member | Own certifications with granter and expiry |
-| GET | `/me/waiver` | member | Whether a valid waiver is on file, and when signed |
+| GET | `/me/waiver` | member | Whether a valid waiver is on file, when signed, and where it is kept |
 | GET | `/me/door-events` | member | Own entries. Paginated, most recent first |
 | GET | `/me/card-eligibility` | member | Eligible yes or no, the date, and what is missing |
 
@@ -141,7 +141,7 @@ endpoints that use the view.
 | GET | `/admin/members` | admin | Everyone, filterable, including unlisted and lapsed |
 | POST | `/admin/members` | admin | Create a member with no account. The kiosk waiver path |
 | PATCH | `/admin/members/{id}` | admin | Tier, standing, orientation, notes |
-| GET | `/admin/members/{id}/waiver` | admin | The full waiver including personal information |
+| POST | `/admin/members/{id}/waivers` | admin | Record that a waiver was signed, and where the document is |
 | POST | `/admin/cards` | admin | Issue a card. Assigns the lowest free slot |
 | PATCH | `/admin/cards/{id}` | admin | Label, permission mask |
 | POST | `/admin/cards/{id}/revoke` | admin | Revoke. Reason required |
@@ -159,8 +159,11 @@ waiver, without seeing what is on it.
 | GET | `/waiver-status?member_id=` | member with a hosting or instructing role | Boolean plus the signed date. No personal information |
 | GET | `/waiver-status?email=` | same | Same, for someone not yet a member |
 
-This is the endpoint that replaces an all or nothing Google Sheet, and it is why
-`waiver_status` is a view rather than a column.
+This is what replaces an all or nothing Google Sheet. It returns a boolean and a
+date and nothing else, because the system holds nothing else: the document stays
+wherever the lab already keeps it, and `waivers` records only that it exists and
+how to find it. A host checking somebody in does not need, and should not get,
+that person's address.
 
 ### 3.5 The two approver flow
 

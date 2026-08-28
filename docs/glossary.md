@@ -42,8 +42,10 @@ so. Where a term is a hardware fact, the firmware wins.
   a mistake this system does not repeat.
 
 **waiver**
-: The signed liability release. Everyone who touches a tool signs one, member or
-  not. Signing one creates a person record. It is the front door of the system.
+: The signed liability release. Everyone who touches a tool signs one.
+: This system records only **that** a member has one, when, and where the
+  document is kept. It stores nothing that is on the document. The lab already
+  holds waivers somewhere; a second copy would be a second thing to protect.
 
 **card access**
 : 24/7 physical access via an RFID card. Lowercase. Earned, not bought. Bylaws:

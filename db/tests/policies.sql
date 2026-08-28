@@ -16,9 +16,9 @@ INSERT INTO cards (member_id,tag_number,controller_slot) VALUES
 INSERT INTO door_events (occurred_at,source,event_key,member_id,dedupe_key) VALUES
  (now(),'controller','G','cccccccc-0000-0000-0000-000000000001','ev-mia-1'),
  (now(),'controller','G','cccccccc-0000-0000-0000-000000000002','ev-noor-1');
-INSERT INTO waivers (member_id,signed_name,signed_email,signed_at,document_version,document_sha256) VALUES
- ('cccccccc-0000-0000-0000-000000000001','Mia','mia@example.test',now(),'v1','abc'),
- ('cccccccc-0000-0000-0000-000000000002','Noor','noor@example.test',now(),'v1','def');
+INSERT INTO waivers (member_id,signed_at,storage,reference) VALUES
+ ('cccccccc-0000-0000-0000-000000000001',now(),'google-form','resp-0001'),
+ ('cccccccc-0000-0000-0000-000000000002',now(),'google-form','resp-0002');
 INSERT INTO certifications (id,name) VALUES ('laser','Laser cutter');
 INSERT INTO member_certifications (member_id,certification_id) VALUES
  ('cccccccc-0000-0000-0000-000000000001','laser');
@@ -58,7 +58,7 @@ CALL t.must_query('cannot see Mia''s card',
 CALL t.must_query('cannot see Mia''s door events',
   $$SELECT count(*) FROM door_events WHERE dedupe_key='ev-mia-1'$$, '0');
 CALL t.must_query('cannot see Mia''s waiver',
-  $$SELECT count(*) FROM waivers WHERE signed_name='Mia'$$, '0');
+  $$SELECT count(*) FROM waivers WHERE reference='resp-0001'$$, '0');
 CALL t.must_query('cannot see Mia''s certification',
   'SELECT count(*) FROM member_certifications', '0');
 

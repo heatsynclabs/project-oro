@@ -106,13 +106,31 @@ CREATE TABLE members (
   current_skills      text,
   desired_skills      text,
   marketing_source    text,
+
+  -- Emergency contact lives on the member, as it does in the current app. It
+  -- is not on the waiver, because this system does not hold waiver contents.
+  emergency_name      text,
+  emergency_phone     text,
+  emergency_email     citext,
+
+  -- The four the current signup form collects. Validated the same way.
+  twitter_url         text,
+  facebook_url        text,
+  github_url          text,
+  website_url         text,
   email_visible       boolean NOT NULL DEFAULT false,
   phone_visible       boolean NOT NULL DEFAULT false,
   listed_in_directory boolean NOT NULL DEFAULT true,
   legacy_id           integer UNIQUE,
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now(),
-  deleted_at          timestamptz
+  deleted_at          timestamptz,
+
+  CONSTRAINT social_urls_are_http CHECK (
+    (twitter_url  IS NULL OR twitter_url  ~* '^https?://')
+    AND (facebook_url IS NULL OR facebook_url ~* '^https?://')
+    AND (github_url   IS NULL OR github_url   ~* '^https?://')
+    AND (website_url  IS NULL OR website_url  ~* '^https?://'))
 );
 COMMENT ON TABLE members IS
   'A person the lab knows about. Not the same as a login account: a member may '

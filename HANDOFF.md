@@ -31,7 +31,7 @@ This table is the single place this is tracked. Update it as things land.
 | Thing | State |
 |---|---|
 | `db/migrations/` schema, rules, RLS, immutability | **Built.** Applies clean from nothing |
-| `db/tests/` and `db/tests/run.sh` | **Built.** 70 assertions, deterministic |
+| `db/tests/` and `db/tests/run.sh` | **Built.** 97 assertions, deterministic |
 | `db/seed/001_reference.sql` | **Built.** Tiers, roles, governance parameters |
 | `tools/voice-check/` prose gate | **Built.** 74 tests |
 | `.githooks/commit-msg` | **Built.** Install it, see section 3 |
@@ -51,7 +51,7 @@ This table is the single place this is tracked. Update it as things land.
 ```sh
 git config core.hooksPath .githooks      # once per clone, enables the commit gate
 
-./db/tests/run.sh                        # rebuilds the schema from nothing, runs 70 assertions
+./db/tests/run.sh                        # rebuilds the schema from nothing, runs 97 assertions
 ./db/tests/run.sh --update               # regenerate expected output, deliberately
 
 python3 tools/voice-check/test_voice_check.py
@@ -151,6 +151,13 @@ silently stops updating. Serve any newer SpaceAPI version at a new path.
 project, and it covers admin access changes only. Never let it be described as an
 existing lab rule. The two signature rule people remember is about monetary
 expenditure.
+
+**The waivers table holds no personal information, on purpose.** It records that
+a member signed one, when, and where the document is kept. An earlier draft
+stored names, addresses, emergency contacts, guardians and signature IPs. The lab
+already keeps waivers somewhere, so a second copy is a second thing to protect
+and to leak. `db/tests/waivers.sql` asserts the table has no such column, so
+adding one back fails the suite.
 
 **Card access is not a workflow in this system, on purpose.** The bylaws process
 happens in a room: a cardholder nominates, the proposal is posted two weeks

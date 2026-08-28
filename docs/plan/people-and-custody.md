@@ -126,7 +126,7 @@ none of them is engineering work.
 | What `contracts` actually is | Someone asks the lab. The Vapor author asked and nobody knew | TBD |
 | Cards pointing at users that do not exist | Someone decides whether each is a revoke or a repair. An active card belonging to nobody is a security finding | TBD |
 | Card ids outside 10 to 199 | Someone checks production and decides per card. Cannot be automated: renumbering is what must not happen | TBD |
-| Waivers with no document | Imported records cannot prove what was signed. Someone decides whether they are re-signed on the next visit | TBD |
+| Where waiver documents live | The system stores a pointer, so somebody has to say what it points at: a form, a sheet, a drawer | TBD |
 | Where signed waivers live | A governance call on PII. Made once, early | TBD |
 
 If these have no owner by the start of phase 3, phase 3 does not start. Deferring
