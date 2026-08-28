@@ -29,8 +29,5 @@ COMMENT ON TABLE member_roles IS
 COMMENT ON TABLE roles IS
   'The role vocabulary. No application role may write here: grants_roles '
   'defines the scope of the two approver rule, so changing it is a migration.';
-COMMENT ON TABLE waivers IS
-  'Signed liability releases. The front door of the system: signing one creates '
-  'a person record, whether or not they ever create a login.';
 
 COMMIT;

@@ -31,7 +31,7 @@ This table is the single place this is tracked. Update it as things land.
 | Thing | State |
 |---|---|
 | `db/migrations/` schema, rules, RLS, immutability | **Built.** Applies clean from nothing |
-| `db/tests/` and `db/tests/run.sh` | **Built.** 97 assertions, deterministic |
+| `db/tests/` and `db/tests/run.sh` | **Built.** 125 assertions, deterministic |
 | `db/seed/001_reference.sql` | **Built.** Tiers, roles, governance parameters |
 | `tools/voice-check/` prose gate | **Built.** 74 tests |
 | `.githooks/commit-msg` | **Built.** Install it, see section 3 |
@@ -51,7 +51,7 @@ This table is the single place this is tracked. Update it as things land.
 ```sh
 git config core.hooksPath .githooks      # once per clone, enables the commit gate
 
-./db/tests/run.sh                        # rebuilds the schema from nothing, runs 97 assertions
+./db/tests/run.sh                        # rebuilds the schema from nothing, runs 125 assertions
 ./db/tests/run.sh --update               # regenerate expected output, deliberately
 
 python3 tools/voice-check/test_voice_check.py
@@ -146,6 +146,25 @@ success.
 **`space_api.json` cannot grow past about 900 bytes.** The ESP8266 in the wall
 parses it with a 1 KB buffer and does not report an error on overflow. It just
 silently stops updating. Serve any newer SpaceAPI version at a new path.
+
+**Read policies without write policies is a trap.** An earlier pass enabled
+`FORCE ROW LEVEL SECURITY` and wrote only SELECT policies. The result was that
+the API could read correctly and insert nothing, and the tables carrying
+authority had no row level security at all while the app role held INSERT and
+UPDATE on them, so any member could grant themselves a role or edit the bylaws
+numbers. If you add a table, add its write policies in the same change.
+
+**`is_admin()` and `admin_count()` must stay `SECURITY DEFINER`.** They read
+`member_roles`, which has row level security forced. Without it they return only
+what the caller can see, so a member asking whether somebody else is an admin
+gets false and `admin_count()` reads zero for everyone. Every policy that calls
+`is_admin()` would then decide on an answer that depends on who is asking.
+`db/tests/write_policies.sql` asserts both.
+
+**`t.must_pass` on an UPDATE proves almost nothing.** An UPDATE that matches zero
+rows does not raise, so an assertion like "an admin may change this" passes
+whether or not the admin could see the row. Two tests were passing vacuously that
+way. Use `t.must_change`, which checks rows affected.
 
 **The two approver rule is not in the bylaws.** It is new, introduced by this
 project, and it covers admin access changes only. Never let it be described as an

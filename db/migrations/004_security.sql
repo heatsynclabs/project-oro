@@ -78,8 +78,12 @@ LANGUAGE plpgsql AS $$
 DECLARE
   subject text := current_setting('oro.identity_subject', true);
 BEGIN
-  -- No identity on the transaction is a migration, an import, or a maintenance
-  -- script running as the owner. Not member self service.
+  -- Only the application role is doing member self service. A migration, an
+  -- import, or a SECURITY DEFINER function such as link_or_create_member runs
+  -- as the owner, and those are system paths rather than somebody editing
+  -- their own profile. Checking the role rather than only the setting matters
+  -- because a definer function inherits the caller's identity setting.
+  IF current_user <> 'oro_api' THEN RETURN NEW; END IF;
   IF subject IS NULL OR subject = '' THEN RETURN NEW; END IF;
   IF is_admin(current_member_id()) THEN RETURN NEW; END IF;
 

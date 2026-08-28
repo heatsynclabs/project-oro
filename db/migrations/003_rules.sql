@@ -6,15 +6,20 @@
 
 BEGIN;
 
+-- SECURITY DEFINER, and it matters. member_roles has row level security
+-- forced, so without it these read only what the caller may see: a member
+-- asking whether somebody else is an admin gets false, and admin_count() reads
+-- zero for everyone. Every policy that calls is_admin() would then be deciding
+-- on an answer that depends on who is asking, which is exactly backwards.
 CREATE FUNCTION is_admin(who uuid) RETURNS boolean
-LANGUAGE sql STABLE AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
   SELECT EXISTS (
     SELECT 1 FROM member_roles r JOIN roles ro ON ro.id = r.role_id
      WHERE r.member_id = who AND ro.grants_roles AND r.revoked_at IS NULL)
 $$;
 
 CREATE FUNCTION admin_count() RETURNS integer
-LANGUAGE sql STABLE AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
   SELECT count(*)::integer FROM member_roles r JOIN roles ro ON ro.id = r.role_id
    WHERE ro.grants_roles AND r.revoked_at IS NULL
 $$;

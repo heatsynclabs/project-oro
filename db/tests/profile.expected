@@ -20,6 +20,7 @@ ok   changing it
 ok   and it is no longer verified
 --   a member cannot edit anybody else, so nothing matches
 ok   updating another member changes no rows
+ok   and that member is untouched
 --   an admin may set what a member may not
-ok   standing
-ok   orientation, recording who ran it
+ok   standing (1 row(s))
+ok   orientation, recording who ran it (1 row(s))

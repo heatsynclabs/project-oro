@@ -68,3 +68,24 @@ END $$;
 
 -- Run after every helper is defined, so a role-switching test can call them.
 GRANT EXECUTE ON ALL ROUTINES IN SCHEMA t TO PUBLIC;
+
+-- must_pass only proves a statement did not raise. An UPDATE that matches zero
+-- rows does not raise, so an assertion like "an admin may change this" passes
+-- whether or not the admin could see the row at all. That is a test asserting
+-- nothing, which is worse than no test. Use this where a row must actually move.
+CREATE OR REPLACE PROCEDURE t.must_change(what text, stmt text, least_rows integer DEFAULT 1)
+LANGUAGE plpgsql AS $$
+DECLARE n integer;
+BEGIN
+  EXECUTE stmt;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  IF n >= least_rows THEN
+    RAISE NOTICE 'ok   % (% row(s))', what, n;
+  ELSE
+    RAISE NOTICE 'FAIL % (affected % rows, wanted at least %)', what, n, least_rows;
+  END IF;
+EXCEPTION WHEN others THEN
+  RAISE NOTICE 'FAIL % (refused: %)', what, SQLERRM;
+END $$;
+
+GRANT EXECUTE ON ALL ROUTINES IN SCHEMA t TO PUBLIC;

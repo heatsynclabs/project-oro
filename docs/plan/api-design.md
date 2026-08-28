@@ -34,11 +34,11 @@ guess about.
 
 ```json
 {
-  "type": "https://oro.heatsynclabs.org/errors/quorum-not-met",
-  "title": "Not enough card members present",
-  "status": 422,
-  "detail": "The bylaws require at least 5 card members present. This meeting recorded 3.",
-  "instance": "/card-proposals/88"
+  "type": "https://oro.heatsynclabs.org/errors/self-approval",
+  "title": "You cannot approve your own proposal",
+  "status": 409,
+  "detail": "Admin access changes need a second admin. You proposed this one.",
+  "instance": "/admin/approvals/88"
 }
 ```
 
@@ -109,9 +109,14 @@ conversation. It answers the question members actually ask.
 }
 ```
 
-`PATCH /me` never accepts `tier_id`, `standing`, `roles`, or `paid_through`. A
-member cannot promote themselves, and the field is absent from the schema rather
-than validated away, so the difference is visible in the OpenAPI document.
+`PATCH /me` never accepts `standing`, `paid_through`, `roles`, orientation, or
+the identity the account is joined by. A trigger refuses those, so the API is not
+the only thing standing in the way.
+
+It does accept `tier_id`, which is deliberate and matches the current app: a
+member declares their own membership level and arranges payment separately,
+because membership is a donation rather than a subscription. It grants nothing,
+since card access is decided by a vote.
 
 ### 3.2 Directory
 

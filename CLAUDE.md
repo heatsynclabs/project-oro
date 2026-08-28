@@ -398,11 +398,11 @@ commit messages in CI.
 Two escape hatches, and they are different sizes. A file whose job is to document
 the bans, like this one, carries `voice-check: reference` in its first 40 lines.
 That turns off the voice checks and the attribution check, so the banned trailers
-can be quoted in order to be banned, and leaves the accessibility checks on. A passage quoting somebody else's
+can be quoted in order to be banned. The accessibility checks stay on. A passage quoting somebody else's
 words, which research and archive notes are full of, is wrapped in
 `<!-- voice-check: quote -->` and `<!-- /voice-check: quote -->`, which suspends
-the voice rules for that block and nothing else. Prefer the block. The file level
-pragma also disables the attribution and accessibility checks, which is almost
+the voice rules for that block and nothing else. Prefer the block: the file level
+pragma also turns off the attribution check for the whole file, which is almost
 never what you want.
 
 The rhythm checks are warnings and stay warnings. Sentence length variance on a

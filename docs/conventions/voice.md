@@ -256,7 +256,7 @@ account page.
 ## 8. Running the gate
 
 ```
-python3 tools/voice-check/voice_check.py docs/ apps/ services/
+python3 tools/voice-check/voice_check.py docs/ db/ tools/ CLAUDE.md
 python3 tools/voice-check/voice_check.py --staged
 python3 tools/voice-check/voice_check.py --text "some copy"
 python3 -m pytest tools/voice-check/ -q
@@ -272,5 +272,10 @@ pull request body, and neither can claim the pragma. `--commit-msg` ignores it,
 and CI lints a pull request body the same way. Pinned by
 `test_commit_mode_ignores_the_reference_pragma`.
 
-To overrule a warning on one line, put `voice-ok: <reason>` on it. A reason is
-required. "voice-ok" alone does not suppress anything.
+To overrule a finding on one line, put `voice-ok: <reason>` on it. A reason is
+required, and "voice-ok" alone suppresses nothing.
+
+One limitation, stated plainly: the rhythm checks in section 5 are computed over
+a whole file, so they carry no line number and `voice-ok` cannot reach them. They
+are warnings and never fail a build, so the honest answer is to take the note or
+ignore it.

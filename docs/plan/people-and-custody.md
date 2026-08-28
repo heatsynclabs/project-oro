@@ -196,9 +196,14 @@ them. These are the questions that are genuinely theirs, in their language.
    instructors will be able to check that a waiver exists without seeing what is
    on it. This is an improvement on the current spreadsheet and it is also a
    decision about who sees what.
-5. **Somebody has to pay for a host, or the lab hosts it.** Small either way, and
+5. **How stale may the public open sign get during an outage?** The door pushes
+   its status up on a heartbeat. If the link drops, the sign keeps showing the
+   last known state rather than claiming the lab is closed. How long that stays
+   acceptable is a judgement about members driving across town, not a technical
+   one.
+6. **Somebody has to pay for a host, or the lab hosts it.** Small either way, and
    it must sit under an account the lab owns.
-6. **This needs at least two people for a year.** Not as an aspiration. As the
+7. **This needs at least two people for a year.** Not as an aspiration. As the
    condition under which it is worth starting.
 
 ## 9. When to stop

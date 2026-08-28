@@ -15,7 +15,7 @@ and run. No services, no apps, no deployment.
 
 | | |
 |---|---|
-| Built | Schema, row level security, 70 database97 assertions, a prose gate with 74 tests, a commit hook |
+| Built | Schema, row level security, 125 database assertions, a prose gate with 74 tests, a commit hook |
 | Not built | The API service, the door service, the three portals, the theme packages, CI |
 
 `HANDOFF.md` tracks this in detail and is the file to update when something
@@ -26,7 +26,7 @@ lands.
 Needs Docker and Python 3.8 or newer. Nothing else.
 
 ```sh
-./db/tests/run.sh          # schema from nothing, 97 assertions, ~20 seconds
+./db/tests/run.sh          # schema from nothing, 125 assertions, about 6 seconds
 ./db/tests/run.sh --update # regenerate expected output, deliberately
 
 python3 tools/voice-check/test_voice_check.py
@@ -55,7 +55,7 @@ ATTRIBUTIONS.md      what was borrowed, from where, under what licence
 
 db/migrations/       the schema. This is the authority
 db/seed/             tiers, roles, governance parameters
-db/tests/            97 assertions, run by db/tests/run.sh
+db/tests/            125 assertions, run by db/tests/run.sh
 
 docs/plan/           architecture, API contract, data model, build order
 docs/conventions/    voice
@@ -122,7 +122,7 @@ Prior HeatSync work, without which this would be guesswork:
   2025 rewrite, which produced the best annotated schema of the three and got
   membership levels right.
 - **[hackerspace-management](https://github.com/virgilvox/hackerspace-management)**,
-  the only one of the four to model certification expiry and revocation. Adopted.
+  the only one of them to model certification expiry and revocation. Adopted.
 - **[new-hsl](https://github.com/heatsynclabs/new-hsl)**, the public site, and
   the GANTRY design tokens the theme extends.
 - **[hsl_door_api_poller](https://github.com/mindblender/hsl_door_api_poller)**,

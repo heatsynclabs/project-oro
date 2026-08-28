@@ -100,9 +100,9 @@ change, with the reason.
   ordinary admin action with a note recording the vote. The queue keeps its
   second admin requirement for role changes, which is what it is for.
 - **Members directory.** Stands. The "Level" column becomes the tier name.
-- **Member detail.** Stands. "Propose role change" is right. "Propose card grant"
-  becomes "Nominate for card access", and the UI says what that commits the
-  nominator to: they are the mentor and responsible party for six months.
+- **Member detail.** Stands. "Propose role change" is right, and it opens a two
+  approver record. "Propose card grant" becomes "Issue card", an ordinary admin
+  action with a note recording the vote that authorised it.
 
 ### Door app
 
@@ -176,4 +176,4 @@ scope by direction.
 - A driver's seat drill. Once per phase, somebody who did not build it performs
   the core operation from the runbook while the author watches and says nothing.
 - A stopping condition. Written now, while it is cheap.
-- Working code. The schema, its rules, and 50 database assertions exist and run.
+- Working code. The schema, its rules, and 125 database assertions exist and run.

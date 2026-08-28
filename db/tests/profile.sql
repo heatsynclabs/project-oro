@@ -65,12 +65,14 @@ CALL t.note('a member cannot edit anybody else, so nothing matches');
 CALL t.must_query('updating another member changes no rows',
   $$WITH u AS (UPDATE members SET name='hacked'
       WHERE identity_subject='sub-adm' RETURNING 1) SELECT count(*) FROM u$$, '0');
+CALL t.must_query('and that member is untouched',
+  $$SELECT name FROM members WHERE identity_subject='sub-adm'$$, 'Admin Ann');
 
 CALL t.note('an admin may set what a member may not');
 SET LOCAL oro.identity_subject = 'sub-adm';
-CALL t.must_pass('standing',
+CALL t.must_change('standing',
   $$UPDATE members SET standing='lapsed' WHERE identity_subject='sub-pat'$$);
-CALL t.must_pass('orientation, recording who ran it',
+CALL t.must_change('orientation, recording who ran it',
   $$UPDATE members SET oriented_at=now(),
      oriented_by='dddddddd-0000-0000-0000-000000000002' WHERE identity_subject='sub-pat'$$);
 RESET ROLE;

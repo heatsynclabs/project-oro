@@ -40,15 +40,18 @@ repositories and this is a HeatSync Labs project. They should still be fixed,
 because an unlicensed public repository is all rights reserved by default and
 that is not what anyone intends.
 
-1. **`new-hsl` has no licence file.** Our token layer descends from its
+1. **This repository has no licence file.** It is public, so it is all rights
+   reserved by default, which is not the intent. MIT matches `hsl-members-site`,
+   `hackerspace-management` and the door poller. Needs a board decision.
+2. **`new-hsl` has no licence file.** Our token layer descends from its
    `src/styles/tokens.css`. Ask the board to add one. MIT matches the rest of the
    organisation.
-2. **`Open_Access_Control_Ethernet` has no licence file.** Its upstream, the
+3. **`Open_Access_Control_Ethernet` has no licence file.** Its upstream, the
    Google Code `open-access-control` project, needs its licence identified before
    anyone claims a licence for the fork. Until that is resolved, this project
    implements the protocol from observed behaviour and from the documentation in
    the field manual, and copies no firmware source.
-3. The CC BY 3.0 on the Rails app is a documentation licence being used on
+4. The CC BY 3.0 on the Rails app is a documentation licence being used on
    software. It is not a good fit and it should be revisited if that code is ever
    reused rather than retired.
 

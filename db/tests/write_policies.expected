@@ -1,0 +1,35 @@
+WARNING:  Bootstrap grant of admin to ffffffff-0000-0000-0000-000000000002: only 0 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
+--   is_admin answers about other people, not just the caller
+ok   a plain member can see that somebody else is an admin
+ok   and admin_count sees every admin, not only visible rows
+--   a plain member cannot grant themselves anything
+ok   granting themselves an ordinary role
+WARNING:  Bootstrap grant of admin to ffffffff-0000-0000-0000-000000000001: only 1 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
+ok   granting themselves admin
+ok   rewriting the bylaws numbers changes nothing (0 row(s))
+ok   inventing a membership tier
+ok   issuing themselves a card
+ok   recording a waiver for themselves
+ok   certifying themselves on the laser
+ok   creating another member
+ok   and the bylaws numbers are readable but unchanged
+--   an admin can do the work the portal needs
+ok   create a member, which the kiosk waiver path needs (1 row(s))
+ok   issue a card (1 row(s))
+ok   record a waiver reference (1 row(s))
+ok   grant an ordinary role (1 row(s))
+ok   open an approval (1 row(s))
+ok   and read it back, which a forced table with no policy cannot
+ok   correct a bylaws number (1 row(s))
+--   only an instructor for that tool may grant its certification
+ok   an admin may grant any (1 row(s))
+ok   a laser instructor may grant the laser (1 row(s))
+ok   but not the mill
+--   the bylaws numbers are actually read by something
+ok   eligibility uses the tenure value, not a constant
+ok   raising tenure to 600 months makes the same member ineligible
+--   first sign in claims an existing row rather than duplicating it
+ok   a member an admin created has no identity yet
+ok   signing in claims that row
+ok   and creates no duplicate
+ok   signing in again is idempotent
