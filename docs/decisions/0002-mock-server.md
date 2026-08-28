@@ -208,6 +208,10 @@ profile is one flag away from being started. There is a second, duller reason:
 variable, and every existing `.env` would stop `make up` until somebody added
 it. A tool the stack does not use should not be able to stop the stack.
 
+That paragraph still holds for the deployment. What changed after it was
+written is the section below, which was added rather than folded in so the
+original reasoning stays readable.
+
 **CI runs it.** `.github/workflows/ci.yml` has a Mock server job calling
 `tools/mock/tests/run.sh`, alongside the database suite, the door conformance
 suite, the Redocly lint of `members-v1.yaml`, the prose gate, and the commit
@@ -218,6 +222,78 @@ it runs native on the runner and emulated on an arm64 laptop.
 **Reversing this** costs an afternoon. The document is plain OpenAPI 3.1 and
 every candidate above reads it unchanged, so a reversal replaces two shell
 scripts and leaves `docs/api/members-v1.yaml` untouched.
+
+## Added on 2026-08-28: the development profile
+
+The mock is now also a compose service, in a profile called `development`, so a
+person can clone this repository and open the members portal in a browser. What
+landed:
+
+* `compose.mock.yaml` has a `mock` service carrying `profiles: ["development"]`.
+  It publishes no port on the host and it has no restart policy, so a mock that
+  died stays down where the reason is readable. `compose.yaml` includes that
+  file and names `tools/mock/image.sh` as its variable file, which is how the
+  pinned image reaches the service without a caller exporting anything.
+* `caddy/Caddyfile` imports its routes from `caddy/routes/`, and which file it
+  imports comes from `ORO_ROUTES`, which compose sets from `COMPOSE_PROFILES`.
+  `caddy/routes/deployment.caddyfile` holds the 404 that was in the Caddyfile
+  before. `caddy/routes/development.caddyfile` strips `/v1` and proxies to the
+  mock, and serves `apps/members/` at the root. ADR 0003 later moved the site
+  block itself into each of those two files, because the profiles came to differ
+  on scheme as well as on routes. Which file is imported still follows the same
+  variable.
+* `make development` starts it. `make development-test` proves it, in its own
+  compose project on its own ports, so a stack somebody is already running is
+  not touched.
+
+**Why a profile is safe where a plain service was not.** A service in a profile
+does not start unless somebody names the profile. That is the whole property,
+and it was measured rather than assumed: `make up` on a clean machine started
+`caddy` and `db` and nothing else, and the root of the hostname answered 404
+with the same sentence it answered before this change.
+
+The second, duller reason is answered too. Nothing was added to
+`.env.example`, so an existing `.env` still brings the stack up.
+
+The image pin stays in `tools/mock/image.sh` and appears nowhere else, and
+compose reads it from there itself. An `env_file` on an `include` is the one
+place compose will read a variable file that is not `.env`, and `.env` belongs
+to the operator, so the mock service lives in `compose.mock.yaml` and
+`compose.yaml` includes it. That file is a shell fragment of comments and
+`NAME=value` lines, which is what compose's variable file parser reads, so
+there is no second copy and no conversion step. The cost is a second compose
+file, and the header of each one says why the other exists.
+
+An earlier version of this had `compose.yaml` read the pin from the
+environment, with `make development` sourcing it. That was wrong in the way
+that matters here: every command written down in this file, in `compose.yaml`
+and in `HANDOFF.md` failed for anybody who typed it rather than going through
+`make`, and the error named the mock service rather than the missing step. A
+line a reader cannot act on is worse than no line. Every command below now runs
+as typed, and `tools/development/tests/run.sh` clears the three variable names
+before it starts so that stays true.
+
+**One flag away is still true, and it is now two locks rather than one.** The
+mock has no published port and no route under the deployment routes, so a
+`docker compose --profile development up` on a real host starts a container
+that the published hostname cannot reach. Confirmed by running exactly that:
+`/v1/me` answered 404 with the deployment's sentence, and `127.0.0.1:4010` did
+not answer at all. Reaching the mock takes the routes as well as the container,
+and the routes follow the same variable.
+
+**The caveat that costs somebody an evening if it is not written down.** Ask
+for the profile with `COMPOSE_PROFILES=development docker compose up`, not with
+the `--profile` flag. The flag starts the mock and leaves Caddy on the
+deployment routes, because Caddy reads that variable and the flag does not set
+it. `make development` sets the variable.
+
+**What it costs.** `make down` and `make logs` both select every profile.
+Compose resolves the service list for each of them from the deployment
+otherwise, and a service in a profile is not in it. Measured on Compose
+v2.34.0: a plain `down` left the mock running and reported the network as still
+in use, and a plain `logs` printed `caddy` and `db` while the mock was up and
+writing. The second one is the worse of the two, because the mock is the
+service somebody reading the logs is trying to diagnose.
 
 ## What was borrowed
 

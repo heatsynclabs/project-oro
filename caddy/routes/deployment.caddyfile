@@ -1,0 +1,26 @@
+# What the deployment serves under the hostname, which is nothing yet. The API
+# service, the door service and the three portals are not built, so there is
+# nothing to reverse proxy to.
+#
+# Imported by caddy/Caddyfile at the top level, and it opens its own site block
+# because the scheme is one of the things that differs between the profiles.
+# compose.yaml picks this file whenever nobody asked for a profile, which is
+# every deployment.
+
+{$ORO_HOSTNAME} {
+	# "internal" issues from Caddy's own local authority, which is what a LAN
+	# with no public DNS needs. An email address here instead makes this the
+	# ACME account contact and gets a publicly trusted certificate.
+	tls {$ORO_TLS}
+
+	handle /health {
+		respond "ok" 200
+	}
+
+	# A bare 404 on the front page reads as a broken deployment. Say which stack
+	# answered and that it has nothing to serve, so the reader stops looking for a
+	# fault that is not there.
+	handle {
+		respond "Project ORO is running. No application is deployed here yet." 404
+	}
+}

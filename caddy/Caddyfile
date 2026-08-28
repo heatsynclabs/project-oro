@@ -4,23 +4,23 @@
 # a rented box, and a LAN has no provider load balancer to terminate TLS in front
 # of it. docs/plan/architecture.md section 3.
 #
-# There are no reverse proxy routes here because there is nothing to route to
-# yet. The API service, the door service and the three portals are not built.
-
-{$ORO_HOSTNAME} {
-	# "internal" issues from Caddy's own local authority, which is what a laptop
-	# or a LAN with no public DNS needs. An email address here instead makes this
-	# the ACME account contact and gets a publicly trusted certificate.
-	tls {$ORO_TLS}
-
-	handle /health {
-		respond "ok" 200
-	}
-
-	# A bare 404 on the front page reads as a broken deployment. Say which stack
-	# answered and that it has nothing to serve, so the reader stops looking for
-	# a fault that is not there.
-	handle {
-		respond "Project ORO is running. No application is deployed here yet." 404
-	}
-}
+# What answers on the hostname differs between a deployment and a laptop, and so
+# does the scheme, so a route file in caddy/routes/ opens the whole site block
+# and this file imports one of them here at the top level.
+#
+# Why the site block is not in this file with only its routes imported, which is
+# the shape this had until the development profile went to plain HTTP: a site
+# address written http:// cannot carry a tls directive, and a file imported
+# inside a site block cannot open a site of its own. Two other arrangements were
+# weighed. A second whole Caddyfile, chosen by a compose bind, repeats everything
+# the two profiles have in common rather than the one line they differ on. Making
+# the site address a variable and moving tls into the route file also works, and
+# it costs a second variable that has to agree with the first, so COMPOSE_PROFILES
+# could say development while the other one still said https. One switch that
+# cannot disagree with itself is worth repeating four lines of health route.
+#
+# compose.yaml sets ORO_ROUTES, and it is "deployment" unless COMPOSE_PROFILES
+# asked for something else. A name with no file beside it in caddy/routes/ stops
+# Caddy at startup, which the healthcheck reports, rather than serving the
+# hostname from a configuration nobody chose.
+import /etc/caddy/routes/{$ORO_ROUTES}.caddyfile

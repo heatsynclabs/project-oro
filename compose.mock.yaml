@@ -1,0 +1,51 @@
+# The contract mock, in its own compose file for one reason: the version and
+# the digest are pinned in tools/mock/image.sh and nowhere else, and an
+# included file is the only place compose will read a variable file of its own.
+# compose.yaml includes this and names that file, so the pin reaches the
+# service without a caller exporting anything first. Put a service here only if
+# it needs that pin.
+#
+# tools/mock/image.sh is read as a variable file rather than sourced, so every
+# line in it has to stay a comment or a plain NAME=value assignment. A shell
+# command in it would parse as a variable name and break this include.
+#
+# Anything added here carries profiles: ["development"]. Without that line it
+# starts in every deployment, which is the one thing this arrangement exists to
+# prevent.
+
+services:
+  # The members API contract, served as a mock, for building the portal against
+  # before services/api/ exists. It answers with invented records, so it is in a
+  # profile and stays out of every deployment. ADR 0002 records that trade and
+  # names the profile as the way through.
+  mock:
+    profiles: ["development"]
+    image: "${ORO_MOCK_IMAGE:?tools/mock/image.sh did not supply the pin. compose.yaml reads it as this file's env_file, so check that path resolves and that the file holds only comments and NAME=value lines}"
+    # One manifest, and its platform is linux/amd64. Naming it stops Docker
+    # warning on every start on an arm64 machine, where it runs emulated.
+    platform: "${ORO_MOCK_PLATFORM:?tools/mock/image.sh did not supply the platform}"
+    volumes:
+      - ./docs/api:/spec:ro
+    # --multiprocess false because the default forks the server off the CLI and
+    # reads cluster.isPrimary on a Node version where it is undefined, so this
+    # image exits 1 with a TypeError before it serves anything. Static examples
+    # rather than --dynamic, which answers /me with a 500 on this document.
+    # Both defects are recorded in ADR 0002 and both were found by running it.
+    command: ["mock", "--host", "0.0.0.0", "--port", "4010",
+              "--multiprocess", "false", "/spec/${ORO_MOCK_DOCUMENT:?tools/mock/image.sh did not supply the document name}"]
+    healthcheck:
+      # Reading the contract takes a few seconds, longer under emulation.
+      # Without this, up --wait returns while the mock is still parsing and the
+      # first call from the portal fails for a reason that has already passed.
+      # The contract's security scheme refuses a call with no bearer token, so
+      # the header is what makes a healthy mock answer 200 rather than 401.
+      test: ["CMD", "wget", "--quiet", "--spider", "--header",
+             "Authorization: Bearer healthcheck", "http://127.0.0.1:4010/me"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    # No published port: the portal reaches it through Caddy on one origin, and
+    # tools/mock/run.sh is still the way to get a direct one. No restart policy
+    # either, because a mock that died should stay down where the reason is
+    # readable rather than looping behind a healthcheck.
