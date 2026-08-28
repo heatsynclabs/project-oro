@@ -35,9 +35,19 @@ done
 echo " ready"
 
 for f in "$ROOT"/db/migrations/*.sql "$ROOT"/db/seed/*.sql; do
-  printf 'applying %-28s' "$(basename "$f")"
+  base="$(basename "$f")"
+  printf 'applying %-28s' "$base"
   docker cp "$f" "$NAME:/tmp/m.sql" >/dev/null
-  $PSQL -f /tmp/m.sql >/dev/null && echo "ok"
+  $PSQL -f /tmp/m.sql >/dev/null
+  # Record it, the same way a real apply would, so the runner exercises the
+  # tracking table rather than leaving it untested.
+  case "$base" in
+    000_*) : ;;
+    *) sum=$(shasum -a 256 "$f" | cut -d' ' -f1)
+       $PSQL -c "INSERT INTO schema_migrations (filename, sha256)
+                 VALUES ('$base', '$sum')" >/dev/null ;;
+  esac
+  echo "ok"
 done
 
 docker cp "$ROOT/db/tests/helpers.sql" "$NAME:/tmp/h.sql" >/dev/null
@@ -60,7 +70,8 @@ for f in "$ROOT"/db/tests/*.expected; do
   docker exec -i "$NAME" psql -U postgres -d oro -q -f /tmp/t.sql 2>"$WORK/$base.err" >/dev/null || true
   grep -vE '^(CONTEXT|HINT|DETAIL)' "$WORK/$base.err" \
     | sed -e 's/^psql:[^:]*:[0-9]*: //' -e 's/^NOTICE:  //' > "$WORK/$base.actual" || true
-  if grep -q 'does not exist' "$WORK/$base.actual" 2>/dev/null; then
+  if grep -qE 'relation "(members|cards|roles|tiers)" does not exist' \
+       "$WORK/$base.actual" 2>/dev/null; then
     echo "BROKEN RUN"
     echo "  The schema was missing when this test ran. Not a test failure."
     head -3 "$WORK/$base.actual" | sed 's/^/  /'

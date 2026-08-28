@@ -104,6 +104,11 @@ Nothing is done until it has been run.
 - Migrations get run against a real database before merge. `db/tests/run.sh`
   rebuilds the schema from nothing every time, so a migration that only works
   against an already migrated database fails.
+- **Down migrations start being required at the first production apply, not
+  before.** Until then the rollback is to drop the database and re-apply, which
+  is what the test runner does on every run. Writing reverse scripts for a schema
+  nobody is running yet is work with no reader. Once real data exists, every
+  migration ships with its reverse and both directions get run before merge.
 - Anything touching the door gets exercised against the fake controller before it
   goes near hardware.
 

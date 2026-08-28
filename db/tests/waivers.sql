@@ -25,15 +25,10 @@ CALL t.must_query('no column mentions a name, address, signature or guardian',
 
 CALL t.note('what a host or instructor gets to see');
 CALL t.must_query('a member who signed shows valid',
-  $$SELECT has_valid_waiver::text FROM waiver_status
-     WHERE member_id='eeeeeeee-0000-0000-0000-000000000001'$$, 'true');
+  $$SELECT has_valid_waiver::text
+      FROM waiver_status('eeeeeeee-0000-0000-0000-000000000001')$$, 'true');
 CALL t.must_query('a member who never signed has no row at all',
-  $$SELECT count(*) FROM waiver_status
-     WHERE member_id='eeeeeeee-0000-0000-0000-000000000002'$$, '0');
-CALL t.must_query('the status view exposes only the fact and the date',
-  $$SELECT string_agg(column_name,',' ORDER BY column_name)
-     FROM information_schema.columns WHERE table_name='waiver_status'$$,
-  'has_valid_waiver,latest_signed_at,member_id');
+  $$SELECT count(*) FROM waiver_status('eeeeeeee-0000-0000-0000-000000000002')$$, '0');
 
 CALL t.note('an expired waiver stops counting');
 CALL t.must_pass('recording one that has lapsed',
@@ -41,5 +36,5 @@ CALL t.must_pass('recording one that has lapsed',
     VALUES ('eeeeeeee-0000-0000-0000-000000000002', now() - interval '2 years',
             now() - interval '1 year','paper-file','drawer B')$$);
 CALL t.must_query('and it does not make them valid',
-  $$SELECT has_valid_waiver::text FROM waiver_status
-     WHERE member_id='eeeeeeee-0000-0000-0000-000000000002'$$, 'false');
+  $$SELECT has_valid_waiver::text
+      FROM waiver_status('eeeeeeee-0000-0000-0000-000000000002')$$, 'false');

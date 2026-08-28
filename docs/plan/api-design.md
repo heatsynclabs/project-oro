@@ -161,14 +161,26 @@ waiver, without seeing what is on it.
 
 | Method | Path | Who | Does |
 |---|---|---|---|
-| GET | `/waiver-status?member_id=` | member with a hosting or instructing role | Boolean plus the signed date. No personal information |
-| GET | `/waiver-status?email=` | same | Same, for someone not yet a member |
+| GET | `/waiver-status?member_id=` | admin, any hosting role, any instructor, or the member about themselves | Boolean plus the signed date. Nothing else |
+
+There is no lookup by email, because a waiver record belongs to a member row. A
+guest signing at the kiosk gets a member row created for them first, which is one
+of the things an admin can do and is the path that makes the waiver the front
+door. Somebody with no member row has no waiver in this system, and the honest
+answer to a query about them is that we do not know.
 
 This is what replaces an all or nothing Google Sheet. It returns a boolean and a
 date and nothing else, because the system holds nothing else: the document stays
 wherever the lab already keeps it, and `waivers` records only that it exists and
 how to find it. A host checking somebody in does not need, and should not get,
-that person's address.
+that person's address, or the reference that would let them go and read it.
+
+Backed by a `SECURITY DEFINER` function rather than a view, and that is not an
+implementation detail. A view either bypasses row level security, which is how an
+earlier draft leaked the whole table to a caller with no identity at all, or it is
+filtered to the caller's own rows, which defeats the endpoint for the host it
+exists to serve. The function decides for itself who may ask and refuses anybody
+else by name.
 
 ### 3.5 The two approver flow
 

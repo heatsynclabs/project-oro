@@ -111,7 +111,7 @@ determines whether the rest is cheap or expensive.
    pgTAP. Both were tried. The plain version needs no extension installed, reads
    as a list of named assertions, and a volunteer can run one file by hand
    against a scratch database. That is worth more here than pgTAP's richer
-   assertion vocabulary. Already built: 125 assertions, and the runner rebuilds
+   assertion vocabulary. Already built: 136 assertions, and the runner rebuilds
    the schema from nothing every time.
 5. **The door adapter port, the fake controller, and the conformance suite.** No
    real hardware, no real service. Just the interface, a fake that speaks the

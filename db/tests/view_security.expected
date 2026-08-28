@@ -1,0 +1,12 @@
+--   a caller with no identity gets nothing, views included
+ok   the directory
+ok   waiver status
+--   the directory honours the policy and the column rules
+ok   a member sees listed members only
+ok   and cannot reach one who opted out
+ok   a phone hidden by its owner stays hidden
+--   waiver status is gated by role, not open to everyone
+ok   an ordinary member cannot check somebody else
+ok   but may check themselves
+ok   a host may check another member
+ok   and gets the fact and the date, nothing else

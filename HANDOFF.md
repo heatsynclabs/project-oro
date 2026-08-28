@@ -31,7 +31,7 @@ This table is the single place this is tracked. Update it as things land.
 | Thing | State |
 |---|---|
 | `db/migrations/` schema, rules, RLS, immutability | **Built.** Applies clean from nothing |
-| `db/tests/` and `db/tests/run.sh` | **Built.** 125 assertions, deterministic |
+| `db/tests/` and `db/tests/run.sh` | **Built.** 136 assertions, deterministic |
 | `db/seed/001_reference.sql` | **Built.** Tiers, roles, governance parameters |
 | `tools/voice-check/` prose gate | **Built.** 74 tests |
 | `.githooks/commit-msg` | **Built.** Install it, see section 3 |
@@ -51,7 +51,7 @@ This table is the single place this is tracked. Update it as things land.
 ```sh
 git config core.hooksPath .githooks      # once per clone, enables the commit gate
 
-./db/tests/run.sh                        # rebuilds the schema from nothing, runs 125 assertions
+./db/tests/run.sh                        # rebuilds the schema from nothing, runs 136 assertions
 ./db/tests/run.sh --update               # regenerate expected output, deliberately
 
 python3 tools/voice-check/test_voice_check.py
@@ -146,6 +146,14 @@ success.
 **`space_api.json` cannot grow past about 900 bytes.** The ESP8266 in the wall
 parses it with a 1 KB buffer and does not report an error on overflow. It just
 silently stops updating. Serve any newer SpaceAPI version at a new path.
+
+**A view is not covered by the policies underneath it.** Unless a view is
+created with `security_invoker = true`, it runs as its owner and bypasses row
+level security completely. Both views here once handed rows to a caller with no
+identity set while the base tables correctly refused. `member_directory` now sets
+that option. `waiver_status` became a `SECURITY DEFINER` function instead,
+because a host checking somebody in needs rows an invoker view would filter away.
+`db/tests/view_security.sql` asserts both refuse a caller with no identity.
 
 **Read policies without write policies is a trap.** An earlier pass enabled
 `FORCE ROW LEVEL SECURITY` and wrote only SELECT policies. The result was that

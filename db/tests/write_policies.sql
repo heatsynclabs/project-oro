@@ -119,3 +119,14 @@ CALL t.must_query('and creates no duplicate',
 CALL t.must_query('signing in again is idempotent',
   $$SELECT link_or_create_member('sub-win','win@example.test','Walk In Win') =
            (SELECT id FROM members WHERE email='win@example.test')$$, 'true');
+
+CALL t.note('migrations are an operator action, not something the app can touch');
+SET ROLE oro_api;
+CALL t.must_fail('the app role cannot read the migration log',
+  'SELECT count(*) FROM schema_migrations', 'permission denied');
+CALL t.must_fail('nor forge an entry in it',
+  $$INSERT INTO schema_migrations (filename,sha256) VALUES ('fake.sql','0')$$,
+  'permission denied');
+RESET ROLE;
+CALL t.must_query('and every migration that ran is recorded',
+  $$SELECT (count(*) > 8)::text FROM schema_migrations$$, 'true');
