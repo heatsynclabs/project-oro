@@ -1,0 +1,10 @@
+ok   nominating yourself
+ok   a draft proposal
+ok   approving with four card members present, quorum is five
+ok   approving with the attendance left null
+ok   approving three days after posting, notice is fourteen
+ok   approving on a tied vote
+ok   recording more votes than people present
+ok   a proposal that meets every bylaws requirement
+--   amending the bylaws is editing a row, not writing a migration
+ok   seven present, after quorum is raised to eight

@@ -1,0 +1,20 @@
+ok   an ordinary role needs no approval
+WARNING:  Bootstrap grant of admin to 11111111-1111-1111-1111-111111111111: only 0 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
+ok   bootstrap: the first admin, when no approval could exist
+WARNING:  Bootstrap grant of admin to 22222222-2222-2222-2222-222222222222: only 1 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
+ok   bootstrap: the second admin, the rule cannot bind at one
+ok   two admins now exist
+ok   a bare admin grant, once the rule can bind
+ok   an approver who is also the proposer
+ok   an approval decided by somebody who is not an admin
+ok   an approval by two real admins
+ok   the grant that approval authorises
+ok   reusing one approval for a second grant
+ok   an approval naming Carol
+ok   using Carol's approval to grant Dan
+ok   a pending approval exists
+ok   granting on a pending approval
+ok   revoking an admin role
+ok   a fresh approval for the same person
+ok   re-granting a revoked role, with no key collision
+ok   three live admins at the end

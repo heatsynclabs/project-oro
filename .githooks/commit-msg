@@ -1,0 +1,21 @@
+#!/bin/sh
+# Rejects LLM attribution trailers and voice violations in a commit message.
+#
+# Install once, per clone:   git config core.hooksPath .githooks
+# CI runs the same check over every commit in a pull request, so a push from a
+# machine without the hook installed still fails. See .github/workflows/ci.yml.
+#
+# Rule 1 of CLAUDE.md. The human who ran the session is the author.
+
+set -e
+
+MSG_FILE="$1"
+ROOT="$(git rev-parse --show-toplevel)"
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "commit-msg: python3 not found, cannot run the voice gate." >&2
+  echo "Install python3, or commit with --no-verify and fix it in CI." >&2
+  exit 1
+fi
+
+python3 "$ROOT/tools/voice-check/voice_check.py" --commit-msg "$MSG_FILE" --quiet

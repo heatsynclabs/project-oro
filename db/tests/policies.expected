@@ -1,0 +1,42 @@
+WARNING:  Bootstrap grant of admin to cccccccc-0000-0000-0000-000000000003: only 0 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
+--   anonymous: no identity set at all
+ok   reading members with no identity raises rather than returning nothing
+ok   reading cards with no identity raises
+ok   reading door events with no identity raises
+--   an identity that matches no member: null, not an error
+ok   an unknown subject sees no cards
+ok   an unknown subject sees no door events
+--   Mia, an ordinary member
+ok   sees her own card
+ok   and it is hers
+ok   sees her own door events
+ok   sees her own waiver
+ok   sees her own certification
+--   Noor, who holds nothing of Mia's
+ok   cannot see Mia's card
+ok   cannot see Mia's door events
+ok   cannot see Mia's waiver
+ok   cannot see Mia's certification
+--   Ada, an admin
+ok   sees every card
+ok   sees every door event
+ok   sees every waiver
+ok   sees every member
+--   the door path, which must not depend on any of this
+ok   reads the full active card table with no identity set
+--   the audit trail resists the application role
+ok   the app role cannot rewrite a door event
+ok   the app role cannot delete a door event
+ok   the app role cannot edit governance history
+--   and the trigger is the second layer, for anyone who does hold the grant
+ok   even the owner cannot rewrite a door event
+ok   even the owner cannot delete a door event
+--   a recorded decision stays recorded
+ok   repointing an approved approval at a different member
+ok   repointing an approved approval at a different role
+ok   reversing a decision
+WARNING:  Bootstrap grant of admin to cccccccc-0000-0000-0000-000000000001: only 1 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
+ok   granting on that approval
+ok   moving a grant to another member after the fact
+ok   revoking it, which is a legitimate update
+ok   un-revoking by clearing the field

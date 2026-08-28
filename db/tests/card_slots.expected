@@ -1,0 +1,12 @@
+ok   slot 200, which corrupts the controller alarm state
+ok   slot 9, reserved for testing by the Access Card Procedure
+ok   a lowercase tag, which would defeat the reconciler diff
+ok   a tag longer than the controller reads
+ok   a card at slot 10, the lowest assignable
+ok   a card at slot 199, the highest addressable
+ok   two cards in one slot
+ok   two active cards with the same tag
+ok   deactivating a card
+ok   reissuing a tag after the old card is deactivated
+ok   a revoked card that is still active
+ok   a card with no slot yet, issued but not provisioned

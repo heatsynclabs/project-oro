@@ -1,0 +1,10 @@
+ok   the directory lists members who opted in
+ok   a member who opted out is not listed
+ok   an email is shown when the member chose to show it
+ok   an email is hidden when the member did not
+ok   a phone is hidden when the member did not
+--   now as a real member, through the policy rather than as table owner
+ok   a member sees the directory
+ok   and reads a phone the owner chose to publish
+ok   but not one the owner chose to hide
+ok   and cannot reach a member who opted out of the directory

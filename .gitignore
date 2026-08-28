@@ -1,0 +1,38 @@
+# Secrets. Nothing in this group is ever committed.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Research working files. Large, regenerable, and full of quoted archive
+# material that has not been reviewed for PII.
+.research/
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+.astro/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Test and tool output
+coverage/
+.pytest_cache/
+.ruff_cache/
+.turbo/
+*.log
+
+# Database dumps. Never commit member data, not even anonymised.
+*.sql.gz
+*.dump
+dumps/
+
+# Editor and OS
+.DS_Store
+.idea/
+*.swp
