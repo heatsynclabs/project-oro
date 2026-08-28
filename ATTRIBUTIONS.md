@@ -69,7 +69,7 @@ moving tag, so a tag repointed at different code cannot change what runs.
 |---|---|---|---|
 | [actions/checkout](https://github.com/actions/checkout) v7.0.1 | commit `3d3c42e5aac5ba805825da76410c181273ba90b1` | MIT, GitHub | Checking out the repository in every job in `.github/workflows/ci.yml`. Version, tag commit and licence read from the GitHub API on 2026-08-27 |
 | [Redocly CLI](https://github.com/Redocly/redocly-cli) 2.49.0 | the npm version, in the workflow and in `HANDOFF.md` | MIT, Redocly Inc. | Validating `docs/api/members-v1.yaml`, in CI and by hand. Chosen in [ADR 0001](./docs/decisions/0001-openapi-toolchain.md), which records how the version and licence were read |
-| [Prism](https://github.com/stoplightio/prism) 5.15.10 | image digest `sha256:586d1f0f94f8d0eaf20b26b8b41f985f2a2d494bea297bd3988c3de3eb87094e`, in `tools/mock/image.sh` | Apache 2.0, Stoplight | Serving the contract as a mock, for the members portal and for CI. Chosen in [ADR 0002](./docs/decisions/0002-mock-server.md) |
+| [Prism](https://github.com/stoplightio/prism) 5.15.10 | image digest `sha256:586d1f0f94f8d0eaf20b26b8b41f985f2a2d494bea297bd3988c3de3eb87094e`, in `compose.development.yaml` | Apache 2.0, Stoplight | Serving the contract as a mock, for the members portal and for CI. Chosen in [ADR 0002](./docs/decisions/0002-mock-server.md) |
 
 Every other image the stack runs is named in `compose.yaml` by tag:
 `postgres:18` and `caddy:2-alpine`. Neither is vendored and neither is modified.

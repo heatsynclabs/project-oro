@@ -35,7 +35,7 @@ This table is the single place this is tracked. Update it as things land.
 | `db/seed/001_reference.sql` | **Built.** Tiers, roles, governance parameters |
 | `tools/voice-check/` prose gate | **Built.** 77 tests |
 | `tools/mock/` mock server for the API contract | **Built.** `make mock-test`, 13 checks, run by CI |
-| `tools/development/tests/run.sh` | **Built.** 20 checks over both profiles, `make development-test`. It reads the deployment's certificate issuer and asserts the development profile answers plain HTTP with no redirect. Not in CI |
+| `tools/development/tests/run.sh` | **Built.** 20 checks over both stack shapes, `make development-test`. It reads the deployment's certificate issuer and asserts development answers plain HTTP with no redirect. Not in CI |
 | `.githooks/commit-msg` | **Built.** Install it, see section 3 |
 | The plan documents | **Written.** Reviewed adversarially twice |
 | `services/api/` | Not started. Phase 3 |
@@ -46,10 +46,10 @@ This table is the single place this is tracked. Update it as things land.
 | `apps/` admin, door | Not started. Phase 3 onward |
 | `packages/gantry-tokens` | **Built.** The token layer, the two measured defects fixed, and the contrast checker over the theme by ground cross product. 65 tests plus 112 measured pairs, `packages/gantry-tokens/tests/run.sh`. Sixteen pairs are triaged in `validator/known-failures.txt`, four of them a real `--g-ink-3` defect held open on a brand colour decision |
 | `packages/gantry-css`, `gantry-vue` | Not started. Later in phase 1 and after |
-| `compose.yaml`, `compose.mock.yaml`, `Makefile`, `.env.example`, `caddy/` | **Built.** Postgres and Caddy, and a development profile that adds the mock and puts it and `apps/members/` behind Caddy on one origin, over plain HTTP. `make up` on a clean machine, proven |
+| `compose.yaml`, `compose.development.yaml`, `Makefile`, `.env.example`, `caddy/` | **Built.** Postgres and Caddy. The override file adds the mock and points Caddy at the development routes, so the portal and the mock share one origin over plain HTTP. `make up` on a clean machine, proven |
 | `docs/api/members-v1.yaml` | **Written.** OpenAPI 3.1.1, validates clean. Still needs the review by somebody who did not write it that phase 1 asks for |
 | `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Seven jobs, green on a real runner in 22 seconds |
-| Import boundary and file ceiling linting | Not started. Phase 0. Three files need an exemption when this lands: `docs/api/members-v1.yaml` at 1,923 lines, `packages/gantry-tokens/tokens.css` at 398, and the copy the portal ships at `apps/members/theme/tokens.css`, same length and same reason. Two functions in `tools/voice-check/checks.py` already break rule 6 and nothing catches them: `_report` takes 7 parameters against a ceiling of 4, and `check_rhythm` is 53 lines against 50. Fix those rather than exempting them |
+| Import boundary and file ceiling linting | Not started. Phase 0. Two files need an exemption when this lands: `docs/api/members-v1.yaml` at 1,923 lines and `packages/gantry-tokens/tokens.css` at 398. The portal used to ship a third, a byte identical copy of the token layer, and it is gone. Two functions in `tools/voice-check/checks.py` already break rule 6 and nothing catches them: `_report` takes 7 parameters against a ceiling of 4, and `check_rhythm` is 53 lines against 50. Fix those rather than exempting them |
 | `tools/attributions/generate.py` | Not started. Needs a lockfile first |
 | `docs/runbooks/` | Not started. Created with the first runbook |
 | `CODEOWNERS`, `.sops.yaml` | Not started. Created with the first real name and the first secret |
@@ -70,7 +70,6 @@ python3 tools/voice-check/test_behaviour.py
 ./packages/gantry-tokens/tests/run.sh    # the theme, and every ink on every ground
 
 make mock-test                           # the API contract mock, started, called, removed
-make mock                                # serve it on 4010 until you stop it
 
 make development                         # portal at /, contract mock under /v1, one origin, plain HTTP
 make development-test                    # 20 checks over both profiles, in a throwaway project
@@ -84,10 +83,10 @@ npx @redocly/cli@2.49.0 lint docs/api/members-v1.yaml   # the API contract
 ```
 
 CI runs most of that block, and the exceptions matter more than the rule.
-`make mock` is a server rather than a check, and `--update` rewrites the expected
+`--update` rewrites the expected
 files. Those two could never be jobs. **`make development-test` and
 `make portal-test` could be and are not**, so a change to `caddy/`,
-`compose.yaml`, `compose.mock.yaml` or `apps/members/` is checked only by
+`compose.yaml`, `compose.development.yaml` or `apps/members/` is checked only by
 whoever remembers to run them. Section 2 marks both as not in CI. Adding the two
 jobs is small work nobody has done.
 
@@ -96,9 +95,8 @@ same script a person runs rather than a copy of it that drifts. The contract lin
 reports three warnings and that is expected;
 `docs/decisions/0001-openapi-toolchain.md` says which and why.
 
-`make mock` is a foreground server that runs until you stop it, so no CI job
-could run that one. `make mock-test` starts the mock, checks it, and takes it
-down, and CI does run that.
+`make check` runs every suite in one command, which is what a person wants at
+2am. The six runners still work on their own.
 
 `make up` starts Postgres and Caddy. Copy `.env.example` to `.env` and set every
 value in it first: nothing there has a default, and `make up` refuses rather than
@@ -226,20 +224,19 @@ The spaced hyphen check needs three or more letters on both sides, so
 `service - it` passes while `service - was` is caught. Loosening it risks
 flagging legitimate writing, so it wants a real look rather than a wider regex.
 
-**`--profile development` starts the mock and does not route to it.** Caddy
-picks which file it imports from `caddy/routes/` out of `COMPOSE_PROFILES`, so
-the variable form does both jobs and the flag form does only one. Ask for the
-development stack with `COMPOSE_PROFILES=development docker compose up`, or with
-`make development`, which sets it. That command runs as typed, with nothing
-sourced and nothing exported first. The flag form leaves the hostname answering
-"No application is deployed here yet" while a healthy mock sits behind it
-unreachable, which reads as a broken proxy and is not one.
+**There is one way to start the development stack, and there used to be two.**
+`make development`, which runs
+`docker compose -f compose.yaml -f compose.development.yaml up`. That is the
+whole mechanism.
 
-`make down` and `make logs` carry the matching hazard in reverse, and both
-select every profile. Compose resolves the service list from the deployment
-otherwise, and a service in a profile is not in it: a plain `down` leaves the
-mock running and then cannot remove the network, and a plain `logs` prints
-`caddy` and `db` and silently omits the one service the profile added.
+It was a compose profile until 2026-08-28, and the profile is why this entry
+exists. Caddy picked its route file out of `COMPOSE_PROFILES`, so one variable
+both started the mock and routed to it. That meant the documented form worked
+and `docker compose --profile development`, which is the form Docker's own
+documentation teaches, started the mock and left Caddy serving the deployment
+404 in front of it. The Caddyfile documented that rather than removing it. If
+you find yourself deriving one setting from another to save a line, this is what
+it costs. ADR 0002 carries the record.
 
 **The two profiles do not serve the same scheme.** `make up` serves the hostname
 over TLS, unchanged. `make development` serves plain HTTP on `ORO_HTTP_PORT` and
@@ -261,23 +258,23 @@ health route appearing twice. It cannot be hoisted: a site address written
 `http://` may not carry a `tls` directive, and a file imported from inside a
 site block may not open a site. The header of `caddy/Caddyfile` names the two
 other arrangements that were weighed. `tools/development/tests/run.sh` calls
-`/health` under both profiles, so the repeated route drifting apart fails a
+`/health` under both shapes, so the repeated route drifting apart fails a
 check.
 
-**A compose volume takes no profile, and a bind whose source is missing
-becomes a directory.** The `caddy` service is in no profile, so every bind on it
-belongs to a deployment as much as to the development stack. Both halves were
-measured: with `packages/gantry-tokens/tokens.css` moved aside and the
-deployment started, Caddy reported healthy, the stylesheet answered 404, and
-Docker created a directory at `packages/gantry-tokens/tokens.css` in the working
-tree. `git status` says nothing about it while `packages/` is untracked. So the
-portal ships its own copy of the token layer at `apps/members/theme/tokens.css`,
-and `make portal-test` fails when it differs from the package by a byte.
-Mounting the package inside `apps/members` was never open anyway: Docker has to
-create the parent directory of a file bind mount and `/srv/members` is itself a
-read only mount, which fails at container start with `make parent dir of
-file bind-mount: read-only file system`.
+**A bind whose source is missing becomes a directory.** Docker does not fail on
+one; it creates a directory at that path in the working tree, and the stack
+comes up healthy serving nothing where a file was. Measured: with
+`packages/gantry-tokens/tokens.css` moved aside and the stack started, Caddy
+reported healthy, the stylesheet answered 404, and a directory appeared in its
+place. `git status` says nothing while that path is untracked.
 
+So Caddy binds the `packages/gantry-tokens` directory, which is tracked, and the
+development routes serve it at `/theme`. The portal used to ship a byte
+identical copy of the token layer with a check to catch the two drifting apart,
+which is a defect and a detector for it where one file does. `make portal-test`
+fails if that copy comes back. Mounting a file inside `/srv/members` is not open
+anyway: Docker creates the parent directory of a file bind and that path is
+itself a read only mount, which fails at container start.
 **Slot 200 arithmetic.** The EEPROM base address is 24, not 0, so slot 200 sits
 at `24 + 200*5 = 1024` and writes past the end of a 1024 byte EEPROM, onto the
 alarm state bytes. Slot 199 ends exactly at byte 1023. Somebody will try to

@@ -41,7 +41,7 @@ python3 tools/voice-check/test_behaviour.py
 ./tools/ci/voice-gate.sh              # the prose gate over every tracked file
 
 make mock-test                        # the contract mock, started, called, removed
-make development-test                 # both compose profiles, in a throwaway project
+make development-test                 # both stack shapes, in a throwaway project
 make portal-test                      # the members portal through Caddy
 ```
 
@@ -59,8 +59,8 @@ on a value nobody chose. `make help` lists the rest.
 
 `make development` starts the same stack with two additions, for a browser to
 open: the members portal at the root, and the API contract served as a mock
-under `/v1`, both behind Caddy on one origin. They sit in a compose profile, so
-`make up` starts what it always started. That profile serves plain HTTP on
+under `/v1`, both behind Caddy on one origin. They come from an override file,
+`compose.development.yaml`, so `make up` starts what it always started. That profile serves plain HTTP on
 `ORO_HTTP_PORT`, so a browser opens it with no certificate to accept, and
 `docs/decisions/0003-plain-http-for-development.md` says what that trades away.
 A deployment is unchanged and still serves TLS.
@@ -95,12 +95,12 @@ docs/glossary.md     domain words. Code uses these exactly
 tools/voice-check/   prose gate, run in CI and on every commit message
 tools/ci/            the two checks CI runs that need a git range
 tools/mock/          the pinned mock server, and what proves it serves the contract
-tools/development/   checks over both compose profiles
+tools/development/   checks over both stack shapes
 tools/members-portal/ checks over the portal, through Caddy
 
 caddy/               TLS, the health route, and the routes each profile serves
 compose.yaml         Postgres and Caddy. Makefile wraps it
-compose.mock.yaml    the mock, in a profile, so make up never starts it
+compose.development.yaml  what a laptop adds: the mock, and the routes for it
 .github/workflows/   CI. Seven jobs
 ```
 

@@ -86,8 +86,8 @@ python3 tools/voice-check/voice_check.py apps/members/
 | Thing | Why |
 |---|---|
 | `docs/api/members-v1.yaml` | The contract. Every field name on every view comes from it |
-| `tools/mock/` | Serves that contract. `compose.yaml` runs it in the development profile |
-| `packages/gantry-tokens/tokens.css` | The theme. `theme/tokens.css` here is a copy of it, served at `/theme/tokens.css` |
+| `packages/gantry-tokens` | The theme. Caddy serves it at `/theme`, from the package, so there is one copy |
+| `packages/gantry-tokens/tokens.css` | The theme. Caddy binds the package and serves it at `/theme/tokens.css`, so there is one copy |
 | `caddy/routes/development.caddyfile` | Puts the portal and the mock on one origin |
 
 Nothing else. No runtime dependency, no lockfile, no `node_modules`.
@@ -101,9 +101,9 @@ unstyled page, with a directory sitting where a source file belongs. A copy
 costs a drift check instead, and `make portal-test` fails when the two files
 differ by a byte. To take a new version of the token layer:
 
-```sh
-cp packages/gantry-tokens/tokens.css apps/members/theme/tokens.css
-```
+The theme is not copied here. Caddy binds `packages/gantry-tokens` and the
+development routes serve it at `/theme`, so there is one file and nothing to
+keep in step.
 
 ### How a view is wired
 

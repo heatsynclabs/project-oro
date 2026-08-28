@@ -1,45 +1,35 @@
-# What a laptop serves: the members portal at the root and the contract mock
-# under /v1, on one origin, over plain HTTP. The portal then calls the same
-# paths it will call against the real service, and no page needs a second base
-# URL for development.
+# What a laptop serves: the members portal at the root, the theme under /theme,
+# and the contract mock under /v1, on one origin. The portal then calls the same
+# paths it will call against the real service.
 #
-# Imported by caddy/Caddyfile at the top level, and it opens its own site block.
-# compose.yaml picks this file when COMPOSE_PROFILES asks for the development
-# profile, which is the same variable that starts the mock. Not the --profile
-# flag: that starts the mock and leaves this file unimported, so the hostname
-# serves the deployment 404 while a healthy mock sits behind it.
-#
-# http:// on the address, and no tls directive, because an http site has none.
-# Under "tls internal" this page was unopenable: Chrome shows its certificate
-# interstitial for Caddy's local authority, that interstitial is a privileged
-# page no automation can click through, and a volunteer gets past it only by
-# running "caddy trust" as an administrator and installing a root certificate
-# into the machine they own. Loopback traffic gets nothing back for that.
-# docs/decisions/0003-plain-http-for-development.md holds the reasoning and the
-# one thing it trades away.
+# Plain HTTP, no tls directive, because an http site has none. Under
+# "tls internal" this page could not be opened at all: Chrome shows its
+# certificate interstitial for Caddy's local authority, and getting past it
+# means installing a root certificate as an administrator. ADR 0003 has the
+# reasoning and what it trades away.
 http://{$ORO_HOSTNAME} {
-	# Repeated from deployment.caddyfile rather than shared through a snippet.
-	# Two uses is a coincidence, and tools/development/tests/run.sh calls this
-	# path under both profiles, so a drift between them fails a check rather
-	# than going unnoticed.
+	# Repeated from deployment.caddyfile rather than shared. Two uses is a
+	# coincidence, and the development suite calls this under both, so a drift
+	# fails a check.
 	handle /health {
 		respond "ok" 200
 	}
 
-	# handle_path strips the prefix before proxying, and that is the point of
-	# this block rather than a detail of it. The contract declares its server as
-	# https://api.heatsynclabs.org/v1, and Prism mounts what is under paths: and
-	# ignores that prefix, so the mock answers /me and refuses /v1/me. Both were
-	# called to confirm it. ADR 0002 records the behaviour.
+	# handle_path strips the prefix, and that is the point of this block rather
+	# than a detail of it. The contract declares its server as
+	# https://api.heatsynclabs.org/v1 and Prism ignores that prefix, so the mock
+	# answers /me and refuses /v1/me. Both were called to confirm it.
 	handle_path /v1/* {
 		reverse_proxy mock:4010
 	}
 
-	# The members portal: static files, no build step, mounted from apps/members.
-	# The theme is one of those files, at theme/tokens.css, so nothing else is
-	# bound in to serve it. A bind from packages/ would be carried by every
-	# deployment as well, because a volume takes no profile, and Docker creates a
-	# directory where the source should be when it is not there.
+	# The theme, served straight out of packages/gantry-tokens. The portal used
+	# to ship its own byte identical copy and a check to catch them drifting.
+	handle_path /theme/* {
+		root * /srv/theme
+		file_server
+	}
+
 	handle {
 		root * /srv/members
 		file_server

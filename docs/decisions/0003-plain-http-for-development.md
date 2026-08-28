@@ -1,4 +1,4 @@
-# ADR 0003: Plain HTTP for the development profile
+# ADR 0003: Plain HTTP for the development stack
 
 - **Status:** accepted
 - **Date:** 2026-08-28
@@ -9,7 +9,7 @@
 
 ## Context
 
-The development profile was brought up and pointed at a real Chrome, and the
+The development stack was brought up and pointed at a real Chrome, and the
 page could not be opened. Caddy served it over HTTPS with `tls internal`, so the
 certificate came from `CN=Caddy Local Authority - ECC Intermediate`, read off a
 running stack with `curl -skv https://localhost:8443/health`. Chrome answers
@@ -40,7 +40,7 @@ about.
 - **Checked:** the interstitial is what a browser shows for this authority, and
   it cannot be clicked through by automation, which is what started this.
 
-### Option B: plain HTTP for the development profile only
+### Option B: plain HTTP for the development stack only
 
 - **What it costs:** the two profiles now differ on scheme, so a defect that
   only appears under TLS is not seen on a laptop. Stated in full below.
@@ -62,7 +62,7 @@ about.
 
 ## Decision
 
-We chose **Option B, plain HTTP for the development profile only**.
+We chose **Option B, plain HTTP for the development stack only**.
 
 Option A was eliminated by what it asks of a person: an administrator password
 and a permanent change to a machine the project does not own, to read a page on
@@ -115,7 +115,8 @@ HTTP fails a check.
 **What we now have to operate.** Nothing new. No dependency was added and no
 variable was added. `caddy/routes/development.caddyfile` opens an `http://` site
 and `caddy/routes/deployment.caddyfile` opens the TLS one, and `ORO_ROUTES`
-still chooses between them out of `COMPOSE_PROFILES`.
+is set to `development` by `compose.development.yaml` and to `deployment` by
+`compose.yaml`.
 
 **The shape of the Caddy configuration had to change with it.** A site address
 written `http://` cannot carry a `tls` directive, and a file imported inside a

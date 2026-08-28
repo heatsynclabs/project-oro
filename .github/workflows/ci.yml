@@ -93,7 +93,7 @@ jobs:
 
       # The mock is the only thing that proves the contract is servable rather
       # than merely legal, so a change to the document that breaks it should be
-      # red here. The image is pinned by digest in tools/mock/image.sh, and the
+      # red here. The image is pinned by digest in compose.development.yaml, and the
       # runner is x86_64, so the platform pin there is native rather than
       # emulated and this is faster here than on an arm64 laptop.
       - name: Prism serves the contract

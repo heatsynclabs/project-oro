@@ -19,12 +19,6 @@
 set -e
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 
-# The pin lives in tools/mock/image.sh and only there, and compose.yaml reads
-# it from that file rather than from the environment. Clearing the three names
-# here is what holds it to that: everything below runs as a caller who has
-# prepared nothing, which is what a volunteer typing docker compose by hand is.
-unset ORO_MOCK_IMAGE ORO_MOCK_PLATFORM ORO_MOCK_DOCUMENT
-
 PROJECT="oro-development-test-$$"
 export ORO_HOSTNAME=localhost
 export ORO_TLS=internal
@@ -43,11 +37,12 @@ INTERNAL_AUTHORITY="CN=Caddy Local Authority - ECC Intermediate"
 passed=0
 failed=0
 
-compose() { docker compose -p "$PROJECT" -f "$ROOT/compose.yaml" "$@"; }
+# Two shapes: the deployment alone, and the deployment plus what a laptop adds.
+compose()     { docker compose -p "$PROJECT" -f "$ROOT/compose.yaml" "$@"; }
+compose_dev() { compose -f "$ROOT/compose.development.yaml" "$@"; }
 
-# The wildcard reaches services in a profile. A plain down does not, and leaves
-# the mock running with the network still in use.
-cleanup() { COMPOSE_PROFILES='*' compose down --volumes >/dev/null 2>&1 || true; }
+# Down through the override, so this reaches the mock as well.
+cleanup() { compose_dev down --volumes >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 check() {
@@ -101,7 +96,7 @@ body_holds() {
 running_services() { compose ps --services --status running | sort | xargs; }
 
 project_is_valid() {
-  if COMPOSE_PROFILES=development compose config >/dev/null 2>&1; then
+  if compose_dev config >/dev/null 2>&1; then
     echo yes
   else
     echo no
@@ -113,7 +108,7 @@ project_is_valid() {
 # list from the deployment and the mock is not in it, so the one service the
 # profile adds is the one whose output the reader cannot see.
 logs_reach_the_mock() {
-  if COMPOSE_PROFILES='*' compose logs --tail 1 2>/dev/null | grep -q '^mock-1'; then
+  if compose_dev logs --tail 1 2>/dev/null | grep -q '^mock-1'; then
     echo yes
   else
     echo no
@@ -121,13 +116,13 @@ logs_reach_the_mock() {
 }
 
 echo "Reading the project with nothing sourced and nothing exported"
-check "the development profile needs no environment prepared first" \
+check "development needs no environment prepared first" \
   "yes" "$(project_is_valid)"
 echo
 
 echo "Bringing up the deployment default on ports $ORO_HTTP_PORT and $ORO_HTTPS_PORT"
-COMPOSE_PROFILES='' compose up --detach --wait --wait-timeout 120 >/dev/null
-check "asking for no profile starts only the deployment" \
+compose up --detach --wait --wait-timeout 120 >/dev/null
+check "compose.yaml alone starts only the deployment" \
   "caddy db" "$(running_services)"
 check "the root says nothing is deployed" "404" "$(status_of "$HTTPS_ORIGIN/")"
 # The status code alone cannot tell a considered front page from a bare 404,
@@ -150,8 +145,8 @@ check "and names the hostname it was asked for" \
 
 echo
 echo "Bringing up the development profile"
-COMPOSE_PROFILES=development compose up --detach --wait --wait-timeout 180 >/dev/null
-check "the development profile adds the mock and nothing else" \
+compose_dev up --detach --wait --wait-timeout 180 >/dev/null
+check "the override adds the mock and nothing else" \
   "caddy db mock" "$(running_services)"
 check "the portal is served at the root over plain HTTP" \
   "200" "$(status_of "$HTTP_ORIGIN/")"
@@ -173,7 +168,7 @@ check "the log of every service reaches the mock" "yes" "$(logs_reach_the_mock)"
 
 echo
 echo "Taking it down"
-COMPOSE_PROFILES='*' compose down --volumes >/dev/null 2>&1
+compose_dev down --volumes >/dev/null 2>&1
 check "nothing is left running" "" "$(running_services)"
 
 echo

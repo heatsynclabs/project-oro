@@ -84,12 +84,16 @@ def recipe(target):
 
 
 def compose_logs():
-    """What the logs target prints, minus the following. Every profile is
-    selected, which is what the target does and why."""
+    """What the logs target prints, minus the following.
+
+    Both compose files, which is the shape the target uses, because the mock is
+    declared in the override and compose omits a service it was not told about.
+    The target itself follows and never exits, so this is the same command
+    without that."""
     ran = subprocess.run(
-        ["docker", "compose", "-p", PROJECT, "logs", "--tail", "20"],
-        cwd=ROOT, capture_output=True, text=True,
-        env={**os.environ, "COMPOSE_PROFILES": "*"}, check=False)
+        ["docker", "compose", "-p", PROJECT, "-f", "compose.yaml",
+         "-f", "compose.development.yaml", "logs", "--tail", "20"],
+        cwd=ROOT, capture_output=True, text=True, check=False)
     return ran.stdout + ran.stderr
 
 

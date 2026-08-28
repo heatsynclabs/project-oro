@@ -19,10 +19,6 @@
 set -e
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 
-# The mock image pin lives in tools/mock/image.sh and only there.
-. "$ROOT/tools/mock/image.sh"
-export ORO_MOCK_IMAGE ORO_MOCK_PLATFORM ORO_MOCK_DOCUMENT
-
 PROJECT="oro-portal-test-$$"
 export ORO_HOSTNAME=localhost
 export ORO_TLS=internal
@@ -33,15 +29,16 @@ export ORO_HTTPS_PORT=8445
 # Invented, used by nothing, and removed with the volume when this exits.
 export ORO_DB_PASSWORD="throwaway-$$"
 
-compose() { docker compose -p "$PROJECT" -f "$ROOT/compose.yaml" "$@"; }
+# Two shapes: the deployment alone, and the deployment plus what a laptop adds.
+compose()     { docker compose -p "$PROJECT" -f "$ROOT/compose.yaml" "$@"; }
+compose_dev() { compose -f "$ROOT/compose.development.yaml" "$@"; }
 
-# The wildcard reaches services in a profile. A plain down does not, and leaves
-# the mock running with the network still in use.
-cleanup() { COMPOSE_PROFILES='*' compose down --volumes >/dev/null 2>&1 || true; }
+# Down through the override, so this reaches the mock as well.
+cleanup() { compose_dev down --volumes >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 echo "Bringing up the development stack on port $ORO_HTTP_PORT"
-COMPOSE_PROFILES=development compose up --detach --wait --wait-timeout 180 >/dev/null || {
+compose_dev up --detach --wait --wait-timeout 180 >/dev/null || {
   echo "The stack did not come up, so nothing was checked. The error above says why." >&2
   exit 1
 }

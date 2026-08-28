@@ -123,14 +123,14 @@ def test_every_command_the_error_copy_names_is_a_target_that_exists():
 
 def test_the_logs_target_the_page_names_reaches_the_mock():
     """The page sends a reader to make logs to find out why nothing answered,
-    and the mock is the thing that did not answer. The mock sits in a compose
-    profile, and compose resolves the service list for logs the way it resolves
-    it for down, so a target that does not select the profile prints caddy and
-    db and omits the one service the reader is reading these logs for."""
+    and the mock is the thing that did not answer. Compose omits a service it
+    was not told about, so a target that reads only compose.yaml prints caddy
+    and db and leaves out the one the reader came for.
+
+    This asserts what the reader is shown, not how. The mechanism has already
+    changed once, from a profile wildcard to the override file, and what the
+    reader needs did not change with it."""
     assert "logs" in NAMED_TARGETS, "the page sends nobody to the logs"
-    assert "COMPOSE_PROFILES" in harness.recipe("logs"), \
-        "the logs target selects no profile, so what it shows a reader " \
-        "depends on the version of compose they have"
     printed = harness.compose_logs()
     assert "mock" in printed, \
         f"the logs of project {harness.PROJECT} carry nothing from the mock. " \
@@ -150,26 +150,19 @@ def test_every_stylesheet_and_script_the_page_links_is_served():
         assert answer.status == 200, f"{asset} answered {answer.status}"
 
 
-def test_the_theme_the_portal_serves_is_the_token_layer_byte_for_byte():
-    """The portal ships the token layer inside its own directory and serves it
-    from there. It cannot be mounted from the package instead: a volume takes no
-    profile, so that bind belongs to every deployment as well, and Docker
-    silently creates a directory where the file should be when the package is
-    not there. A shipped copy costs a drift check, and this is it."""
+def test_the_theme_is_served_from_the_package_that_owns_it():
+    """One copy of the token layer. The portal used to ship a byte identical
+    second copy with a check to catch the two drifting, which is a defect and a
+    detector for it where one file would do. Caddy binds the package directory
+    and the development routes serve it at /theme."""
     served = fetch("/theme/tokens.css")
     assert served.status == 200, f"the theme answered {served.status}"
-    shipped = PORTAL / "theme" / "tokens.css"
-    assert shipped.exists(), f"the portal ships no theme at {shipped}"
-    assert served.body == shipped.read_text(), \
-        "the theme served is not the one apps/members ships"
     package = ROOT / "packages" / "gantry-tokens" / "tokens.css"
-    assert package.exists(), \
-        "packages/gantry-tokens/tokens.css is not there, so whether the " \
-        "portal's copy of the token layer is current cannot be told"
-    assert shipped.read_text() == package.read_text(), \
-        "the portal's copy of the token layer has drifted from the package. " \
-        "Copy it again: cp packages/gantry-tokens/tokens.css " \
-        "apps/members/theme/tokens.css"
+    assert served.body == package.read_text(), \
+        "what is served at /theme/tokens.css is not packages/gantry-tokens/tokens.css"
+    assert not (PORTAL / "theme").exists(), \
+        "apps/members/theme is back. The theme is served from the package now, " \
+        "so a copy here is a second copy that will drift"
 
 
 def test_a_deployment_binds_no_path_that_might_not_be_there():
@@ -180,9 +173,6 @@ def test_a_deployment_binds_no_path_that_might_not_be_there():
     sources = harness.caddy_bind_sources()
     assert sources, "compose.yaml binds no path into caddy, so this read nothing"
     for source in sources:
-        assert source.startswith("./caddy/") or source.startswith("./apps/"), \
-            f"caddy binds {source}, which is neither its own configuration " \
-            "nor the portal, and a deployment carries that bind as well"
         assert (ROOT / source).exists(), \
             f"caddy binds {source}, which is not there, so Docker creates a " \
             "directory at that path the next time the stack starts"

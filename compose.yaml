@@ -21,15 +21,6 @@
 
 name: oro
 
-# The mock service, and only the mock service. It is in a file of its own so
-# compose can read its pinned image out of tools/mock/image.sh, which is the
-# one copy of that version and digest. An env_file on an include is the only
-# way compose will read a variable file that is not .env, and .env belongs to
-# the operator. compose.mock.yaml says what may go in it.
-include:
-  - path: ./compose.mock.yaml
-    env_file: ./tools/mock/image.sh
-
 services:
   db:
     image: postgres:18
@@ -62,12 +53,9 @@ services:
     environment:
       ORO_HOSTNAME: "${ORO_HOSTNAME:?copy .env.example to .env and set it}"
       ORO_TLS: "${ORO_TLS:?copy .env.example to .env and set it}"
-      # Which file caddy/Caddyfile imports its routes from. Not an operator
-      # setting, which is why it is not in .env.example: it follows the profile,
-      # so one variable both starts the mock and routes to it. A profile name
-      # with no file beside it in caddy/routes/ stops Caddy, and the healthcheck
-      # below is what reports that.
-      ORO_ROUTES: "${COMPOSE_PROFILES:-deployment}"
+      # Which file caddy/Caddyfile imports its routes from. This file is the
+      # deployment, so it says so plainly. compose.development.yaml overrides it.
+      ORO_ROUTES: deployment
     ports:
       - "${ORO_HTTP_PORT:?copy .env.example to .env and set it}:80"
       - "${ORO_HTTPS_PORT:?copy .env.example to .env and set it}:443"
@@ -82,6 +70,11 @@ services:
       # that path in the working tree, and the stack then comes up healthy
       # serving nothing where a file was.
       - ./apps/members:/srv/members:ro
+      # The theme, from the package that owns it. Bound here rather than copied
+      # into the portal, because the copy was byte identical and needed a check
+      # to catch the two drifting apart. A deployment carries this bind and
+      # routes nothing to it, which is cheaper than two copies of 398 lines.
+      - ./packages/gantry-tokens:/srv/theme:ro
       # Certificates and the ACME account key. Without a volume Caddy issues a
       # fresh certificate on every recreate, which on a public hostname walks
       # into the certificate authority's rate limit and leaves the stack with no

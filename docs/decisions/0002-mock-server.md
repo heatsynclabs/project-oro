@@ -308,3 +308,31 @@ Nothing. This decision selects a tool and copies no code or design from it.
   it would fill the cut references and the unmasked tag number in one change and
   make the mock's answers match the prose. Resolved by whoever owns that
   document, which is not this change.
+
+## Added on 2026-08-28: the profile became an override file
+
+The arrangement recorded above is superseded, and the reason is worth keeping
+rather than editing away.
+
+The mock sat in a compose profile, and Caddy picked its route file out of
+`COMPOSE_PROFILES` so that one variable both started the mock and routed to it.
+That looked economical and it was wrong: it left two ways to ask for the same
+thing that did not agree. `COMPOSE_PROFILES=development docker compose up`
+worked. `docker compose --profile development up`, which is the form the Docker
+documentation teaches, set no such variable, so it started the mock and left
+Caddy serving the deployment's 404 in front of a healthy mock. The Caddyfile
+documented that trap instead of removing it.
+
+Now `compose.development.yaml` is an override file holding the mock service and
+the one line that points Caddy at the development routes, and
+`make development` runs `docker compose -f compose.yaml -f
+compose.development.yaml up`. One way to ask, and one file that answers "what
+does development add".
+
+`compose.mock.yaml`, `tools/mock/image.sh` and `tools/mock/run.sh` are gone with
+it, along with the `include:` and `env_file:` pair that existed only to carry
+the pin into a profile. The image and its digest now appear once, in
+`compose.development.yaml`, and every runner starts the mock through compose
+rather than repeating the pin. `make mock` is gone too: `make development`
+publishes the same mock on the same loopback port and serves the portal beside
+it.
