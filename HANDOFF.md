@@ -31,17 +31,21 @@ This table is the single place this is tracked. Update it as things land.
 | Thing | State |
 |---|---|
 | `db/migrations/` schema, rules, RLS, immutability | **Built.** Applies clean from nothing |
-| `db/tests/` and `db/tests/run.sh` | **Built.** 164 assertions, deterministic |
+| `db/tests/` and `db/tests/run.sh` | **Built.** 171 assertions, deterministic |
 | `db/seed/001_reference.sql` | **Built.** Tiers, roles, governance parameters |
-| `tools/voice-check/` prose gate | **Built.** 74 tests |
+| `tools/voice-check/` prose gate | **Built.** 77 tests |
+| `tools/mock/` mock server for the API contract | **Built.** `make mock-test`, 13 checks, run by CI |
 | `.githooks/commit-msg` | **Built.** Install it, see section 3 |
 | The plan documents | **Written.** Reviewed adversarially twice |
 | `services/api/` | Not started. Phase 3 |
-| `services/door/` and its adapter and fake | Not started. Port and fake belong in phase 1 |
+| `services/door/` port, fake, conformance suite | **Built.** 104 tests, `services/door/tests/run.sh` |
+| `services/door/` HTTP API, reconcile loop, real socket against hardware | Not started. Phase 5 |
 | `apps/` members, admin, door | Not started. Phase 3 onward |
 | `packages/gantry-tokens`, `gantry-css` | Not started. Phase 1 |
-| `.github/workflows/ci.yml` | Not started. Phase 0 |
-| Import boundary and file ceiling linting | Not started. Phase 0 |
+| `compose.yaml`, `Makefile`, `.env.example`, `caddy/` | **Built.** Postgres and Caddy. `make up` on a clean machine, proven |
+| `docs/api/members-v1.yaml` | **Written.** OpenAPI 3.1.1, validates clean. Still needs the review by somebody who did not write it that phase 1 asks for |
+| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Five jobs. Never run on GitHub, see section 7 |
+| Import boundary and file ceiling linting | Not started. Phase 0. The OpenAPI document needs its exemption listed here when this lands |
 | `tools/attributions/generate.py` | Not started. Needs a lockfile first |
 | `docs/runbooks/` | Not started. Created with the first runbook |
 | `CODEOWNERS`, `.sops.yaml` | Not started. Created with the first real name and the first secret |
@@ -51,14 +55,38 @@ This table is the single place this is tracked. Update it as things land.
 ```sh
 git config core.hooksPath .githooks      # once per clone, enables the commit gate
 
-./db/tests/run.sh                        # rebuilds the schema from nothing, runs 164 assertions
+./db/tests/run.sh                        # rebuilds the schema from nothing, runs 171 assertions
 ./db/tests/run.sh --update               # regenerate expected output, deliberately
 
 python3 tools/voice-check/test_voice_check.py
 python3 tools/voice-check/test_regressions.py
 python3 tools/voice-check/test_behaviour.py
-python3 tools/voice-check/voice_check.py docs/ CLAUDE.md db/ tools/
+
+./services/door/tests/run.sh             # the port, the fake, and the conformance suite
+
+make mock-test                           # the API contract mock, started, called, removed
+make mock                                # serve it on 4010 until you stop it
+
+./tools/ci/voice-gate.sh                 # the prose gate over every tracked file
+./tools/ci/voice-gate.sh origin/main     # or only over what a branch changed
+./tools/ci/check-commits.sh origin/main  # every commit message in a range
+
+npx @redocly/cli@2.49.0 lint docs/api/members-v1.yaml   # the API contract
 ```
+
+CI runs everything above except `make mock` and `--update`. `tools/ci/` holds the
+two checks that need a git range, so what CI runs is the same script a person
+runs, rather than a copy of it that drifts. The contract lint reports three
+warnings and that is expected; `docs/decisions/0001-openapi-toolchain.md` says
+which and why.
+
+`make mock` is a foreground server that runs until you stop it, so no CI job
+could run that one. `make mock-test` starts the mock, checks it, and takes it
+down, and CI does run that.
+
+`make up` starts Postgres and Caddy. Copy `.env.example` to `.env` and set every
+value in it first: nothing there has a default, and `make up` refuses rather than
+starting on a value nobody chose.
 
 `db/tests/run.sh` needs Docker and nothing else. It creates a throwaway
 `postgres:18` container, applies every migration and seed in order, runs each
@@ -113,26 +141,75 @@ In order.
 1. Fill in two names in `people-and-custody.md` section 1. Two, not one.
 2. Ask for hsl-web access, with a date.
 3. Post the two approver proposal to Hack Your Hackerspace.
-4. Write `.github/workflows/ci.yml`: run `db/tests/run.sh`, the three prose gate
-   suites, and the voice gate over changed files. Also check every commit in the
-   pull request for an LLM attribution trailer, so the hook cannot be bypassed by
-   a push from another machine.
-5. Build the door controller port, its fake, and the conformance suite. This is
-   phase 1 work even though the door ships in phase 5, because three rewrites
-   stalled at the door and the point is to retire that risk early.
+4. Get `docs/api/members-v1.yaml` reviewed by somebody who did not write it, and
+   merged. Phase 1 step 1 asks for that review by name and it is the cheapest
+   hour in the project, because everything downstream is built against it.
+5. Push a branch and watch CI actually run. It has never run on GitHub, only
+   locally, which is the one claim in this repository with no evidence behind it.
+6. Add the import boundary and file ceiling linting that phase 0 still owes, and
+   list `docs/api/members-v1.yaml` in its exemptions with a reason. It is 1,923
+   lines and rule 6 wants exemptions named rather than covered by a glob.
+
+Items 4 to 6 are the code that is left. Items 1 to 3 are not code, and they are
+the ones that decide whether any of this ships.
 
 ## 7. Traps
 
 Things that look wrong and are not, and things that already bit somebody.
 
 **The bootstrap escape is not a security hole.** `db/migrations/003_rules.sql`
-lets an admin be granted with no approval when fewer than two live admins exist.
-That looks like a bypass. It is the only way the system can be bootstrapped or
-recovered: a two approver rule cannot bind until two approvers exist, and without
-it the database is permanently unadministrable. It closes for good at the second
-admin, it grants no power a lone admin does not already have, and every use
-raises a warning. Reasoning in `data-model.md` section 3.1. Two earlier versions
-of this trigger deadlocked, both of which read as correct.
+lets an admin be granted with no approval, and
+`db/migrations/013_bootstrap_three_admins.sql` bounds that to three such grants
+over the life of the database. That looks like a bypass. It is the only way the
+system can be bootstrapped: a two approver rule cannot bind until two approvers
+exist, so without an escape the database is unadministrable on its first day.
+Three rather than two because `people-and-custody.md` section 1 wants a spare in
+every role, and at two admins, losing one leaves a rule nobody can satisfy.
+
+It is a quota, spent by use, rather than a threshold on the live admin count.
+A threshold of three would hold the escape open for as long as the lab had only
+two admins, which is exactly the point at which two people could have satisfied
+the rule and should have been made to. Nothing separate records the quota: a
+bootstrap grant is already a `member_roles` row with a null `approval_id`.
+
+It closes for good at the third grant, revoking people does not hand it back, it
+grants no power a lone admin does not already have, and every use raises a
+warning naming which seat it took. Reasoning in `data-model.md` section 3.1. Two
+earlier versions of this trigger deadlocked, both of which read as correct.
+
+**A test fixture that seats two admins is not testing the rule.** Below three,
+the escape is open, so a refusal test written under that fixture passes because
+the grant succeeded rather than because anything refused it. `db/tests/attacks.sql`
+seats three on purpose and says so.
+
+**CI has never actually run on GitHub.** Every job in
+`.github/workflows/ci.yml` was built by running its steps locally, and the
+workflow file passes `actionlint`. The commit gate was proven against a
+throwaway clone carrying deliberately bad messages, and it caught both an
+attribution trailer and banned vocabulary. What has never happened is a run on a
+real runner.
+
+```
+ASSUMPTION: the ubuntu-latest runner has Docker, python3, Node and npm, and
+            actions/checkout at the pinned commit fetches enough history for the
+            two checks that need a range.
+CONFIRM BY: push a branch and open a pull request. The first run is the check.
+            Docker 28.0.4 and Node 22 were read from actions/runner-images on
+            2026-08-27, so the likely failure is the git range, not a runtime.
+BLAST RADIUS: a red first build on a workflow file, before any code depends on it.
+```
+
+**Two holes in the prose gate, found and left open on purpose.** Neither is
+worth fixing blind, and both are worth knowing before somebody trusts a green
+run more than it deserves.
+
+`.githooks/commit-msg` has no file suffix, so a directory walk never reaches it,
+and naming it directly makes the gate read a shell script as if it were prose.
+Shell scripts with a `.sh` suffix are covered.
+
+The spaced hyphen check needs three or more letters on both sides, so
+`service - it` passes while `service - was` is caught. Loosening it risks
+flagging legitimate writing, so it wants a real look rather than a wider regex.
 
 **Slot 200 arithmetic.** The EEPROM base address is 24, not 0, so slot 200 sits
 at `24 + 200*5 = 1024` and writes past the end of a 1024 byte EEPROM, onto the
@@ -250,4 +327,4 @@ So the next person knows what "green" is worth.
   the most skeptical member of the lab. Both reviews are in `.research/`.
 - A separate consistency pass diffed every document against every other and
   against the SQL.
-- The prose gate has 74 tests and lints itself clean, including its own ban lists.
+- The prose gate has 77 tests and lints itself clean, including its own ban lists.

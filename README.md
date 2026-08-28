@@ -10,35 +10,42 @@ software around the Arduino that unlocks the building. The Arduino itself stays.
 
 ## Status
 
-Planning and database. The schema, the rules it enforces, and their tests exist
-and run. No services, no apps, no deployment.
+The database, the contract, the door port, and the machinery that checks all
+three. No portals, and nothing deployed.
 
 | | |
 |---|---|
-| Built | Schema, row level security, 164 database assertions, a prose gate with 74 tests, a commit hook |
-| Not built | The API service, the door service, the three portals, the theme packages, CI |
+| Built | Schema and row level security with 171 database assertions, the members API contract, the door controller port with its fake and 104 conformance tests, a Postgres and Caddy stack, CI, a prose gate with 77 tests, a commit hook |
+| Not built | The API service, the door service itself, the three portals, the theme packages |
 
 `HANDOFF.md` tracks this in detail and is the file to update when something
 lands.
 
 ## Run it
 
-Needs Docker and Python 3.8 or newer. Nothing else.
+Needs Docker and Python 3.8 or newer. The API contract check also needs Node,
+and nothing else does.
 
 ```sh
-./db/tests/run.sh          # schema from nothing, 164 assertions, about 6 seconds
+./db/tests/run.sh          # schema from nothing, 171 assertions, about 6 seconds
 ./db/tests/run.sh --update # regenerate expected output, deliberately
+
+./services/door/tests/run.sh   # the door port, its fake, and 104 conformance tests
 
 python3 tools/voice-check/test_voice_check.py
 python3 tools/voice-check/test_regressions.py
 python3 tools/voice-check/test_behaviour.py
 
-python3 tools/voice-check/voice_check.py docs/ CLAUDE.md db/ tools/
+./tools/ci/voice-gate.sh   # the prose gate over every tracked file
 ```
 
 `run.sh` creates a throwaway `postgres:18` container, applies every migration
 and seed in order, runs each test file in a transaction that rolls back, and
-removes the container.
+removes the container. The door suite needs nothing installed at all.
+
+To bring the stack up, copy `.env.example` to `.env`, set every value in it, and
+run `make up`. Nothing in that file has a default and the stack refuses to start
+on a value nobody chose. `make help` lists the rest.
 
 Enable the commit hook once per clone:
 
@@ -55,14 +62,20 @@ ATTRIBUTIONS.md      what was borrowed, from where, under what licence
 
 db/migrations/       the schema. This is the authority
 db/seed/             tiers, roles, governance parameters
-db/tests/            164 assertions, run by db/tests/run.sh
+db/tests/            171 assertions, run by db/tests/run.sh
 
-docs/plan/           architecture, API contract, data model, build order
+services/door/       the controller port, the fake, the conformance suite
+
+docs/api/            the members API contract, as OpenAPI
+docs/plan/           architecture, API design, data model, build order
 docs/conventions/    voice
 docs/decisions/      architecture decision records
 docs/glossary.md     domain words. Code uses these exactly
 
 tools/voice-check/   prose gate, run in CI and on every commit message
+tools/ci/            the two checks CI runs that need a git range
+
+compose.yaml         Postgres and Caddy. Makefile wraps it
 ```
 
 ## Reading order

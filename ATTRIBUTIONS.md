@@ -59,6 +59,23 @@ Tracked in `docs/decisions/` and raised with the board before cutover.
 
 ---
 
+## Continuous integration actions
+
+Hand maintained, because a GitHub Action is not in any lockfile and the
+generator below reads lockfiles. Every action is pinned to a commit rather than
+a moving tag, so a tag repointed at different code cannot change what runs.
+
+| Action | Pinned commit | Licence | Used for |
+|---|---|---|---|
+| [actions/checkout](https://github.com/actions/checkout) v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` | MIT, GitHub | Checking out the repository in every job in `.github/workflows/ci.yml`. Version, tag commit, and licence read from the GitHub API on 2026-08-27. |
+
+Nothing else is used. The jobs run scripts that live in this repository, on the
+runner's own Docker and Python, so the CI configuration stays portable enough to
+be re-implemented on Woodpecker without rewriting the checks themselves. That is
+the exit named in `docs/plan/architecture.md` section 2.
+
+---
+
 ## How to add an entry
 
 When you take a design, an algorithm, a schema, or more than a few lines of code
