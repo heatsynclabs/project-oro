@@ -38,6 +38,7 @@ This table is the single place this is tracked. Update it as things land.
 | `tools/development/tests/run.sh` | **Built.** 20 checks over both stack shapes, `make development-test`. It reads the deployment's certificate issuer and asserts development answers plain HTTP with no redirect. Not in CI |
 | `.githooks/commit-msg` | **Built.** Install it, see section 3 |
 | The plan documents | **Written.** Reviewed adversarially twice |
+| Zitadel and its Postgres | Not started. Phase 2, and it is the next phase. Section 4 records the choice |
 | `services/api/` | Not started. Phase 3 |
 | `services/door/` port, fake, conformance suite | **Built.** 104 tests, `services/door/tests/run.sh` |
 | `services/door/` HTTP API, reconcile loop, real socket against hardware | Not started. Phase 5 |
@@ -59,6 +60,8 @@ This table is the single place this is tracked. Update it as things land.
 ```sh
 git config core.hooksPath .githooks      # once per clone, enables the commit gate
 
+make check                               # every suite below, in one command
+
 ./db/tests/run.sh                        # rebuilds the schema from nothing, runs 171 assertions
 ./db/tests/run.sh --update               # regenerate expected output, deliberately
 
@@ -72,7 +75,7 @@ python3 tools/voice-check/test_behaviour.py
 make mock-test                           # the API contract mock, started, called, removed
 
 make development                         # portal at /, contract mock under /v1, one origin, plain HTTP
-make development-test                    # 20 checks over both profiles, in a throwaway project
+make development-test                    # 20 checks over both stack shapes, throwaway project
 make portal-test                         # 22 checks over the members portal, likewise
 
 ./tools/ci/voice-gate.sh                 # the prose gate over every tracked file
@@ -148,29 +151,46 @@ attempts died.
 
 ## 6. Do this next
 
-`docs/plan/kickoff.md` is a prompt that walks somebody through picking up the
-next step correctly. Use it to start a session.
+`docs/plan/kickoff.md` is a prompt for picking up one step carefully.
+`docs/plan/kickoff-ultra.md` is the one for a session meant to carry several
+phases at once.
 
-In order.
+### Not code, and they decide whether any of this ships
 
 1. Fill in two names in `people-and-custody.md` section 1. Two, not one.
 2. Ask for hsl-web access, with a date.
 3. Post the two approver proposal to Hack Your Hackerspace.
-4. Get `docs/api/members-v1.yaml` reviewed by somebody who did not write it, and
-   merged. Phase 1 step 1 asks for that review by name and it is the cheapest
-   hour in the project, because everything downstream is built against it.
-5. Get pull request 1 reviewed and merged. CI is green on it, so what is left
-   there is a person reading the diff.
-6. Add the import boundary and file ceiling linting that phase 0 still owes. The
-   section 2 row lists what it will find on the first run, including two
-   functions in the prose gate that already break rule 6. Exemptions get named
-   one at a time with a reason, never covered by a glob.
-7. Give `make development-test` and `make portal-test` CI jobs. They are the only
-   two suites nothing gates, which means the compose stack and the portal are
-   checked by memory.
 
-Items 4 to 7 are the code that is left. Items 1 to 3 are not code, and they are
-the ones that decide whether any of this ships.
+### Finishing what is already here
+
+4. Get `docs/api/members-v1.yaml` reviewed by somebody who did not write it, and
+   merged. Phase 1 step 1 asks for that review by name, and everything
+   downstream is built against it.
+5. Get pull request 1 reviewed and merged. CI is green, so what is left there is
+   a person reading the diff.
+6. Add the import boundary and file ceiling linting phase 0 still owes. The
+   section 2 row says what it will find on the first run, including two
+   functions in the prose gate that already break rule 6.
+7. Give `make development-test` and `make portal-test` CI jobs. They are the
+   only two suites nothing gates.
+
+### The build that is actually left
+
+Do not read the list above as nearly done. Four of the six phases have not
+started. Each row below splits what a session can build today from what waits on
+a person, because the two get confused and the confusion produces a phase that
+looks finished and is not.
+
+| Phase | Buildable now | Waits on a person |
+|---|---|---|
+| 2, identity | Zitadel and its own Postgres in the stack, the four clients, ten minute tokens with rotating refresh, GANTRY on the hosted screens, and the whole synthetic half of the password proof: bcrypt at cost 10 with no pepper, including a password over 72 bytes, one with non ASCII characters, one with a trailing space | The real half. Ten members signing in to staging with the password they already use, which needs the production hashes and volunteers |
+| 3, member management | `services/api/`, the FastAPI service against the merged contract, connecting as `oro_api` and setting the member identity per transaction so the policies apply to it too. Repointing `apps/members` off the mock and onto it | The migration. It needs the production dump, and section 5 of `people-and-custody.md` lists six decisions that are judgement rather than code |
+| 4, admin | `apps/admin`, the two approver flow in the service over the database rules that already enforce it, card issue and revoke with a reason, waiver status for hosts | The HYH vote. If it fails, the trigger and the constraint are dropped and the portal loses a step. That branch is already written down |
+| 5, door | The door service HTTP API, the reconcile loop, the SQLite snapshot and the buffered event log, all against the fake that exists and passes the conformance suite | The real adapter, the VLAN, and a week of read only running beside the live system |
+
+The exit criterion for phases 2, 3 and 5 cannot be met without the right hand
+column. Build the left, and never record a phase as exited when only the left is
+done.
 
 ## 7. Traps
 
