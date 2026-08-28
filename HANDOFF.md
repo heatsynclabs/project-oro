@@ -48,7 +48,7 @@ This table is the single place this is tracked. Update it as things land.
 | `packages/gantry-css`, `gantry-vue` | Not started. Later in phase 1 and after |
 | `compose.yaml`, `compose.mock.yaml`, `Makefile`, `.env.example`, `caddy/` | **Built.** Postgres and Caddy, and a development profile that adds the mock and puts it and `apps/members/` behind Caddy on one origin, over plain HTTP. `make up` on a clean machine, proven |
 | `docs/api/members-v1.yaml` | **Written.** OpenAPI 3.1.1, validates clean. Still needs the review by somebody who did not write it that phase 1 asks for |
-| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Seven jobs. Never run on GitHub, see section 7 |
+| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Seven jobs, green on a real runner in 22 seconds |
 | Import boundary and file ceiling linting | Not started. Phase 0. Three files need their exemption listed here when this lands: `docs/api/members-v1.yaml` at 1,923 lines, `packages/gantry-tokens/tokens.css` at 398, and the copy of that token layer the members portal ships at `apps/members/theme/tokens.css`, which is the same 398 lines and the same reason |
 | `tools/attributions/generate.py` | Not started. Needs a lockfile first |
 | `docs/runbooks/` | Not started. Created with the first runbook |
@@ -153,8 +153,8 @@ In order.
 4. Get `docs/api/members-v1.yaml` reviewed by somebody who did not write it, and
    merged. Phase 1 step 1 asks for that review by name and it is the cheapest
    hour in the project, because everything downstream is built against it.
-5. Push a branch and watch CI actually run. It has never run on GitHub, only
-   locally, which is the one claim in this repository with no evidence behind it.
+5. Get pull request 1 reviewed and merged. CI is green on it, so what is left
+   there is a person reading the diff.
 6. Add the import boundary and file ceiling linting that phase 0 still owes, and
    list `docs/api/members-v1.yaml` in its exemptions with a reason. It is 1,923
    lines and rule 6 wants exemptions named rather than covered by a glob.
@@ -191,22 +191,16 @@ the escape is open, so a refusal test written under that fixture passes because
 the grant succeeded rather than because anything refused it. `db/tests/attacks.sql`
 seats three on purpose and says so.
 
-**CI has never actually run on GitHub.** Every job in
-`.github/workflows/ci.yml` was built by running its steps locally, and the
-workflow file passes `actionlint`. The commit gate was proven against a
-throwaway clone carrying deliberately bad messages, and it caught both an
-attribution trailer and banned vocabulary. What has never happened is a run on a
-real runner.
+**CI has run, and the assumption it carried is settled.** This entry used to say
+every job had only ever been run locally, with an assumption block about whether
+the runner had Docker, python3, Node and npm, and whether the pinned checkout
+fetched enough history for the two checks that need a git range. Pull request 1
+answered it on 2026-08-28: all seven jobs green in 22 seconds, the commit message
+check and the changed files gate included, so the history was deep enough.
 
-```
-ASSUMPTION: the ubuntu-latest runner has Docker, python3, Node and npm, and
-            actions/checkout at the pinned commit fetches enough history for the
-            two checks that need a range.
-CONFIRM BY: push a branch and open a pull request. The first run is the check.
-            Docker 28.0.4 and Node 22 were read from actions/runner-images on
-            2026-08-27, so the likely failure is the git range, not a runtime.
-BLAST RADIUS: a red first build on a workflow file, before any code depends on it.
-```
+Kept rather than deleted, because the next person adding a job should know the
+question was asked and how it was answered. A job that needs more history than
+the others still has to say so.
 
 **Two holes in the prose gate, found and left open on purpose.** Neither is
 worth fixing blind, and both are worth knowing before somebody trusts a green
