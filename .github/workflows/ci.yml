@@ -138,3 +138,68 @@ jobs:
           ./tools/ci/check-commits.sh
           "${{ github.event.pull_request.base.sha }}"
           "${{ github.event.pull_request.head.sha }}"
+
+  # The two suites nothing gated until now. Both need docker, which the runner
+  # image already has, and both bring up their own compose project on their own
+  # ports, so they neither read nor disturb anything else. Without these jobs a
+  # change to caddy/, compose.yaml, compose.development.yaml or apps/members/
+  # was checked only by whoever remembered to run them by hand, which is the one
+  # kind of gate that always eventually stops running.
+  development:
+    name: Development stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Both shapes: compose.yaml alone, which is the deployment and answers
+      # over TLS from Caddy's own authority, and compose.yaml plus the override,
+      # which serves plain HTTP and opens no TLS listener at all. The checks
+      # that matter are the ones that would have caught the profile defect ADR
+      # 0002 records, where one variable chose both the mock and the routes.
+      - name: Both stack shapes, on their own ports
+        run: ./tools/development/tests/run.sh
+
+  portal:
+    name: Members portal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # No browser, so this never sees the rendered document. What it does see
+      # is that every field the portal binds is a field the contract serves at
+      # the endpoint that view reads, which is the check the portal exists to
+      # make.
+      - name: The portal through Caddy, against the contract mock
+        run: ./tools/members-portal/tests/run.sh
+
+  identity:
+    name: Identity password proof
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Part (a) of the phase 2 password proof, which is the whole of the part a
+      # script can do. It starts the identity service against a throwaway
+      # Postgres, imports hashes written by the library the legacy application
+      # hashes with, and signs in as each. Part (b) is ten real members signing
+      # in to staging, and no job can stand in for it.
+      #
+      # The slowest job here: the identity service applies its own schema and
+      # seeds an instance before it answers.
+      - name: Hashes the lab already holds, imported and signed in with
+        run: ./tools/identity/tests/run.sh
+
+  ceilings:
+    name: File and function ceilings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Rule 6 of CLAUDE.md. Two tools, because no candidate priced in
+      # docs/decisions/0005-file-and-function-ceilings.md measures all five
+      # ceilings: ruff carries complexity, parameter count and nesting depth,
+      # and the script beside it counts the two kinds of line nothing else
+      # counts. Ruff arrives as a pinned container, so this job installs
+      # nothing.
+      - name: Every ceiling in rule 6
+        run: ./tools/ceilings/run.sh

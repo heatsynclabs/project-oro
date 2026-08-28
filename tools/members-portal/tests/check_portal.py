@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Prove the members portal, through Caddy, without a browser.
 
-Most checks here call the running development stack over HTTPS. The rest read
-two files that have to agree with each other, or run the command the page tells
-a reader to run when nothing answers.
+Most checks here call the running development stack over plain HTTP, which is
+the only scheme it serves. ADR 0003 says why. The rest read two files that have
+to agree with each other, or run the command the page tells a reader to run
+when nothing answers.
 
 What this cannot do is execute the page's JavaScript, so it never sees the
 rendered document. It asserts the two things either side of that: the copy and

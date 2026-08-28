@@ -35,22 +35,25 @@ This table is the single place this is tracked. Update it as things land.
 | `db/seed/001_reference.sql` | **Built.** Tiers, roles, governance parameters |
 | `tools/voice-check/` prose gate | **Built.** 77 tests |
 | `tools/mock/` mock server for the API contract | **Built.** `make mock-test`, 13 checks, run by CI |
-| `tools/development/tests/run.sh` | **Built.** 20 checks over both stack shapes, `make development-test`. It reads the deployment's certificate issuer and asserts development answers plain HTTP with no redirect. Not in CI |
+| `tools/development/tests/run.sh` | **Built.** 23 checks over both stack shapes, `make development-test`. It reads the deployment's certificate issuer, asserts a laptop answers plain HTTP with no redirect, and calls the identity service under `id.` on the deployment and on its own port on a laptop. In CI |
 | `.githooks/commit-msg` | **Built.** Install it, see section 3 |
 | The plan documents | **Written.** Reviewed adversarially twice |
-| Zitadel and its Postgres | Not started. Phase 2, and it is the next phase. Section 4 records the choice |
+| The identity service, in the stack | **Built.** Zitadel 4.17.1 in `compose.yaml` with its own database and login on the existing Postgres server, ten minute access tokens, and a first instance created from configuration with no console click. Reached at `id.HOSTNAME` on a deployment and on `ORO_IDENTITY_PORT` on a laptop. [ADR 0004](docs/decisions/0004-identity-service.md) |
+| `tools/identity/` password proof | **Built.** 16 checks, `make identity-test`, in CI. Part (a) of the phase 2 proof: hashes written by bcrypt-ruby at cost 10 with no pepper, imported and signed in with. It found a real defect, in `tools/identity/README.md` |
+| The four OIDC clients, refresh token rotation, GANTRY on the hosted screens | Not started. Phase 2, and section 6 says what is in the way |
 | `services/api/` | Not started. Phase 3 |
 | `services/door/` port, fake, conformance suite | **Built.** 104 tests, `services/door/tests/run.sh` |
 | `services/door/` HTTP API, reconcile loop, real socket against hardware | Not started. Phase 5 |
 | `apps/members/` | **Built against the contract mock.** The six self service views, read only, no sign in. `docs/plan/api-design.md` section 7 step 2, not phase 3. See its README |
-| `tools/members-portal/tests/` | **Built.** 22 checks over the portal through Caddy, `make portal-test`. No browser, so it does not see the rendered document. Not in CI |
+| `tools/members-portal/tests/` | **Built.** 22 checks over the portal through Caddy, `make portal-test`. No browser, so it does not see the rendered document. In CI |
 | `apps/` admin, door | Not started. Phase 3 onward |
 | `packages/gantry-tokens` | **Built.** The token layer, the two measured defects fixed, and the contrast checker over the theme by ground cross product. 65 tests plus 112 measured pairs, `packages/gantry-tokens/tests/run.sh`. Sixteen pairs are triaged in `validator/known-failures.txt`, four of them a real `--g-ink-3` defect held open on a brand colour decision |
 | `packages/gantry-css`, `gantry-vue` | Not started. Later in phase 1 and after |
-| `compose.yaml`, `compose.development.yaml`, `Makefile`, `.env.example`, `caddy/` | **Built.** Postgres and Caddy. The override file adds the mock and points Caddy at the development routes, so the portal and the mock share one origin over plain HTTP. `make up` on a clean machine, proven |
+| `compose.yaml`, `compose.development.yaml`, `Makefile`, `.env.example`, `caddy/`, `db/init/` | **Built.** Postgres, Caddy and the identity service. The override file adds the mock, points Caddy at the development routes and publishes the identity service on a port, so the portal and the mock share one origin over plain HTTP and a browser can open a login screen. `make up` on a clean machine, proven |
 | `docs/api/members-v1.yaml` | **Written.** OpenAPI 3.1.1, validates clean. Still needs the review by somebody who did not write it that phase 1 asks for |
-| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Seven jobs, green on a real runner in 22 seconds |
-| Import boundary and file ceiling linting | Not started. Phase 0. Two files need an exemption when this lands: `docs/api/members-v1.yaml` at 1,923 lines and `packages/gantry-tokens/tokens.css` at 398. The portal used to ship a third, a byte identical copy of the token layer, and it is gone. Two functions in `tools/voice-check/checks.py` already break rule 6 and nothing catches them: `_report` takes 7 parameters against a ceiling of 4, and `check_rhythm` is 53 lines against 50. Fix those rather than exempting them |
+| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Eleven jobs. The seven that existed were green on a real runner in 22 seconds on 2026-08-28. The four added since are slower, and all four start containers, the ceilings one included: it runs ruff as a pinned image rather than installing it |
+| File and function ceiling linting | **Built.** `make ceilings`, in CI, with 8 tests of its own that each put one violation in a throwaway repository and assert it is caught. Ruff in a pinned container for complexity, parameters and nesting depth, and `tools/ceilings/check_ceilings.py` for the two ceilings no tool measures. [ADR 0005](docs/decisions/0005-file-and-function-ceilings.md). Two files are exempt with a reason, and an exemption that stops being needed fails the check |
+| Import boundary linting | **Decided, not built.** [ADR 0006](docs/decisions/0006-import-boundaries.md): there is no TypeScript at all and only `services/door` is an importable Python package, so neither gate has anything to refuse yet. Each lands with the first code that gives it something |
 | `tools/attributions/generate.py` | Not started. Needs a lockfile first |
 | `docs/runbooks/` | Not started. Created with the first runbook |
 | `CODEOWNERS`, `.sops.yaml` | Not started. Created with the first real name and the first secret |
@@ -75,8 +78,11 @@ python3 tools/voice-check/test_behaviour.py
 make mock-test                           # the API contract mock, started, called, removed
 
 make development                         # portal at /, contract mock under /v1, one origin, plain HTTP
-make development-test                    # 20 checks over both stack shapes, throwaway project
+make development-test                    # 23 checks over both stack shapes, throwaway project
 make portal-test                         # 22 checks over the members portal, likewise
+make identity-test                       # 16 checks over the phase 2 password proof, likewise
+
+make ceilings                            # rule 6, in a pinned ruff and a line counter
 
 ./tools/ci/voice-gate.sh                 # the prose gate over every tracked file
 ./tools/ci/voice-gate.sh origin/main     # or only over what a branch changed
@@ -85,13 +91,13 @@ make portal-test                         # 22 checks over the members portal, li
 npx @redocly/cli@2.49.0 lint docs/api/members-v1.yaml   # the API contract
 ```
 
-CI runs most of that block, and the exceptions matter more than the rule.
-`--update` rewrites the expected
-files. Those two could never be jobs. **`make development-test` and
-`make portal-test` could be and are not**, so a change to `caddy/`,
-`compose.yaml`, `compose.development.yaml` or `apps/members/` is checked only by
-whoever remembers to run them. Section 2 marks both as not in CI. Adding the two
-jobs is small work nobody has done.
+CI runs all of that except two lines, and those two could never be jobs:
+`--update` rewrites the expected files, and `make development` starts a stack
+and leaves it running. Everything else in the block has a job.
+
+Four of those jobs start containers and are slow. The identity one is the
+slowest by a wide margin, because that service applies its own schema and seeds
+an instance before it answers anything.
 
 `tools/ci/` holds the two checks that need a git range, so what CI runs is the
 same script a person runs rather than a copy of it that drifts. The contract lint
@@ -99,10 +105,12 @@ reports three warnings and that is expected;
 `docs/decisions/0001-openapi-toolchain.md` says which and why.
 
 `make check` runs every suite in one command, which is what a person wants at
-2am. The six runners still work on their own.
+2am. The eight runners still work on their own.
 
-`make up` starts Postgres and Caddy. Copy `.env.example` to `.env` and set every
-value in it first: nothing there has a default, and `make up` refuses rather than
+`make up` starts Postgres, Caddy and the identity service, and runs one
+container that exists only to hand the identity service a volume it can write
+to, which is why `make ps` shows something exited and healthy at the same time.
+Copy `.env.example` to `.env` and set every value in it first: nothing there has a default, and `make up` refuses rather than
 starting on a value nobody chose.
 
 `db/tests/run.sh` needs Docker and nothing else. It creates a throwaway
@@ -119,9 +127,13 @@ been run more than twenty times consecutively without a flake.
 Each has reasoning behind it. Do not silently reverse one; supersede it with an
 ADR (`docs/decisions/0000-template.md`).
 
-- **Identity: Zitadel.** The only candidate that imports the existing Devise
-  bcrypt hashes with no fork and no bespoke login UI. Verified pepper is off and
-  cost is 10.
+- **Identity: Zitadel.** It imports the existing Devise bcrypt hashes with no
+  fork and no bespoke login UI, proven against a running instance on 2026-08-28.
+  [ADR 0004](docs/decisions/0004-identity-service.md), which also corrects the
+  claim this line used to make: Zitadel is not the only candidate that can do
+  this. Logto can too, and Keycloak, the obvious default, cannot without a JAR
+  the lab would maintain forever. Pepper is off and cost is 10 in the committed
+  `devise.rb`, and that still wants confirming against the deployed file.
 - **API: one handwritten FastAPI service, not PostgREST.** Row level security
   underneath, so there is no bypass to take.
 - **Deployment: portable Docker Compose.** No vendor anywhere. It must run on the
@@ -168,22 +180,35 @@ phases at once.
    downstream is built against it.
 5. Get pull request 1 reviewed and merged. CI is green, so what is left there is
    a person reading the diff.
-6. Add the import boundary and file ceiling linting phase 0 still owes. The
-   section 2 row says what it will find on the first run, including two
-   functions in the prose gate that already break rule 6.
-7. Give `make development-test` and `make portal-test` CI jobs. They are the
-   only two suites nothing gates.
+6. Register the four OIDC clients against the identity service, turn on refresh
+   token rotation, and put GANTRY on the hosted screens. All three are phase 2
+   and none of them is done. Nothing is in the way: the bootstrap token that
+   would do it is durable and the API calls are known. It is the work that ran
+   out of session.
+
+   Do it in the same change as the thing that follows from it, which is
+   revoking that token. It grants everything, it sits in a volume until somebody
+   removes it, and it expires in a year with nothing watching. Registering the
+   clients is the moment it stops being needed. ADR 0004 leaves open whether it
+   should be minted at all once there is another way in.
+7. Find out whether Logto has the 72 byte defect. It is an hour of work and the
+   answer could change which identity service this project runs. ADR 0004 has
+   the exact test.
 
 ### The build that is actually left
 
-Do not read the list above as nearly done. Four of the six phases have not
-started. Each row below splits what a session can build today from what waits on
+Do not read the list above as nearly done. The plan has seven phases, numbered
+0 to 6, and not one of them has met its exit criterion. Phase 0 has not started
+at all, because it needs a shell on hsl-web. Phase 1 has most of its work built
+and cannot exit without a contract review. Phase 2 has the left column of its
+first row built and cannot exit without volunteers. Phases 3, 4, 5 and 6 have
+not started. Each row below splits what a session can build today from what waits on
 a person, because the two get confused and the confusion produces a phase that
 looks finished and is not.
 
 | Phase | Buildable now | Waits on a person |
 |---|---|---|
-| 2, identity | Zitadel and its own Postgres in the stack, the four clients, ten minute tokens with rotating refresh, GANTRY on the hosted screens, and the whole synthetic half of the password proof: bcrypt at cost 10 with no pepper, including a password over 72 bytes, one with non ASCII characters, one with a trailing space | The real half. Ten members signing in to staging with the password they already use, which needs the production hashes and volunteers |
+| 2, identity | **Partly built.** Done: the identity service and its own database in the stack, ten minute tokens, and the whole synthetic half of the password proof. Left: the four clients, refresh token rotation, and GANTRY on the hosted screens | The real half. Ten members signing in to staging with the password they already use, which needs the production hashes and volunteers. Choose that cohort for a range of password habits, not only a range of account ages: the 72 byte defect is invisible until somebody hits it |
 | 3, member management | `services/api/`, the FastAPI service against the merged contract, connecting as `oro_api` and setting the member identity per transaction so the policies apply to it too. Repointing `apps/members` off the mock and onto it | The migration. It needs the production dump, and section 5 of `people-and-custody.md` lists six decisions that are judgement rather than code |
 | 4, admin | `apps/admin`, the two approver flow in the service over the database rules that already enforce it, card issue and revoke with a reason, waiver status for hosts | The HYH vote. If it fails, the trigger and the constraint are dropped and the portal loses a step. That branch is already written down |
 | 5, door | The door service HTTP API, the reconcile loop, the SQLite snapshot and the buffered event log, all against the fake that exists and passes the conformance suite | The real adapter, the VLAN, and a week of read only running beside the live system |
@@ -295,6 +320,76 @@ which is a defect and a detector for it where one file does. `make portal-test`
 fails if that copy comes back. Mounting a file inside `/srv/members` is not open
 anyway: Docker creates the parent directory of a file bind and that path is
 itself a read only mount, which fails at container start.
+**A database volume older than `db/init/` has no identity database, and the
+stack will not start on it.** The postgres image runs
+`/docker-entrypoint-initdb.d` once, against an empty data directory, and never
+again. Anybody who ran `make up` before the identity service landed has a volume
+that predates `db/init/001_identity_role.sql`, and the db healthcheck now asks
+for the `identity` database, so it reports unhealthy and `make up` times out.
+The message from `make up` names this. The fix is
+`docker compose down --volumes`, which is safe today because that stack's
+database is empty by design and `make down` deliberately keeps the volume, or
+running the two statements in that file by hand with `make psql`.
+
+**A bcrypt password over 72 bytes signs in to the Rails app and not to the
+identity service.** Measured, both ways, on 2026-08-28. Ruby's bcrypt truncates
+its input at 72 bytes and verifies against the first 72, so the legacy
+application accepts a password of any length. Go's refuses, and the identity
+service turns that refusal into HTTP 500 with the text `An internal error
+occurred`, not into a wrong password. The boundary is exact: 72 bytes signs in,
+73 does not.
+
+Bytes, not characters. A passphrase of 27 Japanese characters is 81 bytes and
+nothing about it looks long. And the members it affects cannot be found in
+advance, because finding them would need the plaintext. `tools/identity/README.md`
+carries the measurement and the three options. The suite asserts the behaviour as
+it stands, so an improvement fails a check rather than passing quietly.
+
+**docker cp cannot read a file on a tmpfs.** It reads the container filesystem,
+and a tmpfs is not part of it, so the file is written correctly and the copy
+reports it missing. Measured on 2026-08-28 with `docker exec` printing a file
+that `docker cp` said was not there. This cost an hour, because the identity
+image is distroless and `docker cp` is the only way to read anything out of it,
+so a tmpfs looked like the right place for a token that should not touch disk
+and was in fact the one place it could not be read from. It is a named volume
+now, and `identity_bootstrap` owns making that volume writable.
+
+**A named volume is created owned by root, and the identity service runs as uid
+1000.** Without the `identity_bootstrap` service that chowns it first, the setup
+writes half the first instance, dies on `open /bootstrap/pat: permission denied`,
+and then cannot retry: the second attempt fails on a unique constraint over the
+instance domain it already wrote, and `restart: unless-stopped` puts it in a
+loop that compose still counts as started. The recovery from that state is
+`docker compose down --volumes`. There is no forward path.
+
+**The variable that reads as though it sets the access token lifetime does
+not.** `ZITADEL_OIDC_DEFAULTACCESSTOKENLIFETIME` is the fallback for an instance
+that has no setting of its own, and setup gives this instance one, so setting it
+alone leaves tokens at the 12 hour default. Measured: a real token through a real
+grant carried 43200 seconds with that variable set to `10m`. The one that works
+is `ZITADEL_DEFAULTINSTANCE_OIDCSETTINGS_ACCESSTOKENLIFETIME`, and it seeds the
+instance at setup, so changing it later needs the instance updated through the
+API rather than a restart. `tools/identity/tests/check_identity.py` reads the
+`exp` and `iat` claims off a real token and asserts 600, so this cannot come
+back quietly.
+
+**The identity service resolves which instance a call is for from the Host
+header.** A call to `127.0.0.1` on the right port is refused with `Instance not
+found. Make sure you got the domain right`, which reads like a routing fault and
+is not one. Use the name it was configured with, or `curl --resolve`.
+
+**The bootstrap token is written once, and it is durable.** The first setup
+writes it into the `identity_bootstrap` volume and every later start skips that
+step, because it records that it ran. It survives restarts and container
+recreates, measured on 2026-08-28 by recreating the container and reading the
+same token back. Only `docker compose down --volumes` removes it, and that
+removes the identity database in the same breath, so there is no state where the
+instance exists and the token does not.
+
+The risk is the other way round. It administers the whole instance, it expires
+in a year, and nothing revokes it. Section 6 item 6 pairs registering the four
+clients with revoking it, because that is the moment it stops being needed.
+
 **Slot 200 arithmetic.** The EEPROM base address is 24, not 0, so slot 200 sits
 at `24 + 200*5 = 1024` and writes past the end of a 1024 byte EEPROM, onto the
 alarm state bytes. Slot 199 ends exactly at byte 1023. Somebody will try to

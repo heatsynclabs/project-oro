@@ -42,11 +42,16 @@ def suppressed(raw: str, line: int | None) -> bool:
     return 0 < line <= len(lines) and bool(rules.LINE_PRAGMA.search(lines[line - 1]))
 
 
-def _report(raw: str, out: list[Finding], level: str, rule: str,
-            message: str, offset: int, excerpt: str) -> None:
-    line = line_at(raw, offset)
-    if not suppressed(raw, line):
-        out.append(Finding(level, rule, message, line, excerpt))
+def _report(raw: str, out: list[Finding], offset: int, finding: Finding) -> None:
+    """File a finding at an offset in the raw text, unless that line opts out.
+
+    The finding arrives without a line number because only this function knows
+    the offset it came from, and the line is what the `voice-ok:` pragma is
+    keyed on.
+    """
+    finding.line = line_at(raw, offset)
+    if not suppressed(raw, finding.line):
+        out.append(finding)
 
 
 # --------------------------------------------------------------------------
@@ -54,27 +59,30 @@ def _report(raw: str, out: list[Finding], level: str, rule: str,
 def check_dashes(raw: str, prose: str, out: list[Finding]) -> None:
     for char, name in rules.DASH_CHARS:
         for match in re.finditer(re.escape(char), raw):
-            _report(raw, out, "error", "dash",
-                    f"contains an {name}. Use a comma, a colon, or a full stop",
-                    match.start(), raw[max(0, match.start() - 35):match.start() + 35])
+            _report(raw, out, match.start(), Finding(
+                "error", "dash",
+                f"contains an {name}. Use a comma, a colon, or a full stop",
+                excerpt=raw[max(0, match.start() - 35):match.start() + 35]))
 
     for pattern, label in rules.DASH_DODGES:
         for match in re.finditer(pattern, prose, re.I):
-            _report(raw, out, "error", "dash-dodge",
-                    f"{label} standing in for an em dash. Restructure the "
-                    "sentence, do not substitute punctuation",
-                    match.start(), match.group(0))
+            _report(raw, out, match.start(), Finding(
+                "error", "dash-dodge",
+                f"{label} standing in for an em dash. Restructure the "
+                "sentence, do not substitute punctuation",
+                excerpt=match.group(0)))
 
 
 def check_emoji(raw: str, out: list[Finding]) -> None:
     for match in rules.EMOJI.finditer(raw):
         if match.group(0) in rules.DINGBAT_ALLOWED:
             continue
-        _report(raw, out, "error", "emoji",
-                f"contains the emoji {match.group(0)!r}. Use an inline SVG from "
-                "the icon set. An emoji has no accessible name and cannot take "
-                "a token colour",
-                match.start(), raw[max(0, match.start() - 25):match.start() + 25])
+        _report(raw, out, match.start(), Finding(
+            "error", "emoji",
+            f"contains the emoji {match.group(0)!r}. Use an inline SVG from "
+            "the icon set. An emoji has no accessible name and cannot take "
+            "a token colour",
+            excerpt=raw[max(0, match.start() - 25):match.start() + 25]))
 
 
 def check_attribution(raw: str, out: list[Finding]) -> None:
@@ -100,9 +108,9 @@ def check_words(raw: str, prose: str, out: list[Finding]) -> None:
         for word in group:
             pattern = rf"\b{re.escape(word)}{rules.INFLECTIONS}\b"
             for match in re.finditer(pattern, prose, re.I):
-                _report(raw, out, "error", rule,
-                        f"{match.group(0)!r} is {note}",
-                        match.start(), match.group(0))
+                _report(raw, out, match.start(), Finding(
+                    "error", rule, f"{match.group(0)!r} is {note}",
+                    excerpt=match.group(0)))
 
 
 def check_constructions(raw: str, prose: str, out: list[Finding]) -> None:
@@ -114,8 +122,8 @@ def check_constructions(raw: str, prose: str, out: list[Finding]) -> None:
     ):
         for pattern, why in group:
             for match in re.finditer(pattern, prose, re.I):
-                _report(raw, out, level, rule, f"uses {why}",
-                        match.start(), match.group(0))
+                _report(raw, out, match.start(), Finding(
+                    level, rule, f"uses {why}", excerpt=match.group(0)))
                 break       # one per pattern per file is enough to make the point
 
 
@@ -126,15 +134,24 @@ def check_rhythm(prose: str, out: list[Finding]) -> None:
     build. Eight sentences is the floor before any of it means anything.
     """
     sents = sentences(prose)
-    if len(sents) >= 8:
-        lengths = [len(s.split()) for s in sents]
-        mean = sum(lengths) / len(lengths)
-        if mean > 8 and pstdev(lengths) / mean < 0.32:
-            out.append(Finding(
-                "warn", "rhythm",
-                f"sentence length is unnaturally uniform (mean {mean:.0f} words, "
-                f"spread {pstdev(lengths):.1f}). Vary it"))
+    _check_sentence_shape(sents, out)
+    _check_repetition(prose, out)
+    _check_paragraph_shape(prose, sents, out)
 
+
+def _check_sentence_shape(sents: list[str], out: list[Finding]) -> None:
+    if len(sents) < 8:
+        return
+    lengths = [len(s.split()) for s in sents]
+    mean = sum(lengths) / len(lengths)
+    if mean > 8 and pstdev(lengths) / mean < 0.32:
+        out.append(Finding(
+            "warn", "rhythm",
+            f"sentence length is unnaturally uniform (mean {mean:.0f} words, "
+            f"spread {pstdev(lengths):.1f}). Vary it"))
+
+
+def _check_repetition(prose: str, out: list[Finding]) -> None:
     triads = re.findall(r"\b\w[\w\s]{2,28}, [\w\s]{2,28}, and [\w\s]{2,28}\b", prose)
     if len(triads) >= 3:
         out.append(Finding(
@@ -150,6 +167,8 @@ def check_rhythm(prose: str, out: list[Finding]) -> None:
                 "warn", "hedging",
                 f"{hedges} hedges in {len(words)} words. Say the thing"))
 
+
+def _check_paragraph_shape(prose: str, sents: list[str], out: list[Finding]) -> None:
     for para in paragraphs(prose):
         if re.match(r"(?i)^(in (summary|conclusion|short)|to (sum up|summarise|"
                     r"summarize)|overall,|ultimately,)", para):

@@ -62,7 +62,7 @@ presented as free.
 
 | Layer | Choice | Why | What replaces it |
 |---|---|---|---|
-| Identity | Zitadel | The only candidate that imports Devise bcrypt with no fork, no third party JAR in the credential path, and no bespoke login UI. Verified against its own `cmd/defaults.yaml`. | Logto, if the volunteers are a TypeScript group or the import proves difficult |
+| Identity | Zitadel | Imports Devise bcrypt with no fork, no third party JAR in the credential path, and no bespoke login UI, proven against a running instance rather than read about. [ADR 0004](../decisions/0004-identity-service.md) | Logto, which does the same and was for a long time wrongly recorded here as unable to |
 | Members API | FastAPI, SQLAlchemy 2.0, Alembic, synchronous | Holds the OpenAPI contract, the workflow rules, and the call into the door service. Same language as the door service, so one backend language | Fastify with Kysely, if the maintainers are a TypeScript group |
 | Database | Postgres 18, RLS enabled and forced | Invariants live where they cannot be bypassed | Nothing |
 | Door service | FastAPI plus a controller adapter | Section 4 | Nothing. This is the one bespoke component and it always will be |

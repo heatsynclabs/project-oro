@@ -1,0 +1,9 @@
+# Files allowed past the 300 line ceiling in rule 6 of CLAUDE.md, each with the
+# reason it is allowed. One path and one reason per line, separated by two
+# spaces. Rule 6: a blanket glob is not a reason.
+#
+# A file listed here that is now under the ceiling is reported as a stale
+# exemption and fails this check, so the list cannot quietly outlive its reason.
+
+docs/api/members-v1.yaml  The API contract. One document describing one API, and splitting it across files would put the shape of the contract in a directory listing rather than in the contract. Redocly reads it whole and the mock serves it whole.
+packages/gantry-tokens/tokens.css  The token layer, which is one cascade. A token split across two files is a token whose value depends on load order, which is the defect this package was extracted to remove.

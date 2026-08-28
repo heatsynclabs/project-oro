@@ -1,15 +1,14 @@
 #!/bin/sh
-# Prove the development profile, and prove that not asking for it changes
-# nothing.
+# Prove what a laptop adds to the stack, and prove that not asking for it
+# changes nothing.
 #
 #   tools/development/tests/run.sh
 #
-# The two profiles serve different schemes and that is what most of this
-# checks. The deployment answers over TLS on the HTTPS port, with a certificate
-# from Caddy's own authority. The development profile answers over plain HTTP
-# on the HTTP port, with no redirect anywhere, because a certificate no browser
-# trusts costs a volunteer an administrator password before they can read a
-# local page.
+# The two shapes serve different schemes and that is what most of this checks.
+# The deployment answers over TLS on the HTTPS port, with a certificate from
+# Caddy's own authority. A laptop answers plain HTTP on the HTTP port, with no
+# redirect anywhere, because a certificate no browser trusts costs a volunteer
+# an administrator password before they can read a local page.
 #
 # Needs docker and curl. Runs as its own compose project on its own ports and
 # supplies its own values for everything compose reads, so a stack somebody is
@@ -24,11 +23,20 @@ export ORO_HOSTNAME=localhost
 export ORO_TLS=internal
 export ORO_HTTP_PORT=8081
 export ORO_HTTPS_PORT=8444
-# Invented, used by nothing, and removed with the volume when this exits.
+export ORO_IDENTITY_PORT=8185
+# Its own, because the default is shared and a stack started by make development
+# is already holding it. Every other port here is chosen for the same reason.
+export ORO_MOCK_PORT=4011
+# Invented, used by nothing, and removed with the volumes when this exits.
 export ORO_DB_PASSWORD="throwaway-$$"
+export ORO_IDENTITY_DB_PASSWORD="throwaway-identity-$$"
+# Exactly 32 bytes, which is what the identity service requires of it.
+export ORO_IDENTITY_MASTERKEY="throwaway-master-key-0123456789a"
+export ORO_IDENTITY_ADMIN_USERNAME="fixture-admin"
+export ORO_IDENTITY_ADMIN_PASSWORD="Fixture-Handover-1!"
 
-# Named for the port each one is, not for a profile, because one check below
-# calls the HTTPS origin while the development profile is the one that is up.
+# Named for the port each one is, not for the shape, because one check below
+# calls the HTTPS origin while the development shape is the one that is up.
 HTTPS_ORIGIN="https://$ORO_HOSTNAME:$ORO_HTTPS_PORT"
 HTTP_ORIGIN="http://$ORO_HOSTNAME:$ORO_HTTP_PORT"
 # What Caddy issues when ORO_TLS is "internal". Read from a running deployment
@@ -95,6 +103,16 @@ body_holds() {
 
 running_services() { compose ps --services --status running | sort | xargs; }
 
+# The identity service publishes its own discovery document, and it refuses any
+# call whose Host header is not the domain it was configured with, so this is
+# both a check that Caddy routes the name and a check that the service agrees
+# it owns it.
+identity_status() {
+  curl -sk -o /dev/null -w '%{http_code}' \
+    --resolve "id.$ORO_HOSTNAME:$1:127.0.0.1" \
+    "https://id.$ORO_HOSTNAME:$1/.well-known/openid-configuration"
+}
+
 project_is_valid() {
   if compose_dev config >/dev/null 2>&1; then
     echo yes
@@ -103,10 +121,10 @@ project_is_valid() {
   fi
 }
 
-# The wildcard is what reaches a service in a profile, and it is the form the
-# logs target in the Makefile uses. Without it compose resolves the service
-# list from the deployment and the mock is not in it, so the one service the
-# profile adds is the one whose output the reader cannot see.
+# Both files, which is the form the logs target in the Makefile uses. Without
+# the override compose resolves the service list from the deployment and the
+# mock is not in it, so the one service a laptop adds is the one whose output
+# the reader cannot see.
 logs_reach_the_mock() {
   if compose_dev logs --tail 1 2>/dev/null | grep -q '^mock-1'; then
     echo yes
@@ -121,9 +139,9 @@ check "development needs no environment prepared first" \
 echo
 
 echo "Bringing up the deployment default on ports $ORO_HTTP_PORT and $ORO_HTTPS_PORT"
-compose up --detach --wait --wait-timeout 120 >/dev/null
+compose up --detach --wait --wait-timeout 300 >/dev/null
 check "compose.yaml alone starts only the deployment" \
-  "caddy db" "$(running_services)"
+  "caddy db identity" "$(running_services)"
 check "the root says nothing is deployed" "404" "$(status_of "$HTTPS_ORIGIN/")"
 # The status code alone cannot tell a considered front page from a bare 404,
 # and a bare 404 is what deployment.caddyfile exists to avoid. Read the
@@ -136,6 +154,12 @@ check "the deployment serves it over TLS from Caddy's own authority" \
 check "the health route answers" "200" "$(status_of "$HTTPS_ORIGIN/health")"
 check "the deployment sends plain HTTP to HTTPS" \
   "308" "$(status_of "$HTTP_ORIGIN/")"
+# id.localhost does not resolve on a machine with no entry for it, so this
+# names the address itself rather than asking a resolver. That is also why
+# make development publishes the identity service on a port instead of routing
+# it: a volunteer opening a login screen cannot pass --resolve to a browser.
+check "the deployment serves the identity service under id" \
+  "200" "$(identity_status "$ORO_HTTPS_PORT")"
 # The port is missing from that target and that is a known defect, warned about
 # in .env.example: Caddy cannot see the host side of a published port, so it
 # names the standard one. On a deployment holding 80 and 443, which is what
@@ -144,10 +168,10 @@ check "and names the hostname it was asked for" \
   "https://$ORO_HOSTNAME/" "$(redirect_from "$HTTP_ORIGIN/")"
 
 echo
-echo "Bringing up the development profile"
-compose_dev up --detach --wait --wait-timeout 180 >/dev/null
+echo "Bringing up what a laptop adds"
+compose_dev up --detach --wait --wait-timeout 300 >/dev/null
 check "the override adds the mock and nothing else" \
-  "caddy db mock" "$(running_services)"
+  "caddy db identity mock" "$(running_services)"
 check "the portal is served at the root over plain HTTP" \
   "200" "$(status_of "$HTTP_ORIGIN/")"
 check "nothing redirects the reader anywhere" "" "$(redirect_from "$HTTP_ORIGIN/")"
@@ -160,11 +184,20 @@ check "/v1/nope is refused" "404" "$(status_of "$HTTP_ORIGIN/v1/nope")"
 check "/v1/nope is refused by the mock rather than by Caddy" "yes" \
   "$(body_holds "$HTTP_ORIGIN/v1/nope" 'stoplight.io/prism/errors')"
 check "the health route still answers" "200" "$(status_of "$HTTP_ORIGIN/health")"
-# There is no TLS listener at all under this profile, so the HTTPS port answers
+# There is no TLS listener at all under this shape, so the HTTPS port answers
 # nothing. A reader who typed https by habit gets a connection error rather than
 # a certificate they have to decide about.
 check "the HTTPS port answers nothing" "no" "$(reaches_tls "$HTTPS_ORIGIN/")"
 check "the log of every service reaches the mock" "yes" "$(logs_reach_the_mock)"
+# The shape a volunteer opens in a browser, and the one nothing checked until
+# this line existed. It answers on its own port rather than under id., because
+# that name does not resolve on a machine with no entry for it. The identity
+# service refuses any call whose Host is not the domain it was configured with,
+# so a plain 200 here is also proof that the two shapes agree about its name.
+check "the identity service answers on its own port over plain HTTP" \
+  "200" "$(status_of "http://$ORO_HOSTNAME:$ORO_IDENTITY_PORT/.well-known/openid-configuration")"
+check "and publishes an issuer a client can use" "yes" \
+  "$(body_holds "http://$ORO_HOSTNAME:$ORO_IDENTITY_PORT/.well-known/openid-configuration" "\"issuer\":\"http://$ORO_HOSTNAME:$ORO_IDENTITY_PORT\"")"
 
 echo
 echo "Taking it down"

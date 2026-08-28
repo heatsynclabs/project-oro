@@ -16,8 +16,8 @@ service, because the service is not built. Nothing is deployed.
 
 | | |
 |---|---|
-| Built | The schema and its row level security, 171 database assertions. The members API contract as OpenAPI, and a mock that serves it. The door controller port with its fake and 104 conformance tests. The GANTRY token layer with a contrast validator. A Postgres and Caddy stack. A members portal, read only, against the mock. CI on seven jobs, a prose gate with 77 tests, a commit hook |
-| Not built | The API service and the identity service, so nothing yet reaches the database over HTTP. The door service itself. The admin and door apps. `gantry-css` and `gantry-vue` |
+| Built | The schema and its row level security, 171 database assertions. The members API contract as OpenAPI, and a mock that serves it. The door controller port with its fake and 104 conformance tests. The GANTRY token layer with a contrast validator. A stack of Postgres, Caddy and the identity service, with the proof that it can hold the passwords members already have. A members portal, read only, against the mock. CI on eleven jobs, a prose gate with 77 tests, a commit hook |
+| Not built | The API service, so nothing yet reaches the members database over HTTP. The identity service is running but no client is registered against it. The door service itself. The admin and door apps. `gantry-css` and `gantry-vue` |
 
 `HANDOFF.md` tracks this in detail and is the file to update when something
 lands.
@@ -54,14 +54,16 @@ The three `make` targets need Docker Compose, and each one builds and tears down
 its own project, so none of them touches a stack you have up.
 
 To bring the stack up, copy `.env.example` to `.env`, set every value in it, and
-run `make up`. Nothing in that file has a default and the stack refuses to start
-on a value nobody chose. `make help` lists the rest.
+run `make up`. Nothing the deployment needs has a default, and the stack refuses
+to start on a value nobody chose. The two ports only a laptop reads do have one,
+and `.env.example` says which. `make help` lists the rest.
 
-`make development` starts the same stack with two additions, for a browser to
-open: the members portal at the root, and the API contract served as a mock
-under `/v1`, both behind Caddy on one origin. They come from an override file,
-`compose.development.yaml`, so `make up` starts what it always started. That profile serves plain HTTP on
-`ORO_HTTP_PORT`, so a browser opens it with no certificate to accept, and
+`make development` starts the same stack with additions for a browser to open:
+the members portal at the root, the API contract served as a mock under `/v1`,
+both behind Caddy on one origin, and the identity service on its own port. They
+come from an override file, `compose.development.yaml`, so `make up` starts what
+it always started. A laptop serves plain HTTP on `ORO_HTTP_PORT`, so a browser
+opens it with no certificate to accept, and
 `docs/decisions/0003-plain-http-for-development.md` says what that trades away.
 A deployment is unchanged and still serves TLS.
 
@@ -97,11 +99,15 @@ tools/ci/            the two checks CI runs that need a git range
 tools/mock/          the pinned mock server, and what proves it serves the contract
 tools/development/   checks over both stack shapes
 tools/members-portal/ checks over the portal, through Caddy
+tools/identity/      the phase 2 password proof, and the hashes it runs on
+tools/ceilings/      rule 6, in a pinned ruff and a line counter
 
-caddy/               TLS, the health route, and the routes each profile serves
-compose.yaml         Postgres and Caddy. Makefile wraps it
-compose.development.yaml  what a laptop adds: the mock, and the routes for it
-.github/workflows/   CI. Seven jobs
+caddy/               TLS, the health route, and the routes each shape serves
+compose.yaml         Postgres, Caddy and the identity service. Makefile wraps it
+compose.development.yaml  what a laptop adds: the mock, the routes for it, and a
+                     port on the identity service
+db/init/             the identity role and its database, made once
+.github/workflows/   CI. Eleven jobs
 ```
 
 ## Reading order

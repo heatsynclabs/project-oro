@@ -128,31 +128,53 @@ def mask_quoted_blocks(text: str) -> str:
     attribution check for the whole file.
     """
     out = list(text)
-    depth = 0
+    for start, end in _quoted_spans(text, len(out)):
+        _blank_span(out, start, end)
+    return "".join(out)
+
+
+def _blank_span(out: list[str], start: int, end: int) -> None:
+    """Replace a span with spaces, leaving the newlines where they were.
+
+    The masked text has to stay the same length as the raw text, because every
+    check reports offsets into the raw file and the line numbers come from
+    counting newlines in it.
+    """
+    for i in range(start, end):
+        if out[i] != "\n":
+            out[i] = " "
+
+
+def _quoted_spans(text: str, length: int) -> list[tuple[int, int]]:
+    """Where the marked blocks are, allowing for one nested inside another.
+
+    An opener inside an open block does not start a second span, and only the
+    matching closer ends the outer one. An unclosed block runs to the end of the
+    file, which is the reading that fails safe: the writer meant to quote and
+    forgot the closing marker, so the checks stay off rather than firing on
+    somebody else's words.
+    """
     open_re = re.compile(r"<!--\s*voice-check:\s*quote\s*-->")
     close_re = re.compile(r"<!--\s*/voice-check:\s*quote\s*-->")
     events = sorted(
         [(m.start(), m.end(), 1) for m in open_re.finditer(text)]
         + [(m.start(), m.end(), -1) for m in close_re.finditer(text)]
     )
+    spans = []
+    depth = 0
     span_start = None
     for start, end, delta in events:
         if delta == 1:
-            if depth == 0:
-                span_start = end
+            span_start = end if depth == 0 else span_start
             depth += 1
-        else:
-            depth = max(0, depth - 1)
-            if depth == 0 and span_start is not None:
-                for i in range(span_start, start):
-                    if out[i] != "\n":
-                        out[i] = " "
-                span_start = None
-    if depth > 0 and span_start is not None:      # unclosed block runs to EOF
-        for i in range(span_start, len(out)):
-            if out[i] != "\n":
-                out[i] = " "
-    return "".join(out)
+            continue
+        depth = max(0, depth - 1)
+        if depth == 0 and span_start is not None:
+            spans.append((span_start, start))
+            span_start = None
+    if depth > 0 and span_start is not None:
+        spans.append((span_start, length))
+    return spans
 
 
 def prose_of(text: str, suffix: str) -> str:

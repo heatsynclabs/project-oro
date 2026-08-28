@@ -1,11 +1,33 @@
-# What the deployment serves under the hostname, which is nothing yet. The API
-# service, the door service and the three portals are not built, so there is
-# nothing to reverse proxy to.
+# What the deployment serves. The identity service under id.HOSTNAME, and
+# nothing yet under the hostname itself: the API service, the door service and
+# the three portals are not built, so there is nothing else to reverse proxy to.
 #
-# Imported by caddy/Caddyfile at the top level, and it opens its own site block
-# because the scheme is one of the things that differs between the profiles.
-# compose.yaml picks this file whenever nobody asked for a profile, which is
-# every deployment.
+# Imported by caddy/Caddyfile at the top level, and it opens its own site blocks
+# because the scheme is one of the things that differs between the two shapes.
+# compose.yaml sets ORO_ROUTES to deployment as a literal, and only
+# compose.development.yaml overrides it.
+
+# The identity service. This is a second public name and it needs its own DNS
+# record. Under an ACME issuer, Caddy asks for a certificate for it separately
+# and stays healthy if that fails, so a missing record shows up as this one
+# hostname not answering rather than as a broken deployment.
+#
+# A subdomain rather than a path, because an OIDC issuer
+# is an origin: every token it signs and every redirect it publishes carries
+# this name, and a path prefix would have to be stripped on the way in and put
+# back on the way out of every one of them.
+id.{$ORO_HOSTNAME} {
+	tls {$ORO_TLS}
+
+	# h2c, so the connection to the identity service is HTTP/2 without TLS. Its
+	# management API is gRPC underneath, and gRPC does not travel over HTTP/1.1,
+	# so without this the REST endpoints answer and the gRPC ones do not.
+	reverse_proxy identity:8080 {
+		transport http {
+			versions h2c 2
+		}
+	}
+}
 
 {$ORO_HOSTNAME} {
 	# "internal" issues from Caddy's own local authority, which is what a LAN

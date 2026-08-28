@@ -16,6 +16,25 @@ services:
       # explains and which is what lets a browser open it with nothing to accept.
       ORO_ROUTES: development
 
+  identity:
+    environment:
+      # A laptop reaches the identity service at http://localhost on the port
+      # below, not at id.localhost through Caddy. That name does not resolve
+      # without an entry in /etc/hosts, and asking a volunteer to edit that file
+      # before they can open a login screen is the friction ADR 0003 refused
+      # when it chose plain HTTP over a certificate nothing trusts.
+      #
+      # These are set here rather than derived from anything in compose.yaml.
+      # One variable doing two jobs is what the profile did, and ADR 0002
+      # records what it cost.
+      ZITADEL_EXTERNALDOMAIN: "${ORO_HOSTNAME}"
+      ZITADEL_EXTERNALPORT: "${ORO_IDENTITY_PORT:-8180}"
+      ZITADEL_EXTERNALSECURE: "false"
+    ports:
+      # Loopback only. Nothing off this machine has any business signing in to
+      # a laptop's identity service.
+      - "127.0.0.1:${ORO_IDENTITY_PORT:-8180}:8080"
+
   mock:
     # The members API contract, served as a mock, so the portal can be built
     # before services/api/ exists. It answers with invented records, which is

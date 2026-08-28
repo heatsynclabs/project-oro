@@ -18,8 +18,12 @@ export ORO_MOCK_PORT="$PORT"
 # compose.yaml interpolates the whole file, so these have to be set even though
 # nothing here starts the database or Caddy. Invented, and removed on exit.
 export ORO_HOSTNAME=localhost ORO_TLS=internal
-export ORO_HTTP_PORT=8083 ORO_HTTPS_PORT=8446
+export ORO_HTTP_PORT=8083 ORO_HTTPS_PORT=8446 ORO_IDENTITY_PORT=8187
 export ORO_DB_PASSWORD="throwaway-$$"
+export ORO_IDENTITY_DB_PASSWORD="throwaway-identity-$$"
+export ORO_IDENTITY_MASTERKEY="throwaway-master-key-0123456789a"
+export ORO_IDENTITY_ADMIN_USERNAME="fixture-admin"
+export ORO_IDENTITY_ADMIN_PASSWORD="Fixture-Handover-1!"
 
 compose() { docker compose -p "$PROJECT" -f "$ROOT/compose.yaml" \
                            -f "$ROOT/compose.development.yaml" "$@"; }

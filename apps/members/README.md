@@ -33,14 +33,14 @@ file and read it.
 make development
 ```
 
-That starts Caddy, the contract mock and Postgres, and serves this directory at
-the root of the hostname in your `.env`. Plain HTTP, on the port in
+That starts Caddy, the contract mock, Postgres and the identity service, and
+serves this directory at the root of the hostname in your `.env`. Plain HTTP, on the port in
 `ORO_HTTP_PORT`, with no redirect and no certificate to accept. It proxies `/v1`
 to the mock on the same origin, and Caddy strips the `/v1` prefix, so the portal
 calls the same paths it will call against the real service and no page needs a
 second base URL.
 
-The deployment profile is unchanged and still serves TLS.
+The deployment is unchanged and still serves TLS.
 `docs/decisions/0003-plain-http-for-development.md` says why the two differ and
 what developing over plain HTTP can hide.
 
@@ -86,24 +86,15 @@ python3 tools/voice-check/voice_check.py apps/members/
 | Thing | Why |
 |---|---|
 | `docs/api/members-v1.yaml` | The contract. Every field name on every view comes from it |
-| `packages/gantry-tokens` | The theme. Caddy serves it at `/theme`, from the package, so there is one copy |
-| `packages/gantry-tokens/tokens.css` | The theme. Caddy binds the package and serves it at `/theme/tokens.css`, so there is one copy |
+| `packages/gantry-tokens` | The theme. Caddy binds the package and the development routes serve it at `/theme`, so there is one copy of it |
 | `caddy/routes/development.caddyfile` | Puts the portal and the mock on one origin |
 
 Nothing else. No runtime dependency, no lockfile, no `node_modules`.
 
-The theme is a copy rather than a mount, which is the one place this portal
-holds a second copy of somebody else's file. A compose volume takes no profile,
-so a bind from `packages/` into Caddy would belong to every deployment as well
-as to the development stack, and Docker creates a directory where the source
-should be when the source is not there. That gives a healthy stack serving an
-unstyled page, with a directory sitting where a source file belongs. A copy
-costs a drift check instead, and `make portal-test` fails when the two files
-differ by a byte. To take a new version of the token layer:
-
-The theme is not copied here. Caddy binds `packages/gantry-tokens` and the
-development routes serve it at `/theme`, so there is one file and nothing to
-keep in step.
+Nothing here is a copy of anything. This portal used to ship its own byte
+identical `tokens.css` next to a check that failed when the two drifted, which
+is a defect and a detector for it where one file does. `make portal-test` fails
+if that copy comes back.
 
 ### How a view is wired
 

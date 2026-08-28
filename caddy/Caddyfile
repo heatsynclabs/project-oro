@@ -9,18 +9,18 @@
 # and this file imports one of them here at the top level.
 #
 # Why the site block is not in this file with only its routes imported, which is
-# the shape this had until the development profile went to plain HTTP: a site
-# address written http:// cannot carry a tls directive, and a file imported
-# inside a site block cannot open a site of its own. Two other arrangements were
-# weighed. A second whole Caddyfile, chosen by a compose bind, repeats everything
-# the two profiles have in common rather than the one line they differ on. Making
-# the site address a variable and moving tls into the route file also works, and
-# it costs a second variable that has to agree with the first, so COMPOSE_PROFILES
-# could say development while the other one still said https. One switch that
-# cannot disagree with itself is worth repeating four lines of health route.
+# the shape this had until a laptop went to plain HTTP: a site address written
+# http:// cannot carry a tls directive, and a file imported inside a site block
+# cannot open a site of its own. Two other arrangements were weighed. A second
+# whole Caddyfile, chosen by a compose bind, repeats everything the two shapes
+# have in common rather than the one line they differ on. Making the site
+# address a variable and moving tls into the route file also works, and it costs
+# a second variable that has to agree with the first, so one could say
+# development while the other still said https. One switch that cannot disagree
+# with itself is worth repeating four lines of health route.
 #
-# compose.yaml sets ORO_ROUTES, and it is "deployment" unless COMPOSE_PROFILES
-# asked for something else. A name with no file beside it in caddy/routes/ stops
-# Caddy at startup, which the healthcheck reports, rather than serving the
-# hostname from a configuration nobody chose.
+# compose.yaml sets ORO_ROUTES to "deployment" as a literal, and only
+# compose.development.yaml overrides it. A name with no file beside it in
+# caddy/routes/ stops Caddy at startup, which the healthcheck reports, rather
+# than serving the hostname from a configuration nobody chose.
 import /etc/caddy/routes/{$ORO_ROUTES}.caddyfile
