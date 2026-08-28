@@ -104,7 +104,11 @@ def mask_code(text: str, suffix: str) -> str:
         spans += [m.span(1) for m in re.finditer(r"/\*(.*?)\*/", text, re.S)]
         spans += _string_spans(text, r"'([^'\n]*)'")
 
-    elif suffix in {".yml", ".yaml", ".toml"}:
+    # Shell scripts sit here because a shell comment is a hash at the start of a
+    # line, which is the same shape. Without this they fall through to the
+    # default, every command in the file counts as prose, and a grep for a
+    # banned word reads as a use of it.
+    elif suffix in {".yml", ".yaml", ".toml", ".sh"}:
         spans += [m.span(1) for m in re.finditer(r"(?m)^[ \t]*#[ \t]?(.*)$", text)]
 
     elif suffix == ".html":

@@ -1,0 +1,120 @@
+name: CI
+
+# Phase 0 step 1 of docs/plan/order-of-operations.md: the repository, the rules
+# file, the prose gate, the commit hook, and CI running all three on every pull
+# request.
+#
+# The hooks in .githooks are advisory. They can be skipped with --no-verify, and
+# they are absent on any clone where nobody ran the one line that installs them.
+# These jobs are the copy that cannot be skipped, which is what makes rule 1 and
+# rule 11 of CLAUDE.md gates rather than suggestions.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# GitHub runs the tests. GitHub holds no deploy credential and cannot deploy,
+# per docs/plan/architecture.md section 3, because the archive records a domain
+# expiring under a departed member's personal account and taking door access
+# with it. Read access to this repository is the whole of what these jobs need.
+permissions:
+  contents: read
+
+jobs:
+  database:
+    name: Database
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to the commit rather than the moving v7 tag, so a compromised tag
+      # cannot change what runs here. actions/checkout v7.0.1, MIT, maintained
+      # by GitHub. Read from the GitHub API on 2026-08-27.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Docker is the only thing run.sh needs and the runner image already has
+      # it (Docker Client 28.0.4 on ubuntu-24.04, read from actions/runner-images
+      # on 2026-08-27). The script creates a throwaway postgres:18 container,
+      # applies every migration and seed from nothing, runs each test file in a
+      # transaction that rolls back, and removes the container.
+      - name: Schema, rules, and policies
+        run: ./db/tests/run.sh
+
+  door:
+    name: Door conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Standard library only, so there is nothing to install. The suite runs
+      # the same conformance checks against the fake controller that the real
+      # adapter will have to pass in phase 5, which is the whole reason the port
+      # was built three phases early.
+      - name: Port, fake, and conformance suite
+        run: ./services/door/tests/run.sh
+
+  contract:
+    name: API contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Pinned rather than floating, per docs/decisions/0001-openapi-toolchain.md:
+      # a linter that changes its rules on somebody else's schedule turns an
+      # unrelated pull request red. Node 22 and npm are already on the runner
+      # image, read from actions/runner-images on 2026-08-27. The three warnings
+      # this reports are expected and the ADR says why; warnings do not fail it.
+      - name: The members API document
+        run: npx --yes @redocly/cli@2.49.0 lint docs/api/members-v1.yaml
+
+  mock:
+    name: Mock server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # The mock is the only thing that proves the contract is servable rather
+      # than merely legal, so a change to the document that breaks it should be
+      # red here. The image is pinned by digest in tools/mock/image.sh, and the
+      # runner is x86_64, so the platform pin there is native rather than
+      # emulated and this is faster here than on an arm64 laptop.
+      - name: Prism serves the contract
+        run: ./tools/mock/tests/run.sh
+
+  prose:
+    name: Prose gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          # The gate needs the base commit in order to diff against it. Without
+          # the full history the diff is empty and the job passes having looked
+          # at nothing, which is the failure mode worth spending a fetch on.
+          fetch-depth: 0
+
+      - name: The gate's own tests
+        run: |
+          python3 tools/voice-check/test_voice_check.py
+          python3 tools/voice-check/test_regressions.py
+          python3 tools/voice-check/test_behaviour.py
+
+      # On a pull request this checks what the branch changed. On a push to the
+      # trunk the expression is empty and the script checks every tracked file,
+      # because there is nothing meaningful to diff against there.
+      - name: Changed files
+        run: ./tools/ci/voice-gate.sh "${{ github.event.pull_request.base.sha }}"
+
+  commits:
+    name: Commit messages
+    # Only on a pull request, because that is where a range of commits exists to
+    # check. A commit reaching the trunk has already been through this job.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Every commit in the pull request
+        run: >
+          ./tools/ci/check-commits.sh
+          "${{ github.event.pull_request.base.sha }}"
+          "${{ github.event.pull_request.head.sha }}"
