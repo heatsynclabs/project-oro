@@ -1,0 +1,71 @@
+# The Project ORO stack, as it exists today: Postgres and Caddy.
+#
+# The API service, the door service and the three portals are not built, so they
+# have no service block here and no route in the Caddyfile. Each one arrives with
+# the phase that builds it.
+#
+# Nothing in this file names a hosting provider. The test that keeps it that way
+# is in docs/plan/architecture.md section 3: a member clones this repository onto
+# a machine they own, provides an .env, runs make up, and has the stack.
+
+name: oro
+
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: oro
+      POSTGRES_PASSWORD: "${ORO_DB_PASSWORD:?set ORO_DB_PASSWORD in .env. Generate one with: openssl rand -base64 24}"
+    volumes:
+      # postgres:18 sets PGDATA to /var/lib/postgresql/18/docker and declares its
+      # volume one level up, at /var/lib/postgresql. Read from the image with
+      # docker image inspect postgres:18. Mounting the /var/lib/postgresql/data
+      # path that earlier majors used gives a container that starts, writes the
+      # cluster into the image layer, and loses every row on the next recreate.
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      # A real query rather than pg_isready. The image runs a temporary server
+      # during first initialisation and then restarts it, so pg_isready reports
+      # ready before the database a caller wants exists. HANDOFF.md section 7.
+      test: ["CMD", "psql", "-U", "postgres", "-d", "oro", "-c", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    # No published port on purpose. Nothing outside this stack has any business
+    # reaching the database, and make psql opens a shell inside the container.
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      ORO_HOSTNAME: "${ORO_HOSTNAME:?copy .env.example to .env and set it}"
+      ORO_TLS: "${ORO_TLS:?copy .env.example to .env and set it}"
+    ports:
+      - "${ORO_HTTP_PORT:?copy .env.example to .env and set it}:80"
+      - "${ORO_HTTPS_PORT:?copy .env.example to .env and set it}:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and the ACME account key. Without a volume Caddy issues a
+      # fresh certificate on every recreate, which on a public hostname walks
+      # into the certificate authority's rate limit and leaves the stack with no
+      # certificate at all.
+      - caddy_data:/data
+    healthcheck:
+      # Caddy exits when it cannot parse the Caddyfile, and restart:
+      # unless-stopped then puts it in a loop that compose still counts as
+      # started. Without a healthcheck here, make up reports success while the
+      # only thing serving the hostname is a container dying every second. The
+      # admin endpoint answers only once a config has loaded, so it is the
+      # cheapest proof that the Caddyfile parsed. Caddy binds it to
+      # localhost:2019 by default, so it is not reachable from outside.
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:2019/config/"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  db_data:
+  caddy_data:

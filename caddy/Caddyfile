@@ -1,0 +1,26 @@
+# Caddy terminates TLS for the stack itself.
+#
+# It has to. The stack is meant to run on the lab's own hardware as readily as on
+# a rented box, and a LAN has no provider load balancer to terminate TLS in front
+# of it. docs/plan/architecture.md section 3.
+#
+# There are no reverse proxy routes here because there is nothing to route to
+# yet. The API service, the door service and the three portals are not built.
+
+{$ORO_HOSTNAME} {
+	# "internal" issues from Caddy's own local authority, which is what a laptop
+	# or a LAN with no public DNS needs. An email address here instead makes this
+	# the ACME account contact and gets a publicly trusted certificate.
+	tls {$ORO_TLS}
+
+	handle /health {
+		respond "ok" 200
+	}
+
+	# A bare 404 on the front page reads as a broken deployment. Say which stack
+	# answered and that it has nothing to serve, so the reader stops looking for
+	# a fault that is not there.
+	handle {
+		respond "Project ORO is running. No application is deployed here yet." 404
+	}
+}
