@@ -340,7 +340,7 @@ hypothesis.
 | "The two admin rule", presented as existing | A new policy, labelled as new. Card access modelled as the real bylaws process | No two admin rule exists in the bylaws. Inventing governance quietly is how a rewrite loses a vote |
 | Six months to card eligibility | Two months, read from `governance_parameters` | The membership voted the change; two research passes disagree on the date, so the seed row carries DATE UNCONFIRMED |
 | Door service as one Python module | Door API plus a controller adapter and a conformance suite | The Arduino is expected to be replaced. The API should not have to change when it is |
-| Secrets in GitHub Environments | SOPS with age in git, GitHub holds no deploy credentials | The system must not require GitHub to run or to be rebuilt |
+| Secrets in GitHub Environments | SOPS with age in git for everything the stack reads. GitHub holds four deploy secrets and nothing else, per [ADR 0008](../decisions/0008-deploying-from-actions.md) | The system must not require GitHub to run or to be rebuilt. A deploy key is a convenience; the database password, the identity master key and the door controller password never leave the host |
 | Door at phase 4, payments absent | Order is identity, members, admin, door. Payments deferred, schema reserved | Directed. The door gets its adapter and fake built early so it is de-risked before its phase |
 
 ## 9. What this is not

@@ -20,8 +20,9 @@ one linter, turns out not to exist.
 
 Every version, date and licence below was read on 2026-08-28 from the project's
 own release metadata or its `LICENSE` file, and every finding count comes from
-running the tool over the 43 Python files this repository had before this
-change. It has 46 now, and the three new ones are the gate itself.
+running the tool over the 43 Python files this repository held at the commit
+that introduced the gate. That number moves with every session, so it is written
+here as what was measured rather than as what is true today.
 
 ### Option A: ruff
 

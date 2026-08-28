@@ -50,6 +50,7 @@ fi
   echo "BEGIN;"
   cat "$ROOT/tools/migration/010_preflight.sql"
   cat "$ROOT/tools/migration/020_migrate.sql"
+  cat "$ROOT/tools/migration/040_not_carried.sql"
   cat "$ROOT/tools/migration/030_verify.sql"
   echo "COMMIT;"
 } > "/tmp/$NAME.sql"

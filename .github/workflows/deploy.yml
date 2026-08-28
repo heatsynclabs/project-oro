@@ -86,6 +86,10 @@ jobs:
           USER: ${{ secrets.ORO_DEPLOY_USER }}
           DIRECTORY: ${{ secrets.ORO_DEPLOY_PATH || '/srv/oro' }}
           CONFIRM: ${{ inputs.confirm }}
+          # Through the environment rather than written into the command below.
+          # GitHub controls this one, so it is not an injection today, but a
+          # file whose job is holding a key is the wrong place to keep the habit.
+          REVISION: ${{ github.sha }}
         run: |
           if [ "$CONFIRM" != "$HOST" ]; then
             echo "The hostname typed at the start does not match ORO_DEPLOY_HOST." >&2
@@ -94,7 +98,7 @@ jobs:
           fi
           ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes "$USER@$HOST" \
             "set -e; cd '$DIRECTORY'; git fetch --quiet origin; \
-             git checkout --quiet ${{ github.sha }}; \
+             git checkout --quiet '$REVISION'; \
              test -f .env || { echo 'No .env on the host.' >&2; exit 1; }; \
              make up"
 

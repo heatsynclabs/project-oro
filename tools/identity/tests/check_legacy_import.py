@@ -52,17 +52,25 @@ def _hashes_from_the_dump() -> dict:
     """
     rows = {}
     for line in DUMP.read_text().splitlines():
-        if not line.startswith("INSERT INTO legacy.users"):
+        # pg_dump --column-inserts names its columns, so the fields are read by
+        # name. Picking the first value that looks like an address instead would
+        # work until a member had an emergency contact and no email of their own.
+        found = re.match(r"INSERT INTO legacy\.users \((.*?)\) VALUES \((.*)\);$", line)
+        if not found:
             continue
-        values = re.search(r"VALUES \((.*)\);$", line)
-        if not values:
-            continue
-        fields = re.findall(r"'((?:[^']|'')*)'|(\bNULL\b)|(-?\d+)", values.group(1))
-        flat = [a or b or c for a, b, c in fields]
-        email = next((f for f in flat if "@" in f), None)
-        digest = next((f for f in flat if f.startswith("$2a$")), None)
-        if email and digest:
-            rows[email.lower()] = digest
+        names = [c.strip() for c in found.group(1).split(",")]
+        # Quoted strings, NULL, booleans, numbers. The count check below is
+        # what found the missing booleans, so it stays.
+        fields = re.findall(r"'((?:[^']|'')*)'|(\bNULL\b|\btrue\b|\bfalse\b)|(-?[\d.]+)",
+                            found.group(2))
+        values = [a.replace("''", "'") if a else (b or c) for a, b, c in fields]
+        if len(values) != len(names):
+            raise AssertionError(
+                f"{len(names)} columns and {len(values)} values on one row of "
+                f"{DUMP.name}. The parser and the dump disagree")
+        row = dict(zip(names, values))
+        if row.get("email") and row.get("encrypted_password", "").startswith("$2a$"):
+            rows[row["email"].lower()] = row["encrypted_password"]
     return rows
 
 

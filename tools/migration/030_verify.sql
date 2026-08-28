@@ -59,6 +59,17 @@ BEGIN
     RAISE EXCEPTION '% card tag(s) are not uppercase', wrong;
   END IF;
 
+  -- Who oriented whom points at another member, so it is carried by a second
+  -- pass after every member exists. If that pass silently did nothing, the
+  -- migration looks complete and the link is gone.
+  SELECT count(*) INTO wrong
+    FROM legacy.users u
+    JOIN members m ON m.legacy_id = u.id
+   WHERE u.oriented_by_id IS NOT NULL AND m.oriented_by IS NULL;
+  IF wrong > 0 THEN
+    RAISE EXCEPTION '% member(s) lost who oriented them', wrong;
+  END IF;
+
   RAISE NOTICE 'verify: % member(s) and % card(s), every card at the slot it had',
     (SELECT count(*) FROM members), (SELECT count(*) FROM cards);
 END $$;

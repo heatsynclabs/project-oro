@@ -31,9 +31,10 @@ make identity-test
 
 That brings up a Postgres and an identity service on their own ports as a
 throwaway compose project, reads the bootstrap token out of the container, runs
-`configure.py` twice, then both check files, and takes it all down. Twenty seven
-checks: sixteen on the passwords, eleven on what was configured and on one whole
-sign in. It is the slowest suite in this repository, because the identity service
+`configure.py` twice, then all three check files, and takes it all down. Thirty
+three checks: sixteen on the passwords, eleven on what was configured and on one
+whole sign in, and six on members carried over from a replica of the legacy
+application. It is the slowest suite in this repository, because the identity service
 applies its own schema and seeds an instance before it answers anything.
 
 To run the checks against a stack you already have up instead:
@@ -102,6 +103,7 @@ in it fails a check rather than passing quietly.
 | `flow.py` | One whole sign in, driven through the hosted screens with a cookie jar |
 | `tests/check_identity.py` | Part (a) of the password proof |
 | `tests/check_configuration.py` | What was configured, read back, plus the sign in and what the tokens do afterwards |
+| `tests/check_legacy_import.py` | Hashes a replica of the legacy application wrote, imported and signed in with |
 | `fixtures/legacy-hashes.json` | The hashes, committed |
 
 `configure.py` takes an origin per portal and derives none of them from another.

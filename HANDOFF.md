@@ -56,7 +56,7 @@ This table is the single place this is tracked. Update it as things land.
 | `packages/gantry-css`, `gantry-vue` | Not started. Later in phase 1 and after |
 | `compose.yaml`, `compose.development.yaml`, `Makefile`, `.env.example`, `caddy/`, `db/init/` | **Built.** Postgres, Caddy and the identity service. The override file adds the mock, points Caddy at the development routes and publishes the identity service on a port, so the portal and the mock share one origin over plain HTTP and a browser can open a login screen. `make up` on a clean machine, proven |
 | `docs/api/members-v1.yaml` | **Written.** OpenAPI 3.1.1, validates clean. Still needs the review by somebody who did not write it that phase 1 asks for |
-| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Twelve jobs, eleven of them green on a real runner in 47 seconds on 2026-08-28, and a twelfth added since. They run in parallel, so that is the slowest job and not the sum: the identity one at 43 seconds, then the development stack at 40. Five of them start containers, the ceilings one included, because it runs ruff as a pinned image rather than installing it |
+| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Twelve jobs, all green on a real runner on 2026-08-28. They run in parallel, so the wall clock is the slowest job and not the sum, and that is the identity one. Five of them start containers, the ceilings one included, because it runs ruff as a pinned image rather than installing it. A thirteenth workflow, the deploy, is dormant and runs only when somebody asks |
 | File and function ceiling linting | **Built.** `make ceilings`, in CI, with 8 tests of its own over a throwaway repository: five put one violation in it and assert the checker catches it, three put something that is not a violation in it and assert the checker stays quiet. Ruff in a pinned container for complexity, parameters and nesting depth, and `tools/ceilings/check_ceilings.py` for the two ceilings no tool measures. [ADR 0005](docs/decisions/0005-file-and-function-ceilings.md). Two files are exempt with a reason, and an exemption that stops being needed fails the check |
 | Import boundary linting | **Decided, not built.** [ADR 0006](docs/decisions/0006-import-boundaries.md): there is no TypeScript at all and only `services/door` is an importable Python package, so neither gate has anything to refuse yet. Each lands with the first code that gives it something |
 | `tools/attributions/generate.py` | Not started. Needs a lockfile first |
@@ -217,6 +217,20 @@ phases at once.
     and calls it ten minutes. The answer could change which identity service
     this project runs.
 
+11. Decide what happens to the password policy on cutover day. Every migrated
+    member can sign in and most of them cannot change their password: the
+    legacy application asked for six characters and nothing else, and the
+    identity service defaults to eight with an uppercase, a lowercase, a number
+    and a symbol. Either relax the policy to match what members already have, or
+    tell every member before the day rather than on it. Section 7 has the
+    measurement.
+
+12. Carry the rest of the member record. `tools/migration/` moves members and
+    cards. It reports what it does not carry, and that list is the work:
+    `admin`, `instructor` and `accountant` become roles and need the exception
+    in `data-model.md` section 6.1, the waiver dates need somewhere to say where
+    a document is kept, and nobody has decided what a `payee` is for.
+
 ### The build that is actually left
 
 Do not read the list above as nearly done. The plan has seven phases, numbered
@@ -273,8 +287,8 @@ every job had only ever been run locally, with an assumption block about whether
 the runner had Docker, python3, Node and npm, and whether the pinned checkout
 fetched enough history for the two checks that need a git range. Pull request 1
 answered it on 2026-08-28: first all seven jobs green in 22 seconds, then all
-eleven in 46, the commit message check and the changed files gate included, so
-the history was deep enough. The four jobs added later start containers on the
+eleven in 46, then all twelve, the commit message check and the changed files
+gate included, so the history was deep enough. The four jobs added later start containers on the
 runner's own Docker and none of them needed anything installed.
 
 Kept rather than deleted, because the next person adding a job should know the
@@ -584,3 +598,14 @@ So the next person knows what "green" is worth.
 - A separate consistency pass diffed every document against every other and
   against the SQL.
 - The prose gate has 77 tests and lints itself clean, including its own ban lists.
+- The legacy side is not reasoned about either. A replica of the Rails
+  application runs its own schema and its own models on postgres 9.6, and the
+  migration fixture is what that replica wrote.
+  `tools/migration/README.md` says how to rebuild it and names the two things
+  about it that are not the legacy application.
+- On 2026-08-28 an audit read every numeric claim in the prose against a command
+  and found six wrong, including two tables inside plan documents that still
+  recorded GitHub as holding no deploy credential after ADR 0008 had reversed
+  it. The same pass found that the migration dropped eighteen legacy columns
+  without saying so, three of them access, and that the parser reading the
+  legacy dump matched fields by position rather than by name.
