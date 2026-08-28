@@ -1,4 +1,4 @@
-WARNING:  Bootstrap grant of admin to dddddddd-0000-0000-0000-000000000002: only 0 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
+WARNING:  Bootstrap grant of admin to dddddddd-0000-0000-0000-000000000002: seat 1 of 3, with no approval because a two approver rule cannot bind until approvers exist. Recorded.
 --   what a member may change about themselves
 ok   name and display name
 ok   pronouns, phone, postal code

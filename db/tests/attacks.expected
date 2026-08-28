@@ -1,5 +1,6 @@
-WARNING:  Bootstrap grant of admin to dead0000-0000-0000-0000-00000000000d: only 0 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
-WARNING:  Bootstrap grant of admin to dead0000-0000-0000-0000-00000000000e: only 1 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
+WARNING:  Bootstrap grant of admin to dead0000-0000-0000-0000-00000000000d: seat 1 of 3, with no approval because a two approver rule cannot bind until approvers exist. Recorded.
+WARNING:  Bootstrap grant of admin to dead0000-0000-0000-0000-00000000000e: seat 2 of 3, with no approval because a two approver rule cannot bind until approvers exist. Recorded.
+WARNING:  Bootstrap grant of admin to dead0000-0000-0000-0000-00000000000f: seat 3 of 3, with no approval because a two approver rule cannot bind until approvers exist. Recorded.
 --   one admin cannot satisfy the two approver rule alone
 ok   proposing in somebody else's name
 ok   proposing in her own name is fine (1 row(s))
@@ -9,7 +10,8 @@ ok   or approving her own proposal
 ok   the second admin approves without supplying a time (1 row(s))
 ok   and the time was stamped rather than left null
 --   the bootstrap escape does not reopen by revoking admins
-ok   revoking Alice, leaving one admin (1 row(s))
+ok   revoking Alice (1 row(s))
+ok   revoking Carol as well, leaving one admin (1 row(s))
 ok   only one admin remains
 ok   granting admin with no approval anyway
 --   a member cannot read another member's row through any route

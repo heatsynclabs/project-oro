@@ -1,4 +1,4 @@
-WARNING:  Bootstrap grant of admin to cccccccc-0000-0000-0000-000000000003: only 0 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
+WARNING:  Bootstrap grant of admin to cccccccc-0000-0000-0000-000000000003: seat 1 of 3, with no approval because a two approver rule cannot bind until approvers exist. Recorded.
 --   anonymous: no identity set at all
 ok   reading members with no identity raises rather than returning nothing
 ok   reading cards with no identity raises
@@ -35,7 +35,7 @@ ok   even the owner cannot delete a door event
 ok   repointing an approved approval at a different member
 ok   repointing an approved approval at a different role
 ok   reversing a decision
-WARNING:  Bootstrap grant of admin to cccccccc-0000-0000-0000-000000000001: only 1 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
+WARNING:  Bootstrap grant of admin to cccccccc-0000-0000-0000-000000000001: seat 2 of 3, with no approval because a two approver rule cannot bind until approvers exist. Recorded.
 ok   granting on that approval
 ok   moving a grant to another member after the fact
 ok   revoking it, which is a legitimate update

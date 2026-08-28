@@ -1,20 +1,27 @@
 ok   an ordinary role needs no approval
-WARNING:  Bootstrap grant of admin to 11111111-1111-1111-1111-111111111111: only 0 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
+WARNING:  Bootstrap grant of admin to 11111111-1111-1111-1111-111111111111: seat 1 of 3, with no approval because a two approver rule cannot bind until approvers exist. Recorded.
 ok   bootstrap: the first admin, when no approval could exist
-WARNING:  Bootstrap grant of admin to 22222222-2222-2222-2222-222222222222: only 1 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
+WARNING:  Bootstrap grant of admin to 22222222-2222-2222-2222-222222222222: seat 2 of 3, with no approval because a two approver rule cannot bind until approvers exist. Recorded.
 ok   bootstrap: the second admin, the rule cannot bind at one
-ok   two admins now exist
-ok   a bare admin grant, once the rule can bind
+WARNING:  Bootstrap grant of admin to 33333333-3333-3333-3333-333333333333: seat 3 of 3, with no approval because a two approver rule cannot bind until approvers exist. Recorded.
+ok   bootstrap: the third admin, so losing one still leaves two
+ok   three live admins now exist
+ok   the bootstrap seats three admins
+ok   and all three of those seats are spent
+ok   a fourth admin with no approval, once the bootstrap is spent
 ok   an approver who is also the proposer
 ok   an approval decided by somebody who is not an admin
 ok   an approval by two real admins
 ok   the grant that approval authorises
 ok   reusing one approval for a second grant
-ok   an approval naming Carol
-ok   using Carol's approval to grant Dan
+ok   an approval naming Dan
+ok   using Dan's approval to grant Erin
 ok   a pending approval exists
 ok   granting on a pending approval
 ok   revoking an admin role
+ok   revoking a second admin role
+ok   two live admins after the revocations
+ok   a bare admin grant after revoking back below three admins
 ok   a fresh approval for the same person
 ok   re-granting a revoked role, with no key collision
 ok   three live admins at the end

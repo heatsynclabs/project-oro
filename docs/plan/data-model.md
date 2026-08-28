@@ -14,7 +14,7 @@ copy in the prose always loses. Column comments live in the migrations too, via
 | `db/migrations/003_rules.sql` | The triggers that enforce the rules |
 | `db/migrations/004_security.sql` | Row level security, roles, the door path |
 | `db/seed/001_reference.sql` | Tiers, roles, governance parameters |
-| `db/tests/` | 164 assertions. `db/tests/run.sh` rebuilds from nothing and runs them |
+| `db/tests/` | 171 assertions. `db/tests/run.sh` rebuilds from nothing and runs them |
 
 Three independent rewrites over eight years converged on most of this model.
 Where they agreed, that agreement is the strongest available signal. Where they
@@ -231,7 +231,7 @@ decided approval cannot be repointed at a different member afterwards and a gran
 cannot be quietly moved. Without those, the composite key faithfully follows a
 target that was edited after the fact.
 
-Verified in `db/tests/two_approver.sql`, 164 assertions, including every refusal.
+Verified in `db/tests/two_approver.sql`, 171 assertions, including every refusal.
 
 ### 3.1 The bootstrap hole, which only running it revealed
 
@@ -243,14 +243,31 @@ The second version allowed a grant when zero admins existed. That fixed the empt
 case and left a worse one: at exactly one admin, no approval by two admins is
 possible, so **you could never get from one admin to two.**
 
-The rule now binds only when two or more live admins exist, expressed as
-`two_approver_rule_can_bind()`. That is not a workaround, it is a true statement
-about the policy: a two approver rule cannot bind until two approvers exist. It
-also covers disaster recovery, because if the lab ever drops to one admin, that
-admin can appoint another instead of the system being permanently unadministrable.
-It grants no power that is not already held, since a lone admin already controls
-everything the rule protects, and every bootstrap grant raises a warning that
-records it.
+The rule now binds once the bootstrap is spent, expressed as
+`two_approver_rule_can_bind()`. The bootstrap is three grants of a role that can
+itself grant roles, made with no approval behind them, over the whole life of the
+database. That is not a workaround, it is a true statement about the policy: a
+two approver rule cannot bind until two approvers exist, and the lab wants a
+third seat so that losing one does not leave a rule nobody can satisfy. It grants
+no power that is not already held, since a lone admin already controls everything
+the rule protects, and every bootstrap grant raises a warning naming which of the
+three seats it took.
+
+It is a quota rather than a threshold on the live admin count, and that
+difference is where the security of it sits. A threshold of three would hold the
+escape open for as long as the lab had only two admins, which is exactly the
+point at which two people could have satisfied the rule and should have been made
+to. A quota is spent by use. Nothing separate records it: a bootstrap grant is
+already a `member_roles` row with a null `approval_id`, revoked rows still count,
+and no application role holds `DELETE` on that table, so the count only rises.
+
+Once spent, `two_approver_armed` latches and the escape never reopens. That latch
+exists because an earlier version read the live admin count alone, so an admin
+could revoke their way back under the threshold and grant freely. Its cost is
+worth stating rather than discovering later: if the lab ever drops to one admin,
+that admin cannot appoint another and an operator has to intervene at the
+database. That is the deliberate trade. The alternative hands the escape back to
+anybody who can revoke.
 
 ---
 
