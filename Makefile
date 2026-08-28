@@ -10,7 +10,7 @@
 DEV = docker compose -f compose.yaml -f compose.development.yaml
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure ceilings
+.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure migration-test ceilings
 
 help:
 	@echo "make up                start the stack in the background"
@@ -26,6 +26,7 @@ help:
 	@echo "make portal-test       prove the members portal against the contract mock"
 	@echo "make identity-test     prove the identity service holds the lab's existing passwords"
 	@echo "make identity-configure  register the project, the clients and the branding"
+	@echo "make migration-test    prove the legacy import, and prove it refuses dirty data"
 	@echo "make ceilings          check every file and function against the ceilings in rule 6"
 	@echo ""
 	@echo "The database this stack starts is empty. make test applies"
@@ -65,7 +66,7 @@ psql:
 test:
 	./db/tests/run.sh
 
-# One command, because twelve of them is eleven too many to remember at 2am.
+# One command, because thirteen of them is twelve too many to remember at 2am.
 # Each still runs on its own, and this is the order CI runs them in.
 check:
 	./db/tests/run.sh
@@ -80,6 +81,7 @@ check:
 	./tools/development/tests/run.sh
 	./tools/members-portal/tests/run.sh
 	./tools/identity/tests/run.sh
+	./tools/migration/tests/run.sh
 	@echo
 	@echo "every suite passed"
 
@@ -131,6 +133,11 @@ identity-test:
 identity-configure:
 	@test -f .env || { echo "No .env file. Copy .env.example to .env and set the values in it." >&2; exit 1; }
 	@ORO_IDENTITY_TOKEN="$$(docker compose cp identity:/bootstrap/pat - 2>/dev/null | tar -xO)" 	 ORO_IDENTITY_URL="https://id.$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)" 	 python3 tools/identity/configure.py 	   --members-origin "https://$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)" 	   --admin-origin "https://admin.$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)" 	   --door-origin "https://door.$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)"
+
+# The legacy import, both ways: refused while anything needs a person's
+# decision, and carrying every card to the slot it had once those are made.
+migration-test:
+	./tools/migration/tests/run.sh
 
 # Rule 6, in two tools because no single one measures all five ceilings.
 # ADR 0005 records which does what and what was priced against it.

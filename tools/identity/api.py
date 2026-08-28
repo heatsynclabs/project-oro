@@ -235,3 +235,15 @@ def post_form(path: str, fields: dict) -> Answer:
         BASE + path, data=urllib.parse.urlencode(fields).encode(),
         headers={"Content-Type": "application/x-www-form-urlencoded"})
     return _send(request)
+
+
+def set_password(user_id: str, password: str, token: str) -> Answer:
+    """Change a member's password, which is where the new policy applies.
+
+    An imported hash bypasses the complexity policy, because it is a hash rather
+    than a password. The policy is checked the first time a member sets a new
+    one, which is a different day and a different person's problem.
+    """
+    return call(f"/v2/users/{user_id}/password",
+                {"newPassword": {"password": password, "changeRequired": False}},
+                token)

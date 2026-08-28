@@ -16,8 +16,8 @@ service, because the service is not built. Nothing is deployed.
 
 | | |
 |---|---|
-| Built | The schema and its row level security, 171 database assertions. The members API contract as OpenAPI, and a mock that serves it. The door controller port with its fake and 104 conformance tests. The GANTRY token layer with a contrast validator. A stack of Postgres, Caddy and the identity service, with its four clients, its branding, the proof that it can hold the passwords members already have, and one whole sign in through its screens. A members portal, read only, against the mock. CI on eleven jobs, a prose gate with 77 tests, a commit hook |
-| Not built | The API service, so nothing yet reaches the members database over HTTP. The door service itself. The admin and door apps, though their identity clients are registered. `gantry-css` and `gantry-vue` |
+| Built | The schema and its row level security, 171 database assertions. The members API contract as OpenAPI, and a mock that serves it. The door controller port with its fake and 104 conformance tests. The GANTRY token layer with a contrast validator. A stack of Postgres, Caddy and the identity service, with its four clients, its branding, the proof that it can hold the passwords members already have, and one whole sign in through its screens. A members portal, read only, against the mock. CI on twelve jobs, a prose gate with 77 tests, a commit hook |
+| Not built | The API service, so nothing yet reaches the members database over HTTP. The migration carries members and cards and not yet certifications, waivers, payments or door events. The door service itself. The admin and door apps, though their identity clients are registered. `gantry-css` and `gantry-vue` |
 
 `HANDOFF.md` tracks this in detail and is the file to update when something
 lands.
@@ -101,13 +101,14 @@ tools/development/   checks over both stack shapes
 tools/members-portal/ checks over the portal, through Caddy
 tools/identity/      the phase 2 password proof, and the hashes it runs on
 tools/ceilings/      rule 6, in a pinned ruff and a line counter
+tools/migration/     the legacy import, and a fixture a replica of the old app wrote
 
 caddy/               TLS, the health route, and the routes each shape serves
 compose.yaml         Postgres, Caddy and the identity service. Makefile wraps it
 compose.development.yaml  what a laptop adds: the mock, the routes for it, and a
                      port on the identity service
 db/init/             the identity role and its database, made once
-.github/workflows/   CI. Eleven jobs
+.github/workflows/   CI. Twelve jobs, and a dormant deploy
 ```
 
 ## Reading order

@@ -71,7 +71,7 @@ presented as free.
 | Proxy | Caddy | Automatic certificates in a few lines, one binary, and it works on a LAN with internal certificates | Traefik, if per route middleware chains are ever needed |
 | Orchestration | Docker Compose plus a `Makefile` | Three apps and four services do not need a task graph | Swarm, if two hosts must fail over without a human |
 | Secrets | SOPS with age, in git, rendered to Docker secret files | Rotatable, reviewable, and the repository is the source of truth | Nothing until the lab has someone whose job is a secret store |
-| CI | GitHub Actions for tests only, never holding deploy credentials | Tests where the code is. Deployment stays independent of any vendor | Woodpecker, self hosted |
+| CI | GitHub Actions. Tests, and a deploy that is `make up` over SSH and nothing else | Tests where the code is. The deploy holds a key, which [ADR 0008](../decisions/0008-deploying-from-actions.md) supersedes the earlier decision to record, and it stays a command a person can run by hand | Woodpecker, self hosted |
 
 **PostgREST is not deployed.** It was the original proposal's centrepiece and it
 is rejected. It cannot express the approval workflow, cannot produce a designed
@@ -101,10 +101,17 @@ So these are banned from the repository, each with its replacement:
 | Provider CLIs, metadata endpoints, floating IPs | Unrunnable anywhere else | Nothing. One hostname variable |
 | Provider DNS or container registry | A vendor account in the critical path | Any DNS, any registry named by `ORO_REGISTRY` |
 
-GitHub runs the tests. GitHub does not hold deployment credentials and cannot
-deploy. That is deliberate: the archive records a domain expiring under a
-departed member's personal account and taking door access with it. Nothing in
-this system may depend on an account the lab does not control, and the escape
+GitHub runs the tests, and may deploy.
+[ADR 0008](../decisions/0008-deploying-from-actions.md) supersedes what this
+paragraph used to say, which was that GitHub holds no deployment credential and
+cannot deploy. What has not changed is the reason behind it: the archive records
+a domain expiring under a departed member's personal account and taking door
+access with it, so nothing may depend on an account the lab does not control.
+
+The deploy workflow satisfies that by holding nothing that is only possible
+there. Its one step is `make up` over SSH, which is the command in the test
+above, so losing GitHub costs a convenience rather than the ability to deploy.
+It is dormant until somebody has a server and sets four secrets. The escape
 hatch gets rehearsed rather than assumed.
 
 ## 4. The door

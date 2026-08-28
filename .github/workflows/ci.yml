@@ -203,3 +203,18 @@ jobs:
       # nothing.
       - name: Every ceiling in rule 6
         run: ./tools/ceilings/run.sh
+
+  migration:
+    name: Legacy import
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Both directions. The fixture as it comes has to be refused, naming every
+      # row a person must rule on, and the same fixture with those decisions
+      # made has to carry every card to the slot it had. The fixture was written
+      # by a replica of the legacy application through that application's own
+      # models, so these are the rows it writes and the hashes it stores.
+      # tools/migration/README.md says how the replica is built.
+      - name: Refused while undecided, and correct once decided
+        run: ./tools/migration/tests/run.sh

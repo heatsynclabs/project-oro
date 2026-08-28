@@ -1,0 +1,109 @@
+name: Deploy
+
+# Dormant until somebody has a server and sets the secrets below. It is here
+# now so that the day access arrives, deploying is reading one file rather than
+# writing one under pressure.
+#
+# This reverses a decision. docs/plan/architecture.md section 2 said CI is "for
+# tests only, never holding deploy credentials", and section 3 said GitHub
+# "does not hold deployment credentials and cannot deploy", because a domain
+# once lapsed under a departed member's personal account and took the door with
+# it. docs/decisions/0008-deploying-from-actions.md supersedes that, says what
+# changed, and keeps the escape: everything below is `make up` over SSH, so a
+# person with the repository and an .env can do the same thing by hand.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type the hostname you are deploying to'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy over SSH
+    runs-on: ubuntu-latest
+    # A GitHub environment, so the secrets live behind whatever reviewers the
+    # lab decides on rather than being readable by any workflow in the
+    # repository. Creating it and adding reviewers is a click nobody has made
+    # yet, and until they do this job cannot see the secrets.
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Dormant means dormant. Without the secrets this reports what is missing
+      # and stops green, because a workflow that goes red on every push is a
+      # workflow people learn to ignore, and this one has never run.
+      - name: Is there anywhere to deploy to
+        id: ready
+        env:
+          HOST: ${{ secrets.ORO_DEPLOY_HOST }}
+          USER: ${{ secrets.ORO_DEPLOY_USER }}
+          KEY: ${{ secrets.ORO_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.ORO_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          missing=""
+          [ -z "$HOST" ] && missing="$missing ORO_DEPLOY_HOST"
+          [ -z "$USER" ] && missing="$missing ORO_DEPLOY_USER"
+          [ -z "$KEY" ] && missing="$missing ORO_DEPLOY_SSH_KEY"
+          [ -z "$KNOWN_HOSTS" ] && missing="$missing ORO_DEPLOY_KNOWN_HOSTS"
+          if [ -n "$missing" ]; then
+            echo "Dormant. These secrets are not set:$missing"
+            echo "docs/decisions/0008-deploying-from-actions.md says what each one is."
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The host key comes from a secret rather than from the host itself.
+      # Accepting whatever key answers first is trusting the network to
+      # introduce the server, which is the whole thing a host key prevents.
+      - name: Trust the host, and only that host
+        if: steps.ready.outputs.ready == 'yes'
+        env:
+          KEY: ${{ secrets.ORO_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.ORO_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts && chmod 600 ~/.ssh/known_hosts
+
+      # The whole deployment. It is `make up` on the host, which is the command
+      # docs/plan/architecture.md section 3 says a member with the repository
+      # and an .env can run themselves. Nothing here is a step that only a
+      # runner can do, which is what keeps the escape open.
+      #
+      # .env stays on the host and is never sent from here. It holds the
+      # database password, the identity master key and the door controller
+      # password, and rule 13 gives each of those one holder.
+      - name: Pull and bring the stack up
+        if: steps.ready.outputs.ready == 'yes'
+        env:
+          HOST: ${{ secrets.ORO_DEPLOY_HOST }}
+          USER: ${{ secrets.ORO_DEPLOY_USER }}
+          DIRECTORY: ${{ secrets.ORO_DEPLOY_PATH || '/srv/oro' }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "$HOST" ]; then
+            echo "The hostname typed at the start does not match ORO_DEPLOY_HOST." >&2
+            echo "Nothing was deployed." >&2
+            exit 1
+          fi
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes "$USER@$HOST" \
+            "set -e; cd '$DIRECTORY'; git fetch --quiet origin; \
+             git checkout --quiet ${{ github.sha }}; \
+             test -f .env || { echo 'No .env on the host.' >&2; exit 1; }; \
+             make up"
+
+      - name: Say what is running
+        if: steps.ready.outputs.ready == 'yes'
+        env:
+          HOST: ${{ secrets.ORO_DEPLOY_HOST }}
+          USER: ${{ secrets.ORO_DEPLOY_USER }}
+          DIRECTORY: ${{ secrets.ORO_DEPLOY_PATH || '/srv/oro' }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes "$USER@$HOST" \
+            "cd '$DIRECTORY' && docker compose ps"
