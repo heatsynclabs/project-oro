@@ -105,6 +105,9 @@ attempts died.
 
 ## 6. Do this next
 
+`docs/plan/kickoff.md` is a prompt that walks somebody through picking up the
+next step correctly. Use it to start a session.
+
 In order.
 
 1. Fill in two names in `people-and-custody.md` section 1. Two, not one.

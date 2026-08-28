@@ -76,6 +76,12 @@ tools/voice-check/   prose gate, run in CI and on every commit message
 | `docs/plan/order-of-operations.md` | Build order, with an exit criterion per phase |
 | `docs/plan/people-and-custody.md` | Who holds what. The real blocker |
 
+## Starting work
+
+`docs/plan/kickoff.md` is a prompt for picking up the next step. It points at the
+rules, the current state, and the traps, and it makes you say which step you are
+taking before you write anything.
+
 ## Contributing
 
 Open to members and to anyone else who wants to help.
