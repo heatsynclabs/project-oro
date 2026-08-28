@@ -5,7 +5,7 @@
 # the way.
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs ps psql test
+.PHONY: help up down logs ps psql test mock mock-test
 
 help:
 	@echo "make up         start Postgres and Caddy in the background"
@@ -14,6 +14,8 @@ help:
 	@echo "make ps         show what is running and whether it is healthy"
 	@echo "make psql       open a psql shell on the oro database"
 	@echo "make test       run the database test suite"
+	@echo "make mock       serve the API contract on http://127.0.0.1:4010"
+	@echo "make mock-test  prove the mock serves docs/api/members-v1.yaml"
 	@echo ""
 	@echo "The database this stack starts is empty. make test applies"
 	@echo "db/migrations to a throwaway container, never to this stack."
@@ -45,3 +47,18 @@ psql:
 
 test:
 	./db/tests/run.sh
+
+# Deliberately not a service in compose.yaml. That file is the deployment, and
+# a fake members API that answers with invented records has no business being
+# one docker compose up away from a real hostname. Keeping it here also keeps
+# make up working for everybody who already has a .env, because .env.example
+# forbids a silent default and a new required variable would stop the stack
+# for a tool the stack does not use. ADR 0002 records the trade.
+#
+# Foreground, so Ctrl-C ends it and the container removes itself. Nothing is
+# left running and there is no matching down target to forget.
+mock:
+	./tools/mock/run.sh
+
+mock-test:
+	./tools/mock/tests/run.sh
