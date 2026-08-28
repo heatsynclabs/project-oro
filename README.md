@@ -16,8 +16,8 @@ service, because the service is not built. Nothing is deployed.
 
 | | |
 |---|---|
-| Built | The schema and its row level security, 171 database assertions. The members API contract as OpenAPI, and a mock that serves it. The door controller port with its fake and 104 conformance tests. The GANTRY token layer with a contrast validator. A stack of Postgres, Caddy and the identity service, with the proof that it can hold the passwords members already have. A members portal, read only, against the mock. CI on eleven jobs, a prose gate with 77 tests, a commit hook |
-| Not built | The API service, so nothing yet reaches the members database over HTTP. The identity service is running but no client is registered against it. The door service itself. The admin and door apps. `gantry-css` and `gantry-vue` |
+| Built | The schema and its row level security, 171 database assertions. The members API contract as OpenAPI, and a mock that serves it. The door controller port with its fake and 104 conformance tests. The GANTRY token layer with a contrast validator. A stack of Postgres, Caddy and the identity service, with its four clients, its branding, the proof that it can hold the passwords members already have, and one whole sign in through its screens. A members portal, read only, against the mock. CI on eleven jobs, a prose gate with 77 tests, a commit hook |
+| Not built | The API service, so nothing yet reaches the members database over HTTP. The door service itself. The admin and door apps, though their identity clients are registered. `gantry-css` and `gantry-vue` |
 
 `HANDOFF.md` tracks this in detail and is the file to update when something
 lands.

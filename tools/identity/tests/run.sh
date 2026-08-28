@@ -9,9 +9,14 @@
 # already running is neither read nor touched, and no .env has to exist. Leaves
 # nothing behind. Exit code is 1 if any check failed.
 #
-# This is part (a) of the phase 2 password proof and it is the whole of the part
-# a script can do. Part (b) is ten real members signing in to staging with the
-# password they already use, and it needs the production hashes and volunteers.
+# Two suites. check_identity.py is part (a) of the phase 2 password proof:
+# hashes the lab already holds, imported and signed in with. check_configuration.py
+# is what configure.py registered, and one whole sign in through the hosted
+# screens ending in a refresh token that rotates.
+#
+# Part (b) of the password proof is ten real members signing in to staging with
+# the password they already use. It needs the production hashes and volunteers,
+# and no script stands in for it.
 
 set -e
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -77,6 +82,37 @@ if [ -z "$TOKEN" ]; then
 fi
 rm -f "$COPY_ERROR"
 
-ORO_IDENTITY_URL="http://$ORO_HOSTNAME:$ORO_IDENTITY_PORT" \
-ORO_IDENTITY_TOKEN="$TOKEN" \
-  python3 "$ROOT/tools/identity/tests/check_identity.py"
+export ORO_IDENTITY_URL="http://$ORO_HOSTNAME:$ORO_IDENTITY_PORT"
+export ORO_IDENTITY_TOKEN="$TOKEN"
+# The origin a member's browser would be on. Nothing is listening there during
+# this run and nothing needs to be: what is checked is that the identity
+# service sends a browser back to it carrying a code.
+export ORO_MEMBERS_ORIGIN="http://$ORO_HOSTNAME:8080"
+
+echo "Registering the project, the clients and the branding"
+python3 "$ROOT/tools/identity/configure.py" \
+  --members-origin "$ORO_MEMBERS_ORIGIN" \
+  --admin-origin "http://$ORO_HOSTNAME:8081" \
+  --door-origin "http://$ORO_HOSTNAME:8082" >/dev/null || {
+  echo "The configuration step failed, so nothing was checked." >&2
+  python3 "$ROOT/tools/identity/configure.py" \
+    --members-origin "$ORO_MEMBERS_ORIGIN" \
+    --admin-origin "http://$ORO_HOSTNAME:8081" \
+    --door-origin "http://$ORO_HOSTNAME:8082" >&2
+  exit 1
+}
+# Twice, because a configuration step nobody dares re-run is a configuration
+# step that stops being run, and this is the only place that would notice.
+python3 "$ROOT/tools/identity/configure.py" \
+  --members-origin "$ORO_MEMBERS_ORIGIN" \
+  --admin-origin "http://$ORO_HOSTNAME:8081" \
+  --door-origin "http://$ORO_HOSTNAME:8082" >/dev/null || {
+  echo "The configuration step is not idempotent: the second run failed." >&2
+  exit 1
+}
+echo
+
+python3 "$ROOT/tools/identity/tests/check_identity.py" || FAILED=1
+echo
+python3 "$ROOT/tools/identity/tests/check_configuration.py" || FAILED=1
+exit "${FAILED:-0}"

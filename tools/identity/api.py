@@ -1,5 +1,8 @@
 """Calling the identity service from a script, with no browser.
 
+Shared by tools/identity/configure.py, which is operational, and by the suite
+under tools/identity/tests/, which proves what it did.
+
 The identity service resolves which instance a request is for by comparing the
 Host header against the domain it was configured with, so a call to 127.0.0.1
 is refused with "Instance not found" even when the port is right. Everything
@@ -144,3 +147,91 @@ def lifetime_of(access_token: str) -> int:
     payload += "=" * (-len(payload) % 4)
     claims = json.loads(base64.urlsafe_b64decode(payload))
     return claims["exp"] - claims["iat"]
+
+
+def get(path: str, token: str) -> Answer:
+    request = urllib.request.Request(
+        BASE + path, headers={"Authorization": "Bearer " + token}, method="GET")
+    return _send(request)
+
+
+def search(path: str, token: str) -> list:
+    """A Zitadel search, which is a POST with an empty body and a result list."""
+    answer = call(path, {}, token)
+    return answer.body.get("result") or []
+
+
+def named(items: list, name: str) -> dict | None:
+    for item in items:
+        if item.get("name") == name:
+            return item
+    return None
+
+
+def token_from_environment() -> str:
+    return os.environ.get("ORO_IDENTITY_TOKEN", "")
+
+
+# The GANTRY palette on the hosted screens, every value read from
+# packages/gantry-tokens/tokens.css and named beside it so a change there can be
+# followed here. Zitadel keeps one light set and one dark set and picks by the
+# viewer's preference, which is the same thing [data-theme] does in the portal.
+BRANDING = {
+    "primaryColor":        "#97600c",   # --accent-text, light. --hazard itself
+                                        # is too pale to read on paper
+    "backgroundColor":     "#f4efe3",   # --char, light
+    "warnColor":           "#b8341f",   # --fault, light
+    "fontColor":           "#1c1812",   # --bone, light
+    "primaryColorDark":    "#f2ab1e",   # --hazard, dark
+    "backgroundColorDark": "#15120f",   # --char, dark
+    "warnColorDark":       "#d24f3a",   # --fault, dark
+    "fontColorDark":       "#ece3d3",   # --bone, dark
+    # A member signs in with an email address, and the organisation suffix
+    # Zitadel appends to a login name is not part of it.
+    "hideLoginNameSuffix": True,
+    "disableWatermark": True,
+}
+
+
+def apply_branding(token: str) -> None:
+    """Set the label policy and activate it.
+
+    Activation is separate and it is the half that is easy to miss: a policy
+    that is set and never activated is stored, readable, and changes nothing on
+    the screens a member sees.
+    """
+    answer = call("/management/v1/policies/label", BRANDING, token)
+    if answer.status != 200:
+        answer = call("/management/v1/policies/label", BRANDING, token, method="PUT")
+    if answer.status != 200 and "not been changed" not in answer.message():
+        raise SystemExit(f"branding: {answer.status} {answer.message()}")
+    activated = call("/management/v1/policies/label/_activate", {}, token)
+    if activated.status != 200:
+        raise SystemExit(f"branding could not be activated: "
+                         f"{activated.status} {activated.message()}")
+    print("branding: applied and activated")
+
+
+def differences(actual: dict, wanted: dict) -> list[str]:
+    """Which of the fields we asked for the service does not already hold.
+
+    Lists are compared as sets, because the order Zitadel returns a redirect
+    URI list in is not the order it was given.
+    """
+    wrong = []
+    for key, value in wanted.items():
+        held = actual.get(key)
+        if isinstance(value, list):
+            if set(held or []) != set(value):
+                wrong.append(f"{key} is {held!r}, wanted {value!r}")
+        elif held != value:
+            wrong.append(f"{key} is {held!r}, wanted {value!r}")
+    return wrong
+
+
+def post_form(path: str, fields: dict) -> Answer:
+    """An OAuth token request, which is a form post and carries no bearer."""
+    request = urllib.request.Request(
+        BASE + path, data=urllib.parse.urlencode(fields).encode(),
+        headers={"Content-Type": "application/x-www-form-urlencoded"})
+    return _send(request)

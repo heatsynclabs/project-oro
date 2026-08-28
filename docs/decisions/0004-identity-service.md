@@ -165,8 +165,8 @@ digest in `compose.yaml`. Nothing is vendored and no code is copied. Recorded in
 
 - Whether Logto has the 72 byte defect. The test is: hash a known password with
   bcrypt-ruby at cost 10, `POST /api/users` with `passwordAlgorithm: "Bcrypt"`,
-  and sign in. Worth an hour before phase 2 exits, because the answer could flip
-  this decision.
+  and sign in. Ten minutes, and worth doing before phase 2 exits, because the
+  answer could flip this decision.
 - Whether the bootstrap token should exist at all. It administers the whole
   instance, it is written once into a volume and is durable across restarts and
   recreates, it expires in a year, and nothing revokes it. Registering the four

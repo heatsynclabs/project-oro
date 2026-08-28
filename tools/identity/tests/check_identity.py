@@ -29,7 +29,9 @@ import os
 import pathlib
 import sys
 
-import identity_api
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+import api as identity_api      # noqa: E402, after the path insert above
 
 FIXTURES = pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "legacy-hashes.json"
 TOKEN = os.environ.get("ORO_IDENTITY_TOKEN", "")

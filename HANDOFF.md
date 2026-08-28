@@ -39,8 +39,10 @@ This table is the single place this is tracked. Update it as things land.
 | `.githooks/commit-msg` | **Built.** Install it, see section 3 |
 | The plan documents | **Written.** Reviewed adversarially twice |
 | The identity service, in the stack | **Built.** Zitadel 4.17.1 in `compose.yaml` with its own database and login on the existing Postgres server, ten minute access tokens, and a first instance created from configuration with no console click. Reached at `id.HOSTNAME` on a deployment and on `ORO_IDENTITY_PORT` on a laptop. [ADR 0004](docs/decisions/0004-identity-service.md) |
-| `tools/identity/` password proof | **Built.** 16 checks, `make identity-test`, in CI. Part (a) of the phase 2 proof: hashes written by bcrypt-ruby at cost 10 with no pepper, imported and signed in with. It found a real defect, in `tools/identity/README.md` |
-| The four OIDC clients, refresh token rotation, GANTRY on the hosted screens | Not started. Phase 2, and section 6 says what is in the way |
+| `tools/identity/` password proof | **Built.** 16 checks, part of `make identity-test`, in CI. Part (a) of the phase 2 proof: hashes written by bcrypt-ruby at cost 10 with no pepper, imported and signed in with. It found a real defect, in `tools/identity/README.md` |
+| `tools/identity/configure.py`, the four clients and the branding | **Built.** `make identity-configure`. The project, three public PKCE clients with no secret, the door service machine account, and the GANTRY palette on the hosted screens, set and activated. Idempotent, and the suite runs it twice to prove that |
+| Ten minute tokens with rotating refresh | **Built and demonstrated.** 11 further checks in `make identity-test` sign a member in through the real hosted screens, read the access token lifetime off the token, use the refresh token, and prove the previous one stops working |
+| The hosted login screens | **Built.** [ADR 0007](docs/decisions/0007-hosted-login-screens.md). The default in 4.17.1 sends a member to a page this image does not serve, so a check asserts the page really carries a login field |
 | `services/api/` | Not started. Phase 3 |
 | `services/door/` port, fake, conformance suite | **Built.** 104 tests, `services/door/tests/run.sh` |
 | `services/door/` HTTP API, reconcile loop, real socket against hardware | Not started. Phase 5 |
@@ -51,11 +53,11 @@ This table is the single place this is tracked. Update it as things land.
 | `packages/gantry-css`, `gantry-vue` | Not started. Later in phase 1 and after |
 | `compose.yaml`, `compose.development.yaml`, `Makefile`, `.env.example`, `caddy/`, `db/init/` | **Built.** Postgres, Caddy and the identity service. The override file adds the mock, points Caddy at the development routes and publishes the identity service on a port, so the portal and the mock share one origin over plain HTTP and a browser can open a login screen. `make up` on a clean machine, proven |
 | `docs/api/members-v1.yaml` | **Written.** OpenAPI 3.1.1, validates clean. Still needs the review by somebody who did not write it that phase 1 asks for |
-| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Eleven jobs. The seven that existed were green on a real runner in 22 seconds on 2026-08-28. The four added since are slower, and all four start containers, the ceilings one included: it runs ruff as a pinned image rather than installing it |
-| File and function ceiling linting | **Built.** `make ceilings`, in CI, with 8 tests of its own that each put one violation in a throwaway repository and assert it is caught. Ruff in a pinned container for complexity, parameters and nesting depth, and `tools/ceilings/check_ceilings.py` for the two ceilings no tool measures. [ADR 0005](docs/decisions/0005-file-and-function-ceilings.md). Two files are exempt with a reason, and an exemption that stops being needed fails the check |
+| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Eleven jobs, all green on a real runner in 46 seconds on 2026-08-28. They run in parallel, so that is the slowest job and not the sum: the development stack at 43 seconds, then the identity password proof at 34. Four of them start containers, the ceilings one included, because it runs ruff as a pinned image rather than installing it |
+| File and function ceiling linting | **Built.** `make ceilings`, in CI, with 8 tests of its own over a throwaway repository: five put one violation in it and assert the checker catches it, three put something that is not a violation in it and assert the checker stays quiet. Ruff in a pinned container for complexity, parameters and nesting depth, and `tools/ceilings/check_ceilings.py` for the two ceilings no tool measures. [ADR 0005](docs/decisions/0005-file-and-function-ceilings.md). Two files are exempt with a reason, and an exemption that stops being needed fails the check |
 | Import boundary linting | **Decided, not built.** [ADR 0006](docs/decisions/0006-import-boundaries.md): there is no TypeScript at all and only `services/door` is an importable Python package, so neither gate has anything to refuse yet. Each lands with the first code that gives it something |
 | `tools/attributions/generate.py` | Not started. Needs a lockfile first |
-| `docs/runbooks/` | Not started. Created with the first runbook |
+| `docs/runbooks/` | Not started. The directory exists on disk, empty and untracked, so a fresh clone does not have it. It gets its first file with the first runbook |
 | `CODEOWNERS`, `.sops.yaml` | Not started. Created with the first real name and the first secret |
 
 ## 3. Run everything
@@ -80,7 +82,8 @@ make mock-test                           # the API contract mock, started, calle
 make development                         # portal at /, contract mock under /v1, one origin, plain HTTP
 make development-test                    # 23 checks over both stack shapes, throwaway project
 make portal-test                         # 22 checks over the members portal, likewise
-make identity-test                       # 16 checks over the phase 2 password proof, likewise
+make identity-test                       # 27 checks over the phase 2 identity work, likewise
+make identity-configure                  # the project, the clients and the branding, against a running stack
 
 make ceilings                            # rule 6, in a pinned ruff and a line counter
 
@@ -91,9 +94,11 @@ make ceilings                            # rule 6, in a pinned ruff and a line c
 npx @redocly/cli@2.49.0 lint docs/api/members-v1.yaml   # the API contract
 ```
 
-CI runs all of that except two lines, and those two could never be jobs:
-`--update` rewrites the expected files, and `make development` starts a stack
-and leaves it running. Everything else in the block has a job.
+Four lines in that block have no CI job and none of them could have one. Two are
+not checks at all: `git config core.hooksPath` sets up a clone, and
+`make development` starts a stack and leaves it running. `--update` rewrites the
+expected files. `make check` is the others in one command, and CI runs them
+separately so a failure names the suite. Every check in the block has a job.
 
 Four of those jobs start containers and are slow. The identity one is the
 slowest by a wide margin, because that service applies its own schema and seeds
@@ -104,8 +109,10 @@ same script a person runs rather than a copy of it that drifts. The contract lin
 reports three warnings and that is expected;
 `docs/decisions/0001-openapi-toolchain.md` says which and why.
 
-`make check` runs every suite in one command, which is what a person wants at
-2am. The eight runners still work on their own.
+`make check` runs every suite in this repository in one command, which is what a
+person wants at 2am, and each still works on its own. It leaves out the contract
+lint, which is the last line of the block above: that one needs Node, and
+everything else here needs only Docker and python3. CI runs it as its own job.
 
 `make up` starts Postgres, Caddy and the identity service, and runs one
 container that exists only to hand the identity service a volume it can write
@@ -180,20 +187,31 @@ phases at once.
    downstream is built against it.
 5. Get pull request 1 reviewed and merged. CI is green, so what is left there is
    a person reading the diff.
-6. Register the four OIDC clients against the identity service, turn on refresh
-   token rotation, and put GANTRY on the hosted screens. All three are phase 2
-   and none of them is done. Nothing is in the way: the bootstrap token that
-   would do it is durable and the API calls are known. It is the work that ran
-   out of session.
+6. Revoke the bootstrap token, or decide it should not be minted. It grants
+   everything, it sits in a volume until somebody removes it, and it expires in
+   a year with nothing watching. `make identity-configure` was the last thing
+   that needed it, and that now exists, so the moment to do this has arrived.
+   ADR 0004 leaves the shape of it open.
 
-   Do it in the same change as the thing that follows from it, which is
-   revoking that token. It grants everything, it sits in a volume until somebody
-   removes it, and it expires in a year with nothing watching. Registering the
-   clients is the moment it stops being needed. ADR 0004 leaves open whether it
-   should be minted at all once there is another way in.
-7. Find out whether Logto has the 72 byte defect. It is an hour of work and the
-   answer could change which identity service this project runs. ADR 0004 has
-   the exact test.
+7. Decide whether the second factor prompt should appear. The hosted screens
+   offer a member a second factor after the password and let them decline it.
+   Nobody has decided anything about MFA, which `order-of-operations.md` lists
+   as later, so the prompt is left alone rather than configured away. ADR 0007
+   has it as an open question.
+8. Move `tools/identity/configure.py` off the v1 management API. Its proto marks
+   those methods deprecated in 4.17.1 and still routes them. The v2 service
+   accepts an application id of our choosing, which makes a re-run exact instead
+   of a lookup by name. Small work, and it wants doing before the next Zitadel
+   major.
+
+9. Give the door app the door API in its audience, which
+   `docs/plan/api-design.md` section 2 asks for. It cannot be done yet: an
+   audience is another project's id and the door API has no project until phase
+   5. `configure.py` says so where the client is defined.
+
+10. Find out whether Logto has the 72 byte defect. ADR 0004 has the exact test
+    and calls it ten minutes. The answer could change which identity service
+    this project runs.
 
 ### The build that is actually left
 
@@ -208,7 +226,7 @@ looks finished and is not.
 
 | Phase | Buildable now | Waits on a person |
 |---|---|---|
-| 2, identity | **Partly built.** Done: the identity service and its own database in the stack, ten minute tokens, and the whole synthetic half of the password proof. Left: the four clients, refresh token rotation, and GANTRY on the hosted screens | The real half. Ten members signing in to staging with the password they already use, which needs the production hashes and volunteers. Choose that cohort for a range of password habits, not only a range of account ages: the 72 byte defect is invisible until somebody hits it |
+| 2, identity | **The whole left column is built.** The identity service and its own database in the stack, the four clients, ten minute tokens with rotating refresh demonstrated through the real screens, GANTRY on those screens, and the whole synthetic half of the password proof | The real half. Ten members signing in to staging with the password they already use, which needs the production hashes and volunteers. Choose that cohort for a range of password habits, not only a range of account ages: the 72 byte defect is invisible until somebody hits it |
 | 3, member management | `services/api/`, the FastAPI service against the merged contract, connecting as `oro_api` and setting the member identity per transaction so the policies apply to it too. Repointing `apps/members` off the mock and onto it | The migration. It needs the production dump, and section 5 of `people-and-custody.md` lists six decisions that are judgement rather than code |
 | 4, admin | `apps/admin`, the two approver flow in the service over the database rules that already enforce it, card issue and revoke with a reason, waiver status for hosts | The HYH vote. If it fails, the trigger and the constraint are dropped and the portal loses a step. That branch is already written down |
 | 5, door | The door service HTTP API, the reconcile loop, the SQLite snapshot and the buffered event log, all against the fake that exists and passes the conformance suite | The real adapter, the VLAN, and a week of read only running beside the live system |
@@ -250,8 +268,10 @@ seats three on purpose and says so.
 every job had only ever been run locally, with an assumption block about whether
 the runner had Docker, python3, Node and npm, and whether the pinned checkout
 fetched enough history for the two checks that need a git range. Pull request 1
-answered it on 2026-08-28: all seven jobs green in 22 seconds, the commit message
-check and the changed files gate included, so the history was deep enough.
+answered it on 2026-08-28: first all seven jobs green in 22 seconds, then all
+eleven in 46, the commit message check and the changed files gate included, so
+the history was deep enough. The four jobs added later start containers on the
+runner's own Docker and none of them needed anything installed.
 
 Kept rather than deleted, because the next person adding a job should know the
 question was asked and how it was answered. A job that needs more history than
@@ -361,6 +381,26 @@ and then cannot retry: the second attempt fails on a unique constraint over the
 instance domain it already wrote, and `restart: unless-stopped` puts it in a
 loop that compose still counts as started. The recovery from that state is
 `docker compose down --volumes`. There is no forward path.
+
+**The identity service ships pointing at login screens it does not serve.**
+Zitadel 4.17.1 defaults `Features.LoginV2.Required` to true, so its authorize
+endpoint redirects a member to `/ui/v2/login`, and the
+`ghcr.io/zitadel/zitadel` image answers that path with
+`{"code":5, "message":"Not Found"}`. Those screens are a second container. The
+stack is healthy the whole time and every check that speaks to the API passes,
+which is how this survived a full green suite before anybody looked.
+`ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED` set to false uses the
+screens the same binary serves. ADR 0007 has the reasoning, and
+`check_configuration.py` asserts the page carries a field to type a login name
+into, so flipping it back turns five checks red.
+
+**Python's cookie jar drops cookies for a host with no dot in its name, and
+localhost has no dot.** A check written with the default policy gets the login
+screen's shell with the title "An internal error occurred" instead of the login
+form, because the authorization request is bound to a user agent cookie that was
+never kept. It answers 200 either way. `tools/identity/flow.py` carries a
+policy that keeps them, and the same code with the default policy was measured
+failing beside it.
 
 **The variable that reads as though it sets the access token lifetime does
 not.** `ZITADEL_OIDC_DEFAULTACCESSTOKENLIFETIME` is the fallback for an instance

@@ -8,7 +8,8 @@ already have, and the fixtures that proof runs on.
 The identity service itself is not code in this repository. It is Zitadel, run
 as a container, configured in `compose.yaml` and chosen in
 [ADR 0004](../../docs/decisions/0004-identity-service.md). What lives here is the
-part of phase 2 that a script can settle.
+part of phase 2 that a script can settle: the configuration step that registers
+the four clients and the branding, and the two suites that prove it.
 
 `docs/plan/order-of-operations.md` phase 2 splits the password proof in two,
 because the obvious criterion cannot be run. Signing in as twenty real members
@@ -29,9 +30,10 @@ make identity-test
 ```
 
 That brings up a Postgres and an identity service on their own ports as a
-throwaway compose project, reads the bootstrap token out of the container,
-runs `tools/identity/tests/check_identity.py`, and takes it all down. Sixteen
-checks. It is the slowest suite in this repository, because the identity service
+throwaway compose project, reads the bootstrap token out of the container, runs
+`configure.py` twice, then both check files, and takes it all down. Twenty seven
+checks: sixteen on the passwords, eleven on what was configured and on one whole
+sign in. It is the slowest suite in this repository, because the identity service
 applies its own schema and seeds an instance before it answers anything.
 
 To run the checks against a stack you already have up instead:
@@ -90,6 +92,22 @@ write the recovery into the runbook, or to force a password reset for everybody
 at migration, which is the only complete fix and costs every member an email.
 The suite asserts the behaviour as it stands, so whichever is chosen, a change
 in it fails a check rather than passing quietly.
+
+## What is here
+
+| File | What it is |
+|---|---|
+| `configure.py` | Registers the project, the three portals as public PKCE clients, the door service machine account, and the GANTRY branding. Idempotent |
+| `api.py` | Calls to the management API, shared by the configuration step and the suites |
+| `flow.py` | One whole sign in, driven through the hosted screens with a cookie jar |
+| `tests/check_identity.py` | Part (a) of the password proof |
+| `tests/check_configuration.py` | What was configured, read back, plus the sign in and what the tokens do afterwards |
+| `fixtures/legacy-hashes.json` | The hashes, committed |
+
+`configure.py` takes an origin per portal and derives none of them from another.
+The three portals do not share a hostname on a deployment, and guessing one from
+another is the mistake [ADR 0002](../../docs/decisions/0002-mock-server.md)
+records.
 
 ## What it depends on
 

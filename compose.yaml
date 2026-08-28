@@ -182,6 +182,15 @@ services:
       # gave 43200 seconds, which is the 12 hour default. These values seed the
       # instance at setup, so changing them later needs the instance updated
       # through the API rather than a restart.
+      # The hosted login screens. Without this the service answers 404 where its
+      # own authorize endpoint sends a member: version 4.17.1 defaults
+      # Features.LoginV2.Required to true and redirects to /ui/v2/login, which
+      # this image does not serve. That UI is a second container,
+      # ghcr.io/zitadel/zitadel-login, with a machine account and a token of its
+      # own. Measured on 2026-08-28: the redirect lands on a 404 and the login
+      # screen a member is sent to does not exist.
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
+
       ZITADEL_DEFAULTINSTANCE_OIDCSETTINGS_ACCESSTOKENLIFETIME: 10m
       ZITADEL_DEFAULTINSTANCE_OIDCSETTINGS_IDTOKENLIFETIME: 10m
 
