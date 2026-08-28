@@ -47,6 +47,14 @@ To bring the stack up, copy `.env.example` to `.env`, set every value in it, and
 run `make up`. Nothing in that file has a default and the stack refuses to start
 on a value nobody chose. `make help` lists the rest.
 
+`make development` starts the same stack with two additions, for a browser to
+open: the members portal at the root, and the API contract served as a mock
+under `/v1`, both behind Caddy on one origin. They sit in a compose profile, so
+`make up` starts what it always started. That profile serves plain HTTP on
+`ORO_HTTP_PORT`, so a browser opens it with no certificate to accept, and
+`docs/decisions/0003-plain-http-for-development.md` says what that trades away.
+A deployment is unchanged and still serves TLS.
+
 Enable the commit hook once per clone:
 
 ```sh
@@ -75,6 +83,8 @@ docs/glossary.md     domain words. Code uses these exactly
 tools/voice-check/   prose gate, run in CI and on every commit message
 tools/ci/            the two checks CI runs that need a git range
 
+apps/members/        the members portal. A placeholder until somebody builds it
+caddy/               TLS, the health route, and the routes each profile serves
 compose.yaml         Postgres and Caddy. Makefile wraps it
 ```
 

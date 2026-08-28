@@ -35,17 +35,21 @@ This table is the single place this is tracked. Update it as things land.
 | `db/seed/001_reference.sql` | **Built.** Tiers, roles, governance parameters |
 | `tools/voice-check/` prose gate | **Built.** 77 tests |
 | `tools/mock/` mock server for the API contract | **Built.** `make mock-test`, 13 checks, run by CI |
+| `tools/development/tests/run.sh` | **Built.** 20 checks over both profiles, `make development-test`. It reads the deployment's certificate issuer and asserts the development profile answers plain HTTP with no redirect. Not in CI |
 | `.githooks/commit-msg` | **Built.** Install it, see section 3 |
 | The plan documents | **Written.** Reviewed adversarially twice |
 | `services/api/` | Not started. Phase 3 |
 | `services/door/` port, fake, conformance suite | **Built.** 104 tests, `services/door/tests/run.sh` |
 | `services/door/` HTTP API, reconcile loop, real socket against hardware | Not started. Phase 5 |
-| `apps/` members, admin, door | Not started. Phase 3 onward |
-| `packages/gantry-tokens`, `gantry-css` | Not started. Phase 1 |
-| `compose.yaml`, `Makefile`, `.env.example`, `caddy/` | **Built.** Postgres and Caddy. `make up` on a clean machine, proven |
+| `apps/members/` | **Built against the contract mock.** The six self service views, read only, no sign in. `docs/plan/api-design.md` section 7 step 2, not phase 3. See its README |
+| `tools/members-portal/tests/` | **Built.** 22 checks over the portal through Caddy, `make portal-test`. No browser, so it does not see the rendered document. Not in CI |
+| `apps/` admin, door | Not started. Phase 3 onward |
+| `packages/gantry-tokens` | **Built.** The token layer, the two measured defects fixed, and the contrast checker over the theme by ground cross product. 65 tests plus 112 measured pairs, `packages/gantry-tokens/tests/run.sh`. Sixteen pairs are triaged in `validator/known-failures.txt`, four of them a real `--g-ink-3` defect held open on a brand colour decision |
+| `packages/gantry-css`, `gantry-vue` | Not started. Later in phase 1 and after |
+| `compose.yaml`, `compose.mock.yaml`, `Makefile`, `.env.example`, `caddy/` | **Built.** Postgres and Caddy, and a development profile that adds the mock and puts it and `apps/members/` behind Caddy on one origin, over plain HTTP. `make up` on a clean machine, proven |
 | `docs/api/members-v1.yaml` | **Written.** OpenAPI 3.1.1, validates clean. Still needs the review by somebody who did not write it that phase 1 asks for |
-| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Five jobs. Never run on GitHub, see section 7 |
-| Import boundary and file ceiling linting | Not started. Phase 0. The OpenAPI document needs its exemption listed here when this lands |
+| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Seven jobs. Never run on GitHub, see section 7 |
+| Import boundary and file ceiling linting | Not started. Phase 0. Three files need their exemption listed here when this lands: `docs/api/members-v1.yaml` at 1,923 lines, `packages/gantry-tokens/tokens.css` at 398, and the copy of that token layer the members portal ships at `apps/members/theme/tokens.css`, which is the same 398 lines and the same reason |
 | `tools/attributions/generate.py` | Not started. Needs a lockfile first |
 | `docs/runbooks/` | Not started. Created with the first runbook |
 | `CODEOWNERS`, `.sops.yaml` | Not started. Created with the first real name and the first secret |
@@ -63,9 +67,14 @@ python3 tools/voice-check/test_regressions.py
 python3 tools/voice-check/test_behaviour.py
 
 ./services/door/tests/run.sh             # the port, the fake, and the conformance suite
+./packages/gantry-tokens/tests/run.sh    # the theme, and every ink on every ground
 
 make mock-test                           # the API contract mock, started, called, removed
 make mock                                # serve it on 4010 until you stop it
+
+make development                         # portal at /, contract mock under /v1, one origin, plain HTTP
+make development-test                    # 20 checks over both profiles, in a throwaway project
+make portal-test                         # 22 checks over the members portal, likewise
 
 ./tools/ci/voice-gate.sh                 # the prose gate over every tracked file
 ./tools/ci/voice-gate.sh origin/main     # or only over what a branch changed
@@ -211,6 +220,58 @@ The spaced hyphen check needs three or more letters on both sides, so
 `service - it` passes while `service - was` is caught. Loosening it risks
 flagging legitimate writing, so it wants a real look rather than a wider regex.
 
+**`--profile development` starts the mock and does not route to it.** Caddy
+picks which file it imports from `caddy/routes/` out of `COMPOSE_PROFILES`, so
+the variable form does both jobs and the flag form does only one. Ask for the
+development stack with `COMPOSE_PROFILES=development docker compose up`, or with
+`make development`, which sets it. That command runs as typed, with nothing
+sourced and nothing exported first. The flag form leaves the hostname answering
+"No application is deployed here yet" while a healthy mock sits behind it
+unreachable, which reads as a broken proxy and is not one.
+
+`make down` and `make logs` carry the matching hazard in reverse, and both
+select every profile. Compose resolves the service list from the deployment
+otherwise, and a service in a profile is not in it: a plain `down` leaves the
+mock running and then cannot remove the network, and a plain `logs` prints
+`caddy` and `db` and silently omits the one service the profile added.
+
+**The two profiles do not serve the same scheme.** `make up` serves the hostname
+over TLS, unchanged. `make development` serves plain HTTP on `ORO_HTTP_PORT` and
+opens no TLS listener at all, so the HTTPS port refuses a connection rather than
+answering one. That is deliberate. Under `tls internal` the certificate comes
+from Caddy's local authority, Chrome answers it with an interstitial no
+automation can click through, and a volunteer clears it only by running
+`caddy trust` as an administrator and installing a root certificate into a
+machine the lab does not own. `docs/decisions/0003-plain-http-for-development.md`
+holds the reasoning. What it costs: a defect that only appears under TLS is
+invisible on a laptop. A cookie marked `Secure` is never sent on a plain HTTP
+origin, and mixed content cannot happen where nothing is HTTPS. Check that kind
+of change against the deployment profile before it ships.
+
+**The route files own their site block, and that is not an accident.**
+`caddy/Caddyfile` imports one of them at the top level and opens no site of its
+own. Somebody will want to hoist the site block back into that file to stop the
+health route appearing twice. It cannot be hoisted: a site address written
+`http://` may not carry a `tls` directive, and a file imported from inside a
+site block may not open a site. The header of `caddy/Caddyfile` names the two
+other arrangements that were weighed. `tools/development/tests/run.sh` calls
+`/health` under both profiles, so the repeated route drifting apart fails a
+check.
+
+**A compose volume takes no profile, and a bind whose source is missing
+becomes a directory.** The `caddy` service is in no profile, so every bind on it
+belongs to a deployment as much as to the development stack. Both halves were
+measured: with `packages/gantry-tokens/tokens.css` moved aside and the
+deployment started, Caddy reported healthy, the stylesheet answered 404, and
+Docker created a directory at `packages/gantry-tokens/tokens.css` in the working
+tree. `git status` says nothing about it while `packages/` is untracked. So the
+portal ships its own copy of the token layer at `apps/members/theme/tokens.css`,
+and `make portal-test` fails when it differs from the package by a byte.
+Mounting the package inside `apps/members` was never open anyway: Docker has to
+create the parent directory of a file bind mount and `/srv/members` is itself a
+read only mount, which fails at container start with `make parent dir of
+file bind-mount: read-only file system`.
+
 **Slot 200 arithmetic.** The EEPROM base address is 24, not 0, so slot 200 sits
 at `24 + 200*5 = 1024` and writes past the end of a 1024 byte EEPROM, onto the
 alarm state bytes. Slot 199 ends exactly at byte 1023. Somebody will try to
@@ -304,6 +365,16 @@ streams makes the suite flaky in a way that took three attempts to find. Use
 and then restarts it, so readiness goes true before the real database exists.
 `run.sh` waits for a real query against the real database, twice. That was the
 root cause of every phantom "relation does not exist".
+
+**`--color-text-tertiary` is below the contrast minimum on three grounds.** It
+aliases `--g-ink-3`, which measures 3.61 on the dark page ground, 3.09 on dark
+raised, and 4.29 on hazard in both themes. Those four pairs are listed in
+`packages/gantry-tokens/validator/known-failures.txt` with the reason, so the
+build is green with them open. They are a held defect, not an exemption on
+principle: clearing them means a lighter `--smoke` in the dark theme and a
+darker hazard literal, which are brand colour decisions. Until somebody makes
+them, a `.g-*` component in gantry-css must not put anything a person has to
+read into that token.
 
 ## 8. The research is not in this repository
 
