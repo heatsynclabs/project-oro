@@ -34,6 +34,7 @@ ok   signing in claims that row
 ok   and creates no duplicate
 ok   signing in again is idempotent
 --   migrations are an operator action, not something the app can touch
-FAIL the app role cannot read the migration log (this was allowed and must not be)
-FAIL nor forge an entry in it (this was allowed and must not be)
+ok   the app role cannot read the migration log
+ok   nor forge an entry in it
+ok   nor read a payment with no identity set
 ok   and every migration that ran is recorded

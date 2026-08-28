@@ -14,7 +14,7 @@ copy in the prose always loses. Column comments live in the migrations too, via
 | `db/migrations/003_rules.sql` | The triggers that enforce the rules |
 | `db/migrations/004_security.sql` | Row level security, roles, the door path |
 | `db/seed/001_reference.sql` | Tiers, roles, governance parameters |
-| `db/tests/` | 136 assertions. `db/tests/run.sh` rebuilds from nothing and runs them |
+| `db/tests/` | 164 assertions. `db/tests/run.sh` rebuilds from nothing and runs them |
 
 Three independent rewrites over eight years converged on most of this model.
 Where they agreed, that agreement is the strongest available signal. Where they
@@ -231,7 +231,7 @@ decided approval cannot be repointed at a different member afterwards and a gran
 cannot be quietly moved. Without those, the composite key faithfully follows a
 target that was edited after the fact.
 
-Verified in `db/tests/two_approver.sql`, 136 assertions, including every refusal.
+Verified in `db/tests/two_approver.sql`, 164 assertions, including every refusal.
 
 ### 3.1 The bootstrap hole, which only running it revealed
 

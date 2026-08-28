@@ -3,8 +3,9 @@ ok   recording one without saying where the document is
 --   the table holds no personal information at all
 ok   no column mentions a name, address, signature or guardian
 --   what a host or instructor gets to see
-FAIL a member who signed shows valid (query failed: No identity set on this transaction)
-FAIL a member who never signed has no row at all (query failed: No identity set on this transaction)
+ok   a member who signed shows valid
+ok   a member who never signed has no row at all, asking about themselves
 --   an expired waiver stops counting
 ok   recording one that has lapsed
-FAIL and it does not make them valid (query failed: No identity set on this transaction)
+ok   a member cannot check somebody else without a role
+ok   and the expired one does not count as valid

@@ -127,6 +127,11 @@ CALL t.must_fail('the app role cannot read the migration log',
 CALL t.must_fail('nor forge an entry in it',
   $$INSERT INTO schema_migrations (filename,sha256) VALUES ('fake.sql','0')$$,
   'permission denied');
+SET ROLE oro_api;
+SET LOCAL oro.identity_subject = '';
+CALL t.must_fail('nor read a payment with no identity set',
+  'SELECT count(*) FROM payments', 'No identity set');
+RESET ROLE;
 RESET ROLE;
 CALL t.must_query('and every migration that ran is recorded',
   $$SELECT (count(*) > 8)::text FROM schema_migrations$$, 'true');

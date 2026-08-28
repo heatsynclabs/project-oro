@@ -19,7 +19,8 @@ SET ROLE oro_api;
 CALL t.note('a caller with no identity gets nothing, views included');
 CALL t.must_fail('the directory', 'SELECT count(*) FROM member_directory',
   'No identity set');
-CALL t.must_fail('waiver status', $$SELECT * FROM waiver_status('bbbb1111-0000-0000-0000-000000000001')$$,
+CALL t.must_fail('waiver status',
+  $$SELECT * FROM waiver_status('bbbb1111-0000-0000-0000-000000000001')$$,
   'No identity set');
 
 CALL t.note('the directory honours the policy and the column rules');

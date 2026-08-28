@@ -9,6 +9,8 @@ VALUES
  ('bbbbbbbb-0000-0000-0000-000000000003','sub-hidden','Hidden Hal','hal@example.test','480 555 0003',true,true,false);
 \set QUIET off
 
+SET ROLE oro_api;
+SET LOCAL oro.identity_subject = 'sub-open';
 CALL t.must_query('the directory lists members who opted in',
   'SELECT count(*) FROM member_directory', '2');
 

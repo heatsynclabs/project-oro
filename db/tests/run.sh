@@ -56,6 +56,12 @@ echo "loaded test helpers"
 echo
 
 fails=0
+if grep -l '^FAIL' "$ROOT"/db/tests/*.expected >/dev/null 2>&1; then
+  echo "refusing to run: these expected files contain failing assertions"
+  grep -l '^FAIL' "$ROOT"/db/tests/*.expected | sed 's/^/  /'
+  exit 1
+fi
+
 for f in "$ROOT"/db/tests/*.expected; do
   base="$(basename "$f" .expected)"
   printf 'test %-32s' "$base"
@@ -75,6 +81,26 @@ for f in "$ROOT"/db/tests/*.expected; do
     echo "BROKEN RUN"
     echo "  The schema was missing when this test ran. Not a test failure."
     head -3 "$WORK/$base.actual" | sed 's/^/  /'
+    fails=$((fails+1)); continue
+  fi
+  # A failing assertion must never become expected output. Capturing one is how
+  # a suite reports green forever while a rule it claims to enforce is broken,
+  # which is exactly what happened here: five FAIL lines sat in expected files
+  # and every run said all tests passed.
+  # A file that aborts produces no FAIL lines at all, so counting them is not
+  # enough. Every `CALL t.must` must produce exactly one ok or FAIL line, or the
+  # file did not finish and its silence is not a pass.
+  want=$(grep -c 'CALL t\.must' "$ROOT/db/tests/$base.sql" || true)
+  got=$(grep -cE '^(ok|FAIL) ' "$WORK/$base.actual" 2>/dev/null || true)
+  if [ "$want" -ne "$got" ]; then
+    echo "INCOMPLETE"
+    echo "  $want assertions in the file, $got reported. It did not finish."
+    grep -m3 -E '^ERROR' "$WORK/$base.actual" 2>/dev/null | sed 's/^/  /'
+    fails=$((fails+1)); continue
+  fi
+  if grep -q '^FAIL' "$WORK/$base.actual" 2>/dev/null; then
+    echo "FAILING ASSERTIONS"
+    grep '^FAIL' "$WORK/$base.actual" | sed 's/^/  /'
     fails=$((fails+1)); continue
   fi
   if [ "$1" = "--update" ]; then

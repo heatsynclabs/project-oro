@@ -31,7 +31,7 @@ This table is the single place this is tracked. Update it as things land.
 | Thing | State |
 |---|---|
 | `db/migrations/` schema, rules, RLS, immutability | **Built.** Applies clean from nothing |
-| `db/tests/` and `db/tests/run.sh` | **Built.** 136 assertions, deterministic |
+| `db/tests/` and `db/tests/run.sh` | **Built.** 164 assertions, deterministic |
 | `db/seed/001_reference.sql` | **Built.** Tiers, roles, governance parameters |
 | `tools/voice-check/` prose gate | **Built.** 74 tests |
 | `.githooks/commit-msg` | **Built.** Install it, see section 3 |
@@ -51,7 +51,7 @@ This table is the single place this is tracked. Update it as things land.
 ```sh
 git config core.hooksPath .githooks      # once per clone, enables the commit gate
 
-./db/tests/run.sh                        # rebuilds the schema from nothing, runs 136 assertions
+./db/tests/run.sh                        # rebuilds the schema from nothing, runs 164 assertions
 ./db/tests/run.sh --update               # regenerate expected output, deliberately
 
 python3 tools/voice-check/test_voice_check.py
@@ -149,6 +149,20 @@ success.
 **`space_api.json` cannot grow past about 900 bytes.** The ESP8266 in the wall
 parses it with a 1 KB buffer and does not report an error on overflow. It just
 silently stops updating. Serve any newer SpaceAPI version at a new path.
+
+**`--update` is a footgun and the runner now defends against it.** Capturing
+output with `--update` once laundered five failing assertions into expected
+files, and every run afterwards printed "all database tests passed". The runner
+now refuses to start if any expected file contains a `FAIL` line, refuses to
+capture one, and counts assertions: if a file has twelve `CALL t.must` and
+reports eleven results, it aborted partway and that is a failure, not silence.
+Do not weaken those checks.
+
+**`current_user` inside a `SECURITY DEFINER` function is the owner, not the
+caller's role.** A carve out written as `IF current_user <> 'oro_api'` therefore
+fires every time and the gate never applies. Ordinary triggers are fine, because
+they run as the caller. In a definer function, gate on the identity setting or
+fail closed.
 
 **A view is not covered by the policies underneath it.** Unless a view is
 created with `security_invoker = true`, it runs as its owner and bypasses row

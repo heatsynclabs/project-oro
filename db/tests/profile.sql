@@ -65,8 +65,10 @@ CALL t.note('a member cannot edit anybody else, so nothing matches');
 CALL t.must_query('updating another member changes no rows',
   $$WITH u AS (UPDATE members SET name='hacked'
       WHERE identity_subject='sub-adm' RETURNING 1) SELECT count(*) FROM u$$, '0');
+RESET ROLE;
 CALL t.must_query('and that member is untouched',
   $$SELECT name FROM members WHERE identity_subject='sub-adm'$$, 'Admin Ann');
+SET ROLE oro_api;
 
 CALL t.note('an admin may set what a member may not');
 SET LOCAL oro.identity_subject = 'sub-adm';

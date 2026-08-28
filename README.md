@@ -15,7 +15,7 @@ and run. No services, no apps, no deployment.
 
 | | |
 |---|---|
-| Built | Schema, row level security, 136 database assertions, a prose gate with 74 tests, a commit hook |
+| Built | Schema, row level security, 164 database assertions, a prose gate with 74 tests, a commit hook |
 | Not built | The API service, the door service, the three portals, the theme packages, CI |
 
 `HANDOFF.md` tracks this in detail and is the file to update when something
@@ -26,7 +26,7 @@ lands.
 Needs Docker and Python 3.8 or newer. Nothing else.
 
 ```sh
-./db/tests/run.sh          # schema from nothing, 136 assertions, about 6 seconds
+./db/tests/run.sh          # schema from nothing, 164 assertions, about 6 seconds
 ./db/tests/run.sh --update # regenerate expected output, deliberately
 
 python3 tools/voice-check/test_voice_check.py
@@ -55,7 +55,7 @@ ATTRIBUTIONS.md      what was borrowed, from where, under what licence
 
 db/migrations/       the schema. This is the authority
 db/seed/             tiers, roles, governance parameters
-db/tests/            136 assertions, run by db/tests/run.sh
+db/tests/            164 assertions, run by db/tests/run.sh
 
 docs/plan/           architecture, API contract, data model, build order
 docs/conventions/    voice

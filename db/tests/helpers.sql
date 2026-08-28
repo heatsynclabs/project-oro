@@ -79,10 +79,14 @@ DECLARE n integer;
 BEGIN
   EXECUTE stmt;
   GET DIAGNOSTICS n = ROW_COUNT;
-  IF n >= least_rows THEN
+  -- Zero means exactly zero. Treating it as "at least zero" made the call a
+  -- tautology, which is how an assertion that a refusal happened passed
+  -- whatever the refusal did.
+  IF (least_rows = 0 AND n = 0) OR (least_rows > 0 AND n >= least_rows) THEN
     RAISE NOTICE 'ok   % (% row(s))', what, n;
   ELSE
-    RAISE NOTICE 'FAIL % (affected % rows, wanted at least %)', what, n, least_rows;
+    RAISE NOTICE 'FAIL % (affected % rows, wanted %)', what, n,
+      CASE WHEN least_rows = 0 THEN 'exactly 0' ELSE 'at least ' || least_rows END;
   END IF;
 EXCEPTION WHEN others THEN
   RAISE NOTICE 'FAIL % (refused: %)', what, SQLERRM;

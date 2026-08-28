@@ -1,0 +1,38 @@
+WARNING:  Bootstrap grant of admin to dead0000-0000-0000-0000-00000000000d: only 0 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
+WARNING:  Bootstrap grant of admin to dead0000-0000-0000-0000-00000000000e: only 1 admin(s) exist, so the two approver rule cannot yet be satisfied. Recorded.
+--   one admin cannot satisfy the two approver rule alone
+ok   proposing in somebody else's name
+ok   proposing in her own name is fine (1 row(s))
+ok   then approving it as if she were Bob
+ok   or approving her own proposal
+--   a decision always carries a time, so expiry is not a no-op
+ok   the second admin approves without supplying a time (1 row(s))
+ok   and the time was stamped rather than left null
+--   the bootstrap escape does not reopen by revoking admins
+ok   revoking Alice, leaving one admin (1 row(s))
+ok   only one admin remains
+ok   granting admin with no approval anyway
+--   a member cannot read another member's row through any route
+ok   the base table gives her only herself
+ok   the directory hides a phone its owner hid
+ok   and exposes no standing or paid_through at all
+ok   she cannot read another member's payment
+ok   nor write one, lacking the accountant role
+--   she cannot read the door card table
+ok   calling the door function directly
+--   attribution is stamped, not accepted from the caller
+ok   an admin records a waiver, naming somebody else as the recorder (1 row(s))
+ok   and it is attributed to who actually did it
+--   a card cannot be repointed or brought back
+ok   moving a card to another member
+ok   changing its slot
+ok   revoking it (1 row(s))
+ok   and bringing it back
+--   a deleted member is nobody
+ok   deleting Bob (1 row(s))
+ok   he no longer counts as an admin
+--   changing a bylaws number is recorded
+ok   raising the tenure requirement (1 row(s))
+ok   and the change is in the history
+--   a missing rule makes nobody eligible, rather than everybody
+ok   eligibility fails closed

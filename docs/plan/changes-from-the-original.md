@@ -176,4 +176,4 @@ scope by direction.
 - A driver's seat drill. Once per phase, somebody who did not build it performs
   the core operation from the runbook while the author watches and says nothing.
 - A stopping condition. Written now, while it is cheap.
-- Working code. The schema, its rules, and 136 database assertions exist and run.
+- Working code. The schema, its rules, and 164 database assertions exist and run.

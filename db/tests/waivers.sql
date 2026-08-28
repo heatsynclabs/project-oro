@@ -3,8 +3,8 @@
 \set QUIET on
 SET client_min_messages = notice;
 INSERT INTO members (id,identity_subject,name,email) VALUES
- ('eeeeeeee-0000-0000-0000-000000000001','sub-signed','Signed Sofia','sofia@example.test'),
- ('eeeeeeee-0000-0000-0000-000000000002','sub-unsigned','Unsigned Uma','uma@example.test');
+ ('eeeeeeee-0000-0000-0000-000000000001','sub-sofia','Signed Sofia','sofia@example.test'),
+ ('eeeeeeee-0000-0000-0000-000000000002','sub-uma','Unsigned Uma','uma@example.test');
 \set QUIET off
 
 CALL t.must_pass('recording that a member signed, and where it is kept',
@@ -24,17 +24,27 @@ CALL t.must_query('no column mentions a name, address, signature or guardian',
        AND column_name ~ 'name|address|phone|guardian|signature|minor|email'$$, '0');
 
 CALL t.note('what a host or instructor gets to see');
+SET ROLE oro_api;
+SET LOCAL oro.identity_subject = 'sub-sofia';
 CALL t.must_query('a member who signed shows valid',
   $$SELECT has_valid_waiver::text
       FROM waiver_status('eeeeeeee-0000-0000-0000-000000000001')$$, 'true');
-CALL t.must_query('a member who never signed has no row at all',
+SET LOCAL oro.identity_subject = 'sub-uma';
+CALL t.must_query('a member who never signed has no row at all, asking about themselves',
   $$SELECT count(*) FROM waiver_status('eeeeeeee-0000-0000-0000-000000000002')$$, '0');
+SET LOCAL oro.identity_subject = 'sub-sofia';
 
+RESET ROLE;
 CALL t.note('an expired waiver stops counting');
 CALL t.must_pass('recording one that has lapsed',
   $$INSERT INTO waivers (member_id,signed_at,expires_at,storage,reference)
     VALUES ('eeeeeeee-0000-0000-0000-000000000002', now() - interval '2 years',
             now() - interval '1 year','paper-file','drawer B')$$);
-CALL t.must_query('and it does not make them valid',
-  $$SELECT has_valid_waiver::text
-      FROM waiver_status('eeeeeeee-0000-0000-0000-000000000002')$$, 'false');
+SET LOCAL oro.identity_subject = 'sub-sofia';
+CALL t.must_fail('a member cannot check somebody else without a role',
+  $$SELECT has_valid_waiver FROM waiver_status('eeeeeeee-0000-0000-0000-000000000002')$$,
+  'hosting or instructing role');
+RESET ROLE;
+CALL t.must_query('and the expired one does not count as valid',
+  $$SELECT bool_or(expires_at IS NULL OR expires_at > now())::text FROM waivers
+     WHERE member_id='eeeeeeee-0000-0000-0000-000000000002'$$, 'false');
