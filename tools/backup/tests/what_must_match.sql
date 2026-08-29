@@ -21,9 +21,15 @@ SELECT format('table %s.%s %s rows', table_schema, table_name,
    AND table_schema NOT IN ('pg_catalog', 'information_schema')
  ORDER BY table_schema, table_name;
 
+-- Every ORDER BY here ends on a primary key. Two snapshots of the same data
+-- are compared line by line, and a sort that leaves rows tied puts them in
+-- whatever order the heap happens to hold them, which a restore changes. That
+-- reports a difference where there is none, and worse, it lines two different
+-- rows up against each other and reports a match where there is a difference.
+-- legacy_id is null on every card issued after the migration, so cards tie.
 SELECT format('card %s at slot %s, tag %s', legacy_id, controller_slot, tag_number)
   FROM cards
- ORDER BY legacy_id;
+ ORDER BY legacy_id, controller_slot, tag_number, id;
 
 SELECT format('member %s holds %s, revoked %s',
               coalesce(m.legacy_id::text, 'with no legacy id'),
@@ -31,7 +37,9 @@ SELECT format('member %s holds %s, revoked %s',
               coalesce(r.revoked_at::text, 'no'))
   FROM member_roles r
   JOIN members m ON m.id = r.member_id
- ORDER BY m.legacy_id, r.role_id;
+-- A role revoked and granted again is two rows for one member and one role, and
+-- member_roles carries a surrogate key for exactly that reason.
+ ORDER BY m.legacy_id, m.id, r.role_id, r.revoked_at, r.id;
 
 -- A sequence that came back at 1 hands out an id somebody already holds.
 SELECT format('sequence %s.%s last value %s',
@@ -55,10 +63,12 @@ SELECT format('row security on %s.%s enabled %s forced %s',
    AND n.nspname NOT IN ('pg_catalog', 'information_schema')
  ORDER BY n.nspname, c.relname;
 
--- The database roles the policies name. They are cluster wide, so they are not
--- inside the archive of one database, and a restore into a cluster that has
--- never heard of them fails on the first GRANT. tools/backup/backup.sh writes
--- them to a second file for that reason.
+-- The database roles the archive's grants name. No policy names a role: they
+-- all default to PUBLIC, and 004_security.sql needs oro_api and door_reader for
+-- its GRANT statements instead. Roles are cluster wide, so they are not inside
+-- the archive of one database, and a restore into a cluster that has never
+-- heard of them fails on the first GRANT. tools/backup/backup.sh writes them to
+-- a second file for that reason.
 SELECT format('database role %s', rolname)
   FROM pg_roles
  WHERE rolname IN ('oro_api', 'door_reader')

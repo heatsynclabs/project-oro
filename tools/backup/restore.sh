@@ -14,7 +14,19 @@
 # flag would survive both.
 #
 # Restoring into an empty database needs no confirmation, because there is
-# nothing there to lose.
+# nothing there to lose. A cluster where the oro database has been dropped needs
+# none either: this creates it empty first. pg_dump was not given --create, so
+# the archive carries the contents of a database and not the database itself.
+#
+# Stopping it part way. ctrl-c, kill, and a dropped ssh session all stop the
+# restore and leave the database where it was. docker exec does not pass a
+# signal to the process it started, so a killed script on its own would leave
+# pg_restore running inside the container and committing. What happens instead
+# is that this names its pg_restore connection and, on a signal, terminates that
+# backend. The archive runs inside one transaction, so terminating it puts the
+# database back where it started. SIGKILL is the one nothing can catch: a
+# restore ended with kill -9 runs on to the end inside the container, and the
+# way to find out what it did is to read the member count back.
 #
 #   ORO_DB_CONTAINER  the container to restore into. The default is the db
 #                     service of the compose stack in this directory. The drill
@@ -79,14 +91,53 @@ SHOWN="$(docker inspect --format '{{.Name}}' "$CONTAINER" 2>/dev/null | sed 's|^
 if [ -z "$SHOWN" ]; then SHOWN="$CONTAINER"; fi
 
 WORK="$(mktemp -d)"
-INSIDE="/tmp/oro-restore-$$.dump"
+# The archive goes onto the container's /dev/shm, which is a tmpfs. A copy of
+# the members database on a container filesystem is member data on a disk
+# nobody is watching, and rule 13 of CLAUDE.md is why it does not go there. The
+# name carries this script's process id so two restores cannot collide.
+INSIDE="/dev/shm/oro-restore-$$.dump"
+# The name pg_restore's connection carries, so a signal can find that backend
+# again. Postgres shows it in pg_stat_activity.application_name.
+RESTORE_TAG="oro-restore-$$"
+
+members_in_the_database() {
+  table="$(docker exec "$CONTAINER" psql -U "$SUPERUSER" -d "$DATABASE" -tAc \
+           "SELECT coalesce(to_regclass('public.members')::text, '')" 2>/dev/null || true)"
+  if [ -z "$table" ]; then
+    echo "no members table"
+    return
+  fi
+  count="$(docker exec "$CONTAINER" psql -U "$SUPERUSER" -d "$DATABASE" -tAc \
+           'SELECT count(*) FROM members' 2>/dev/null || true)"
+  if [ -z "$count" ]; then
+    echo "a members table it would not read"
+  else
+    echo "$count member rows"
+  fi
+}
+
 cleanup() {
-  # The copy inside the container is the lab's member data on a filesystem
-  # nobody is watching, so it goes whether this run worked or not.
   docker exec "$CONTAINER" rm -f "$INSIDE" >/dev/null 2>&1 || true
   rm -rf "$WORK"
 }
 trap cleanup EXIT
+
+stopped() {
+  ended="$(docker exec "$CONTAINER" psql -U "$SUPERUSER" -d "$DATABASE" -tAc \
+    "SELECT count(*) FROM (SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+      WHERE application_name = '$RESTORE_TAG') ended" 2>/dev/null || echo 0)"
+  echo >&2
+  if [ "$ended" = "0" ]; then
+    echo "restore.sh: stopped part way, before the restore itself had started." >&2
+  else
+    echo "restore.sh: stopped part way, and the restore went with it. pg_restore" >&2
+    echo "ran the archive inside one transaction and that transaction was" >&2
+    echo "terminated, so nothing it had done was kept." >&2
+  fi
+  echo "The $DATABASE database in container $SHOWN holds $(members_in_the_database)." >&2
+  exit 1
+}
+trap stopped INT TERM HUP
 
 # Before anything else, and before the database is touched at all. An archive
 # that cannot be opened is the failure this whole gate exists to catch, and a
@@ -105,15 +156,30 @@ if ! docker run -i --rm postgres:18 \
 fi
 echo "$ARCHIVE reads back, $(grep -c '^[0-9]' "$WORK/toc" || true) entries"
 
-# to_regclass answers null rather than raising, so this works on a database with
-# no schema in it at all, which is what a restore onto a new machine finds.
-TABLE="$(docker exec "$CONTAINER" psql -U "$SUPERUSER" -d "$DATABASE" -tAc \
-         "SELECT coalesce(to_regclass('public.members')::text, '')")"
-HOLDS=0
-if [ -n "$TABLE" ]; then
-  HOLDS="$(docker exec "$CONTAINER" psql -U "$SUPERUSER" -d "$DATABASE" -tAc \
-           'SELECT count(*) FROM members')"
+# The runbook opens with the database being gone, and that is the case where
+# there is nothing for pg_restore to connect to. Creating it empty destroys
+# nothing, and it is the whole of what --create would have carried.
+PRESENT="$(docker exec "$CONTAINER" psql -U "$SUPERUSER" -d postgres -tAc \
+           "SELECT count(*) FROM pg_database WHERE datname = '$DATABASE'" \
+           2>"$WORK/cluster.err" || true)"
+if [ -z "$PRESENT" ]; then
+  cat "$WORK/cluster.err" >&2
+  echo "restore.sh: container $SHOWN is running and its Postgres did not answer," >&2
+  echo "so nothing was restored. make logs shows what the database printed, and" >&2
+  echo "a cluster that will not start is a different problem from a lost" >&2
+  echo "database. Nothing was changed." >&2
+  exit 1
 fi
+if [ "$PRESENT" = "0" ]; then
+  docker exec "$CONTAINER" createdb -U "$SUPERUSER" "$DATABASE"
+  echo "there was no $DATABASE database in container $SHOWN, so an empty one was created"
+fi
+
+HELD="$(members_in_the_database)"
+case "$HELD" in
+  *" member rows") HOLDS="${HELD% member rows}" ;;
+  *) HOLDS=0 ;;
+esac
 
 if [ "$HOLDS" -gt 0 ] && [ "$OVERWRITE" != "$HOLDS-members" ]; then
   echo >&2
@@ -136,48 +202,54 @@ if [ "$HOLDS" -gt 0 ] && [ "$OVERWRITE" != "$HOLDS-members" ]; then
   exit 1
 fi
 
-# The roles a database archive cannot carry, written beside it by backup.sh.
-# Applied before the archive, because the archive's first GRANT names one.
-ROLES="${ARCHIVE%.dump}.roles.sql"
-if [ -f "$ROLES" ]; then
-  # Not ON_ERROR_STOP. Every role that already exists reports an error here and
-  # that is the ordinary case: a cluster that has been up for a minute already
-  # has postgres. What matters is the state afterwards, which is checked rather
-  # than assumed.
-  docker exec -i "$CONTAINER" psql -U "$SUPERUSER" -d "$DATABASE" -q \
-    < "$ROLES" > "$WORK/roles.out" 2>&1 || true
-  MISSING=""
-  for role in $(sed -n 's/^CREATE ROLE \([A-Za-z0-9_]*\);$/\1/p' "$ROLES"); do
-    found="$(docker exec "$CONTAINER" psql -U "$SUPERUSER" -d "$DATABASE" -tAc \
-             "SELECT count(*) FROM pg_roles WHERE rolname = '$role'")"
-    if [ "$found" = "0" ]; then MISSING="$MISSING $role"; fi
-  done
-  if [ -n "$MISSING" ]; then
-    cat "$WORK/roles.out" >&2
-    echo "restore.sh: these roles are named by the archive's grants and are not" >&2
-    echo "in this cluster:$MISSING" >&2
-    echo "The restore was not attempted, because it would fail partway through" >&2
-    echo "the first GRANT. Nothing was changed." >&2
-    exit 1
-  fi
-  echo "$ROLES applied, every role it names is in the cluster"
-else
-  echo "no roles file beside the archive, so the cluster keeps the roles it has"
+# Roles belong to the cluster rather than to one database, so the archive cannot
+# carry them. That script applies the file beside the archive and then checks
+# the cluster against what the archive's own grants name, and it refuses before
+# the database is touched.
+if ! "$ROOT/tools/backup/roles_the_archive_needs.sh" "$ARCHIVE" "$CONTAINER"; then
+  exit 1
 fi
 
 # pg_restore has to seek within the archive, so it cannot read one on a pipe.
 # Measured on 2026-08-28: pg_restore 18.6 reading /dev/stdin answers "could not
-# read from input file: end of file". So the file goes in, and the trap above
-# takes it out again.
-docker cp "$ARCHIVE" "$CONTAINER:$INSIDE" >/dev/null
+# read from input file: end of file". So a copy goes in, onto the tmpfs, and the
+# shell that runs pg_restore removes it whatever pg_restore made of it. That
+# removal does not depend on this script living long enough to do it.
+BYTES="$(wc -c < "$ARCHIVE" | tr -d ' ')"
+FREE="$(docker exec "$CONTAINER" df -Pk /dev/shm | awk 'NR == 2 { printf "%d\n", $4 * 1024 }')"
+if [ "$BYTES" -ge "$FREE" ]; then
+  echo "restore.sh: the archive is $BYTES bytes and container $SHOWN has $FREE" >&2
+  echo "bytes free on /dev/shm, where the restore puts its copy so that no copy" >&2
+  echo "of the members database is left on a disk. Nothing was changed." >&2
+  echo "Docker gives a container 64MB of /dev/shm and Postgres uses some of it." >&2
+  echo "Give the db service more, in compose.yaml under the db service:" >&2
+  echo "  shm_size: 512m" >&2
+  echo "then make down, make up, and run this again." >&2
+  exit 1
+fi
 
 echo "restoring into the $DATABASE database in container $SHOWN"
 # --single-transaction is what makes a failure safe: the whole archive lands or
 # none of it does, so a restore that dies halfway leaves the database it started
 # with rather than half of two. --clean --if-exists is what lets it replace a
 # database that already holds something.
-if ! docker exec "$CONTAINER" pg_restore -U "$SUPERUSER" -d "$DATABASE" \
-     --clean --if-exists --single-transaction "$INSIDE" > "$WORK/restore.out" 2>&1; then
+#
+# In the background and waited for, rather than in the foreground. A shell
+# waiting on a foreground command runs a trap only once that command returns,
+# which for this one is after the restore has committed, and the trap is the
+# whole mechanism that makes ctrl-c mean what it says.
+docker exec -i "$CONTAINER" sh -c '
+      umask 077
+      cat > "$1" || exit 1
+      pg_restore -d "$2" --clean --if-exists --single-transaction "$1"
+      status=$?
+      rm -f "$1"
+      exit $status
+    ' restore-in-container "$INSIDE" \
+      "dbname=$DATABASE user=$SUPERUSER application_name=$RESTORE_TAG" \
+      < "$ARCHIVE" > "$WORK/restore.out" 2>&1 &
+RESTORE_CLIENT=$!
+if ! wait "$RESTORE_CLIENT"; then
   cat "$WORK/restore.out" >&2
   echo "restore.sh: the restore was refused and rolled back, and the error above" >&2
   echo "says why. Nothing was changed: pg_restore ran the whole archive inside" >&2

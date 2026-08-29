@@ -203,10 +203,18 @@ backup:
 #
 # docs/runbooks/restore-the-members-database.md is the version of this to read
 # at 2am, with the expected output at every step.
+#
+# The confirmation has to be typed on the command line. make imports the
+# environment into its own variables, so a plain $(OVERWRITE) would read an
+# exported OVERWRITE too, and one export would arm every later restore in that
+# shell with nothing on the command line to see. The whole argument for naming
+# the count is that the command carries it. $(origin) is how make tells a
+# command line variable from an inherited one.
 restore:
 	@test -f .env || { echo "No .env file, so docker compose cannot read compose.yaml and nothing was restored. Copy .env.example to .env and run make restore again." >&2; exit 1; }
 	@test -n "$(FILE)" || { echo "Name the archive to restore: make restore FILE=$$HOME/oro-backups/oro-20260828T204500Z.dump" >&2; echo "The newest one is the last line of: ls -l $$HOME/oro-backups" >&2; exit 1; }
-	@./tools/backup/restore.sh "$(FILE)" $(if $(OVERWRITE),--overwrite "$(OVERWRITE)")
+	@test -z "$(OVERWRITE)" || test "$(origin OVERWRITE)" = "command line" || { echo "OVERWRITE is set in this shell rather than on this command line, and" >&2; echo "make restore reads it only from the command line. A confirmation you" >&2; echo "cannot see in the command you typed is not a confirmation." >&2; echo "Nothing was restored. Run: unset OVERWRITE" >&2; exit 1; }
+	@./tools/backup/restore.sh "$(FILE)" $(if $(filter command,$(firstword $(origin OVERWRITE))),--overwrite "$(OVERWRITE)")
 
 # The drill. It builds its own database, backs it up, destroys it, restores it,
 # and then checks that what came back is the same database down to the slot each

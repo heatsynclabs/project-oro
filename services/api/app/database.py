@@ -34,6 +34,28 @@ from psycopg_pool import ConnectionPool
 # rather than a 500, and logs that the database is what refused.
 NO_IDENTITY_REFUSAL = "No identity set on this transaction"
 
+# How long a request waits for a free connection before it is answered 500.
+# psycopg_pool's own default is thirty seconds, read from ConnectionPool in
+# psycopg-pool 3.3.1, and a request that waits that long holds one of the forty
+# threadpool slots uvicorn gives a synchronous endpoint for the whole time. So
+# thirty seconds of an exhausted pool is forty requests parked and nothing left
+# to answer the forty first. Every query here is an indexed read of at most a
+# few hundred rows, so two seconds without a free connection means the pool is
+# full or the database is unreachable, and neither improves by waiting.
+WAIT_FOR_A_CONNECTION_SECONDS = 2
+
+# Ceilings the database applies to itself, in milliseconds, which is the unit
+# Postgres takes. They exist because the pool is small: one query nobody is
+# waiting for any more can hold a connection out of a pool of ten.
+#
+# Five seconds is far above anything this service runs. The slowest of its
+# queries reads the whole directory, which is a few hundred rows.
+STATEMENT_CEILING_MILLISECONDS = 5000
+# A transaction that has stopped doing work holds a connection and a row lock
+# and does nothing with either. Ten seconds is well past the longest request
+# here, which opens a transaction, runs four statements and closes it.
+IDLE_TRANSACTION_CEILING_MILLISECONDS = 10000
+
 _log = logging.getLogger("oro.api.database")
 _pool: ConnectionPool | None = None
 
@@ -44,7 +66,18 @@ def open_pool(settings) -> None:
         conninfo=settings.database_url,
         min_size=1,
         max_size=settings.pool_max,
-        kwargs={"row_factory": dict_row},
+        timeout=WAIT_FOR_A_CONNECTION_SECONDS,
+        kwargs={
+            "row_factory": dict_row,
+            # libpq hands these to the server at connect time, so every
+            # connection in the pool carries them without a statement per
+            # checkout.
+            "options": (
+                f"-c statement_timeout={STATEMENT_CEILING_MILLISECONDS}"
+                " -c idle_in_transaction_session_timeout="
+                f"{IDLE_TRANSACTION_CEILING_MILLISECONDS}"
+            ),
+        },
         open=True,
     )
     _pool.wait(timeout=30)

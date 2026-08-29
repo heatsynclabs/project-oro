@@ -1353,21 +1353,33 @@ components:
             whenever the member changes their own email, by trigger, and a member
             cannot set it.
 
-            Absent is a valid state and it is not a gate. An account with no
+            Absent is a valid state and never a gate. An account with no
             confirmed address works exactly like one that has it: no operation in
             this document refuses a member for it, and nothing is withheld until
             they confirm. It reports what the lab knows about reaching them,
             which is why a portal should show it as a signal rather than as a
             step somebody is stuck on.
 
-            Nothing in this API sets it, and that is the open question a reviewer
-            should settle rather than a gap to fill with an endpoint.
+            Nothing in this project writes a date into it, so a row this project
+            produced has it null. The legacy import does not name the column
+            (`tools/migration/020_migrate.sql`), and `link_or_create_member`
+            inserts only the identity subject, the address and the name
+            (`db/migrations/008_system_paths.sql`), so a carried over member and
+            a first sign in both land unconfirmed. The single writer is the
+            trigger in `db/migrations/004_security.sql`, and all it ever does is
+            clear the column.
+
+            The bootstrap command does record an address as already confirmed,
+            and it is easy to read that as filling this in. It does not. That
+            flag is `isVerified` on the identity service account
+            (`tools/bootstrap/identity_accounts.py`), which is a separate system
+            holding a separate record, and no code joins the two.
+
+            So the entrance is missing rather than hidden, and settling that is
+            the reviewer's call rather than a gap to fill with an endpoint.
             Confirmation belongs to the identity service, and no mail sender is
-            configured anywhere in this project yet, so today the only writers
-            are the legacy import and the bootstrap command, both of which record
-            the address as already confirmed and say so where they do it. An
-            endpoint here that promised to send a confirmation would be
-            documenting a sender that does not exist.
+            configured anywhere in this project, so an operation here promising
+            to send one would be documenting a sender that does not exist.
         phone: { type: [string, 'null'] }
         postal_code: { type: [string, 'null'] }
         tier_id:
@@ -1530,7 +1542,12 @@ components:
         by a client side check. That was the wrong layer: rule 5 of `CLAUDE.md`
         says a rule lives in exactly one place and this document is the one all
         three portals are built against.
-      required: [id]
+
+        Four properties are always present. `id`, `tag_number`, `active` and
+        `issued_at` are `NOT NULL` columns in `db/migrations/002_access.sql`, and
+        this endpoint takes no `fields` parameter, so no response can leave them
+        out. Everything below them is nullable in the table and optional here.
+      required: [id, tag_number, active, issued_at]
       properties:
         id: { type: string, format: uuid, readOnly: true }
         tag_number:
@@ -1545,17 +1562,38 @@ components:
         label:
           type: [string, 'null']
           readOnly: true
-          description: What this card is, in the member's words. For example, front desk spare.
-        active: { type: boolean, readOnly: true }
+          description: >-
+            What this card is. For example, front desk spare. An admin writes
+            it, because `admin_updates_cards` in
+            `db/migrations/007_write_policies.sql` is the only UPDATE policy on
+            `cards`. The holder reads it here and no operation in this document
+            lets them change it, which is why it is read only.
+        active:
+          type: boolean
+          readOnly: true
+          description: >-
+            Whether the card is live. A revoked card is always inactive, by the
+            `revoked_cards_are_inactive` check in `db/migrations/002_access.sql`,
+            so no response carries `revoked_at` set beside `active` true.
         issued_at: { type: string, format: date-time, readOnly: true }
         revoked_at: { type: [string, 'null'], format: date-time, readOnly: true }
         revoked_by:
           $ref: '#/components/schemas/Member'
           readOnly: true
           description: >-
-            Who revoked it. Only `id` and `name` are populated. A member is told
-            who took their card back: it is an action taken on them and the
-            person who took it is not a secret.
+            Who revoked it. A member is told who took their card back: it is an
+            action taken on them and the person who took it is not a secret.
+
+            Expect it absent until something can fill it. The only SELECT
+            policies left on `members` are `member_reads_self` and
+            `admin_reads_all` in `db/migrations/004_security.sql`, because
+            `db/migrations/011_close_read_holes.sql` dropped the one that let a
+            member read anybody else. A member holding a revoked card can
+            therefore resolve this id to a row only in the case where they
+            revoked it themselves. Filling it needs a name lookup that reads
+            past the policy, and that is finding 3 of
+            `docs/api/contract-review-notes.md`, which lists five more
+            properties with the same problem. One decision covers all six.
         revoked_reason: { type: [string, 'null'], readOnly: true }
 
     Card:

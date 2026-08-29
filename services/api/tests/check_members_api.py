@@ -7,9 +7,13 @@ different question: db/tests/directory.sql and db/tests/profile.sql already
 prove the policies hold at the database, and what is new here is that they
 still hold with a web service in front of them.
 """
+import os
+import subprocess
 import sys
 
 from harness import IDA, SOLDER, WREN, fetch, mint, run
+
+DATABASE_CONTAINER = os.environ["ORO_API_TEST_DATABASE_CONTAINER"]
 
 DIRECTORY_KEYS = {"id", "name", "pronouns", "email", "phone", "current_skills",
                   "desired_skills", "joined_on"}
@@ -130,6 +134,52 @@ def test_an_id_that_is_not_a_uuid_is_not_found_rather_than_a_fault():
     assert refused.json()["title"] == "Not in the directory", refused.body
 
 
+def test_a_member_id_spelled_in_uppercase_finds_the_same_member():
+    """RFC 4122 lets a uuid be written in either case.
+
+    The contract types this parameter `format: uuid` and says nothing about
+    case, so both spellings below are the same member. Postgres prints a uuid
+    in lowercase, and comparing the stored id as text against the parameter as
+    written answered 404 for a member who is listed.
+    """
+    lower = fetch("/members/" + IDA, mint("sub-c-wren"))
+    upper = fetch("/members/" + IDA.upper(), mint("sub-c-wren"))
+    assert lower.status == 200, lower.body
+    assert upper.status == 200, (
+        "a listed member spelled in uppercase was answered "
+        f"{upper.status}: {upper.body}")
+    assert upper.json() == lower.json(), upper.body
+
+
+def test_an_unknown_path_is_refused_in_the_one_shape():
+    """FastAPI answers this itself, and its own answer is the wrong shape.
+
+    The contract opens by saying errors are RFC 9457 problem details served as
+    application/problem+json, in one shape everywhere. Starlette's default for
+    a path nothing serves is {"detail": "Not Found"} as application/json.
+    """
+    refused = fetch("/nothing-is-served-here", mint("sub-c-wren"))
+    assert refused.status == 404, refused.body
+    assert refused.headers["Content-Type"].startswith(
+        "application/problem+json"), refused.headers["Content-Type"]
+    problem = refused.json()
+    assert problem["type"].endswith("/no-such-path"), problem
+    assert problem["status"] == 404, problem
+    assert problem["instance"] == "/nothing-is-served-here", problem
+
+
+def test_a_method_a_path_does_not_take_is_refused_in_the_one_shape():
+    """The other default, and the Allow header RFC 9110 requires with it."""
+    refused = fetch("/me", mint("sub-c-wren"), method="POST")
+    assert refused.status == 405, refused.body
+    assert refused.headers["Content-Type"].startswith(
+        "application/problem+json"), refused.headers["Content-Type"]
+    assert refused.headers["Allow"] == "GET", dict(refused.headers)
+    problem = refused.json()
+    assert problem["type"].endswith("/wrong-method"), problem
+    assert problem["status"] == 405, problem
+
+
 def test_fields_narrows_the_object_and_keeps_the_id():
     answer = fetch("/members?fields=name,pronouns", mint("sub-c-wren"))
     assert answer.status == 200, answer.body
@@ -144,6 +194,59 @@ def test_fields_naming_something_the_directory_cannot_answer_is_refused():
     assert problem["type"].endswith("/invalid-request"), problem
     assert problem["errors"][0]["field"] == "emergency_phone", problem
     assert "does not carry this field" in problem["errors"][0]["detail"], problem
+
+
+def test_the_refusal_names_what_the_directory_carries_once():
+    """A small request should not buy a large response.
+
+    The list of columns the directory has is one sentence about the `fields`
+    parameter, not one sentence per name in it. Repeated per name, eight
+    unknown names made a fifteen hundred byte response that said the same
+    thing eight times.
+    """
+    asked = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta"]
+    refused = fetch("/members?fields=" + ",".join(asked), mint("sub-c-wren"))
+    assert refused.status == 422, refused.body
+    assert refused.body.count("The directory carries") == 1, refused.body
+    problem = refused.json()
+    named = [entry["field"] for entry in problem["errors"]]
+    assert named == asked + ["fields"], problem
+
+
+def test_a_field_the_directory_cannot_answer_never_reads_the_directory():
+    """The refusal is free, because the query that has no reader never runs.
+
+    The suite's Postgres runs with log_statement=all, so every statement the
+    service sends is in its log and this can count them. Read the directory
+    before checking the fields and this goes red.
+    """
+    before = directory_reads()
+    refused = fetch("/members?fields=emergency_phone", mint("sub-c-wren"))
+    assert refused.status == 422, refused.body
+    after = directory_reads()
+    assert after == before, (
+        "a request nobody could answer read the directory anyway: "
+        f"{before} directory statements in the log before it, {after} after")
+
+
+def test_an_anonymous_caller_asking_for_an_unanswerable_field_is_anonymous():
+    """Which is why the field check waits for the database to say who this is.
+
+    Nothing in this service turns an anonymous caller away, per rule 5 and the
+    README. Moving the field check in front of the transaction would answer
+    this 422, which reports on a directory the caller was never allowed to
+    read.
+    """
+    refused = fetch("/members?fields=emergency_phone")
+    assert refused.status == 401, refused.body
+    assert refused.json()["type"].endswith("/unauthenticated"), refused.body
+
+
+def directory_reads() -> int:
+    """How many times the directory view has been selected from, off the log."""
+    printed = subprocess.run(["docker", "logs", DATABASE_CONTAINER],
+                             capture_output=True, text=True, check=False)
+    return (printed.stdout + printed.stderr).count("FROM member_directory")
 
 
 sys.exit(run(dict(globals()), "members API"))

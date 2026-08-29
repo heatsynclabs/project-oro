@@ -32,25 +32,8 @@ trap 'rm -rf "$WORK"' EXIT
 docker run -d --rm --name "$NAME" -e POSTGRES_PASSWORD=drill \
   -e POSTGRES_DB=oro postgres:18 >/dev/null
 
-# The image runs a temporary server during initdb and then restarts it, so a
-# single successful query can be answered by a server that is about to
-# disappear. Two in a row, the way db/tests/run.sh waits. HANDOFF.md section 7,
-# "pg_isready lies".
-printf 'waiting for postgres'
-i=0
-ok=0
-while [ "$ok" -lt 2 ]; do
-  if docker exec "$NAME" psql -U postgres -d oro -tAc 'SELECT 1' >/dev/null 2>&1; then
-    ok=$((ok + 1))
-  else
-    ok=0
-  fi
-  i=$((i + 1))
-  if [ "$i" -gt 90 ]; then echo " timed out"; exit 1; fi
-  printf '.'
-  sleep 1
-done
-echo " ready"
+. "$ROOT/tools/backup/tests/checks.sh"
+wait_for_postgres "$NAME"
 
 run() { docker exec -i "$NAME" psql -v ON_ERROR_STOP=1 -q -U postgres -d oro < "$1"; }
 

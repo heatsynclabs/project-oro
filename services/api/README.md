@@ -42,7 +42,7 @@ Postgres                the policies in db/migrations/004_security.sql and
                         011_close_read_holes.sql decide what comes back
 ```
 
-Three things about that are worth knowing before changing any of it.
+Five things about that are worth knowing before changing any of it.
 
 **Nothing in this service decides who may see what.** There is no check that
 turns an anonymous caller away. A caller with no usable token reaches the
@@ -56,6 +56,21 @@ the last member's identity. `db/migrations/004_security.sql` spends four lines
 of hint text on this. Exactly one function names that setting, and
 `tests/check_identity_isolation.py` runs three requests down one connection to
 prove it.
+
+**The provider's signing keys are read on a clock, never on demand.** A token
+naming a key id nobody published is refused from what is already in memory, at
+no network cost, because a caller who has to sign nothing can otherwise pick the
+moment this service makes an outbound request. The other side of that is a key
+the provider withdraws, which keeps working here until the next read.
+`ORO_API_JWKS_MAX_AGE_SECONDS` is that window and it is one minute by default.
+`app/identity.py` carries both measurements and `tests/check_signing_keys.py`
+holds the behaviour.
+
+**Every refusal is a problem detail.** Including the two FastAPI would answer
+itself, a path nothing serves and a method a path does not take. Both arrive as
+`{"detail": ...}` in `application/json` unless something catches them, and the
+contract opens by saying errors are RFC 9457 in one shape everywhere.
+`refused_by_the_router` in `app/main.py` is where the second shape stops.
 
 **The service logs in as `oro_api_login` and becomes `oro_api`.**
 `db/migrations/004_security.sql` creates `oro_api` `NOLOGIN` on purpose, so
@@ -111,6 +126,7 @@ docker run --rm -p 127.0.0.1:8711:8000 \
 | `ORO_API_TOKEN_ISSUER` | the `iss` claim every token has to carry |
 | `ORO_API_TOKEN_AUDIENCE` | the `aud` claim every token has to carry |
 | `ORO_API_DB_POOL_MAX` | connections in the pool. Ten by default, and the suite runs it at one |
+| `ORO_API_JWKS_MAX_AGE_SECONDS` | how long the provider's signing keys are used before they are read again. Sixty by default, and the suite runs it at five |
 
 The first four are required and the service refuses to start without them,
 naming the one that is missing.
@@ -136,12 +152,13 @@ image. Then it makes real HTTP requests against the result. Everything it starts
 is named after its own process id and is removed when it exits, so a stack you
 have up is neither read nor touched.
 
-Twenty one checks. One is in `run.sh` itself, a refusal: a container with no
-settings has to stop and name the one that is missing. The other twenty are in
-two files. `check_members_api.py` is what the three operations
-return and what they withhold. `check_identity_isolation.py` is who the service
-thinks you are and how long that lasts, and the last check in it is the reason
-this suite exists.
+Thirty five checks. One is in `run.sh` itself, a refusal: a container with no
+settings has to stop and name the one that is missing. The other thirty four are
+in three files. `check_members_api.py` is what the three operations return and
+what they withhold. `check_identity_isolation.py` is who the service thinks you
+are and how long that lasts, and the last check in it is the reason this suite
+exists. `check_signing_keys.py` is when the provider's keys are read, which is
+one clock answering two failures that pull in opposite directions.
 
 Four ways to make it go red, each of which was run:
 
@@ -151,11 +168,16 @@ Four ways to make it go red, each of which was run:
 | `set_config(..., false)`, which is a plain `SET` | The anonymous request in the middle of `test_an_identity_does_not_survive_on_a_pooled_connection` comes back 200 carrying the previous caller's record |
 | Drop `SET LOCAL ROLE oro_api` | `permission denied for table members`, because the login role inherits nothing |
 | Read the directory from `members` instead of `member_directory` | The directory returns one row, the caller's own, because no policy lets one member read another's row |
+| Turn PyJWKClient's per key cache back on | A key withdrawn from the published JWKS keeps verifying tokens, and `test_a_key_withdrawn_from_the_jwks_stops_being_accepted` goes red |
+| Let an unknown key id trigger a read of the JWKS | Twenty tokens naming keys nobody published cost twenty outbound requests, and a member's own call times out while they arrive |
 
 ## What it depends on
 
 - **Postgres**, with `db/migrations` applied. The service holds no schema of its
-  own and runs no migration.
+  own and runs no migration. A request waits two seconds for a free connection
+  and is then answered 500, and every connection carries a five second ceiling
+  on a statement and a ten second ceiling on an idle transaction.
+  `app/database.py` says where each number comes from.
 - **An OIDC provider** publishing a JWKS. The identity service in `compose.yaml`
   is that provider, and nothing here has been run against it yet: the suite
   serves its own JWKS from its own key.

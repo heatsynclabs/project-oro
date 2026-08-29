@@ -17,6 +17,7 @@ class Settings:
     database_url: str
     pool_max: int
     jwks_url: str
+    jwks_max_age_seconds: int
     token_issuer: str
     token_audience: str
 
@@ -42,6 +43,14 @@ def read_settings() -> Settings:
         # deployment default and nobody has measured a better number yet.
         pool_max=int(os.environ.get("ORO_API_DB_POOL_MAX", "10")),
         jwks_url=_required("ORO_API_JWKS_URL"),
+        # The only clock in the token path, and it is two numbers at once. A
+        # signing key the provider withdraws stops being accepted here within
+        # this long, and a key it newly publishes starts being accepted within
+        # this long. app/identity.py says why nothing shortens it in answer to
+        # a request, and the suite runs it at a few seconds so that a withdrawn
+        # key can be watched stopping.
+        jwks_max_age_seconds=int(
+            os.environ.get("ORO_API_JWKS_MAX_AGE_SECONDS", "60")),
         token_issuer=_required("ORO_API_TOKEN_ISSUER"),
         token_audience=_required("ORO_API_TOKEN_AUDIENCE"),
     )

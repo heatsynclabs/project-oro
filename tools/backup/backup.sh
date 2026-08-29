@@ -11,9 +11,11 @@
 #
 # The second file exists because roles live in the cluster rather than in the
 # database, so a database archive does not carry them. db/migrations/004_security.sql
-# creates oro_api and door_reader, every row level security policy names one of
-# them, and a restore into a cluster that has never heard of them fails on the
-# first GRANT. It is written with --no-role-passwords, so it carries no hash for
+# creates oro_api and door_reader. No policy names either of them: every policy
+# in db/migrations defaults to PUBLIC. What needs the roles is the grants, at
+# lines 144 to 147, 160, and 172 to 174 of that file, and a restore into a
+# cluster that has never heard of them fails on the first GRANT. The roles file
+# is written with --no-role-passwords, so it carries no hash for
 # any role: the identity service's password comes from .env by way of
 # db/init/001_identity_role.sql, and putting a copy of it in every backup would
 # make each one a credential store as well as a member list.

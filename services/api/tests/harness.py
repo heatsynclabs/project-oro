@@ -45,11 +45,12 @@ class Answer:
         return json.loads(self.body)
 
 
-def fetch(path, token=None):
+def fetch(path, token=None, method="GET"):
     headers = {"Accept": "application/json, application/problem+json"}
     if token is not None:
         headers["Authorization"] = "Bearer " + token
-    request = urllib.request.Request(BASE + path, headers=headers)
+    request = urllib.request.Request(BASE + path, headers=headers,
+                                     method=method)
     try:
         with urllib.request.urlopen(request, timeout=20) as answer:
             return Answer(answer.status, answer.headers, answer.read().decode())
@@ -57,7 +58,7 @@ def fetch(path, token=None):
         return Answer(refused.code, refused.headers, refused.read().decode())
 
 
-def _b64(raw: bytes) -> str:
+def base64url(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
 
@@ -87,30 +88,63 @@ def jwks_document(key_path: str, kid: str) -> str:
     modulus, exponent = public_numbers(key_path)
     return json.dumps({"keys": [{
         "kty": "RSA", "use": "sig", "alg": "RS256", "kid": kid,
-        "n": _b64(modulus), "e": _b64(exponent),
+        "n": base64url(modulus), "e": base64url(exponent),
     }]})
 
 
-def mint(subject, key_path=None, issuer=None, audience=None) -> str:
-    """An access token in the shape the contract's memberToken scheme names."""
+def token_claims(subject) -> dict:
+    """The claims the identity provider puts on an access token.
+
+    A check that wants a token the service has to refuse changes one key of
+    this and signs the result, so what it changed is the whole of what it is
+    asking about.
+    """
     now = int(time.time())
-    header = {"alg": "RS256", "typ": "JWT", "kid": KEY_ID}
-    claims = {
+    return {
         "sub": subject,
-        "iss": issuer if issuer is not None else ISSUER,
-        "aud": audience if audience is not None else AUDIENCE,
+        "iss": ISSUER,
+        "aud": AUDIENCE,
         "iat": now,
         # Ten minutes, which is what the identity service is configured for and
         # what tools/identity/tests/check_identity.py asserts off a real token.
         "exp": now + 600,
     }
-    signing_input = _b64(json.dumps(header).encode()) + "." + \
-        _b64(json.dumps(claims).encode())
+
+
+def signing_input(header: dict, claims: dict) -> str:
+    """The two base64url parts a JWT signature is taken over."""
+    return base64url(json.dumps(header).encode()) + "." + \
+        base64url(json.dumps(claims).encode())
+
+
+def signed_token(header: dict, claims: dict, key_path=None) -> str:
+    """Exactly this header and these claims, RS256 signed with this key."""
+    part = signing_input(header, claims)
     signature = _openssl(
         ["dgst", "-sha256", "-sign", key_path or SIGNING_KEY],
-        stdin=signing_input.encode(),
+        stdin=part.encode(),
     )
-    return signing_input + "." + _b64(signature)
+    return part + "." + base64url(signature)
+
+
+def public_key_pem(key_path=None) -> bytes:
+    """The public half of a signing key, in the PEM anybody can fetch.
+
+    Public is the point of it. A check about algorithm confusion needs the
+    bytes an attacker already has.
+    """
+    return _openssl(["rsa", "-in", key_path or SIGNING_KEY, "-pubout"])
+
+
+def mint(subject, key_path=None, issuer=None, audience=None) -> str:
+    """An access token in the shape the contract's memberToken scheme names."""
+    claims = token_claims(subject)
+    if issuer is not None:
+        claims["iss"] = issuer
+    if audience is not None:
+        claims["aud"] = audience
+    header = {"alg": "RS256", "typ": "JWT", "kid": KEY_ID}
+    return signed_token(header, claims, key_path)
 
 
 def run(checks, what: str) -> int:

@@ -61,11 +61,16 @@ SELECT id, name, pronouns, email, phone, current_skills, desired_skills,
 # all matches nothing instead of raising a type error the caller would see as a
 # fault of the server's. Whether the person exists and is unlisted or does not
 # exist is not distinguished, which is what the contract's 404 says.
+#
+# lower() because Postgres prints a uuid in lowercase and RFC 4122 lets one be
+# written in either case. The contract types this parameter as `format: uuid`
+# and says nothing about case, so CCCCCCCC-0000-0000-0000-000000000001 is a
+# legal spelling of a listed member, and without this it found nobody.
 DIRECTORY_MEMBER = """
 SELECT id, name, pronouns, email, phone, current_skills, desired_skills,
        joined_on
   FROM member_directory
- WHERE id::text = %s
+ WHERE id::text = lower(%s::text)
 """
 
 DIRECTORY_FIELDS = frozenset(

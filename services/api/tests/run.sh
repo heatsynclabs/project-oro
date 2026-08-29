@@ -11,7 +11,7 @@
 # What it builds, in this order because each part needs the one before it:
 #
 #   postgres        db/migrations, db/seed, the login role, and three invented
-#                   people
+#                   people, logging every statement so a check can count them
 #   a signing key   two, in fact. The second one is a stranger's, and a token
 #                   signed with it has to be refused
 #   a JWKS server   the public half of the first key, served over HTTP the way
@@ -64,8 +64,12 @@ psql_in() { docker exec -i "$DATABASE" psql -U postgres -d oro -v ON_ERROR_STOP=
 
 docker network create "$NETWORK" >/dev/null
 
+# log_statement=all so a check can count what the service actually sent. One
+# of them proves that a request the service is about to refuse costs no query,
+# and there is no other way to see a query that did not happen.
 docker run -d --rm --name "$DATABASE" --network "$NETWORK" \
-  -e POSTGRES_PASSWORD="$DB_PASSWORD" -e POSTGRES_DB=oro postgres:18 >/dev/null
+  -e POSTGRES_PASSWORD="$DB_PASSWORD" -e POSTGRES_DB=oro postgres:18 \
+  -c log_statement=all >/dev/null
 
 # pg_isready lies: the image runs a temporary server during initdb and restarts
 # it, so readiness goes true before the real database exists. Wait for a real
@@ -99,6 +103,15 @@ export ORO_API_TEST_KEY="$WORK/signing.pem"
 export ORO_API_TEST_STRANGER_KEY="$WORK/stranger.pem"
 export ORO_API_TEST_KID="test-$$"
 export ORO_API_TEST_CONTAINER="$SERVICE"
+export ORO_API_TEST_DATABASE_CONTAINER="$DATABASE"
+export ORO_API_TEST_JWKS_CONTAINER="$JWKS"
+export ORO_API_TEST_JWKS_DIR="$WORK/jwks"
+
+# The window app/identity.py reads the provider's key set on. Five seconds
+# rather than the deployed minute, so check_signing_keys.py can withdraw a key
+# and watch it stop working inside a check. Both directions of that window are
+# checked, so the number being small does not hide anything.
+export ORO_API_TEST_JWKS_MAX_AGE=5
 
 mkdir "$WORK/jwks"
 python3 -c "
@@ -147,6 +160,7 @@ docker run -d --rm --name "$SERVICE" --network "$NETWORK" \
   -e ORO_API_TOKEN_ISSUER="$ORO_API_TEST_ISSUER" \
   -e ORO_API_TOKEN_AUDIENCE="$ORO_API_TEST_AUDIENCE" \
   -e ORO_API_DB_POOL_MAX=1 \
+  -e ORO_API_JWKS_MAX_AGE_SECONDS="$ORO_API_TEST_JWKS_MAX_AGE" \
   "$IMAGE" >/dev/null
 
 # The service serves no health endpoint, because the contract declares none and

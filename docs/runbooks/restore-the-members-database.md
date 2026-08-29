@@ -3,6 +3,11 @@
 Follow this when the `oro` database is gone, or when what is in it is wrong and
 an older copy is better. It assumes you did not build any of this.
 
+Every block of output below is copied from a run of the drill in
+`tools/backup/tests`, with its throwaway container and its temporary paths
+written as the ones you will have. The counts are the drill's twelve invented
+members, so yours will differ.
+
 Read these three things before step 1.
 
 **The door is not waiting on you.** Physical cards open the door through the
@@ -33,7 +38,7 @@ ls -l $HOME/oro-backups
 Expected: a pair of files for each backup, newest last.
 
 ```
--rw-------  1 you  staff  130404 Aug 28 21:52 oro-20260829T045220Z.dump
+-rw-------  1 you  staff  130405 Aug 28 21:52 oro-20260829T045220Z.dump
 -rw-------  1 you  staff     778 Aug 28 21:52 oro-20260829T045220Z.roles.sql
 ```
 
@@ -60,6 +65,9 @@ If `db` is not there, `make up` first. If it comes up unhealthy, read
 before doing anything else, because a database volume older than that file
 cannot start.
 
+The container has to be up. The `oro` database inside it does not: step 4 makes
+an empty one when it finds none.
+
 ## 3. Take a backup of what is there now
 
 Do this even when you are sure the current database is worthless. It costs a few
@@ -75,13 +83,12 @@ Expected:
 ```
 reading the oro database out of container oro-db-1
 wrote /Users/you/oro-backups/oro-20260829T045220Z.dump
-     130404 bytes, 305 entries, read back before it was named
+     130405 bytes, 305 entries, read back before it was named
 wrote /Users/you/oro-backups/oro-20260829T045220Z.roles.sql
      3 roles, no passwords
 ```
 
-Those numbers came from a database of twelve invented members, so yours will not
-match them. What matters is that both lines say `wrote`, and that the first says
+What matters is that both lines say `wrote`, and that the first says
 `read back before it was named`.
 That phrase means the archive was opened again after it was written, so it is a
 file somebody can restore rather than a file of the right size.
@@ -102,15 +109,27 @@ Expected, on a database with nothing in it:
 
 ```
 /Users/you/oro-backups/oro-20260829T045220Z.dump reads back, 305 entries
-/Users/you/oro-backups/oro-20260829T045220Z.roles.sql applied, every role it names is in the cluster
+/Users/you/oro-backups/oro-20260829T045220Z.roles.sql applied
+the archive's grants name 3 role(s), and this cluster has all of them
 restoring into the oro database in container oro-db-1
 restored: 12 members and 5 cards
 and every card the legacy import carried is at the slot it had
 ```
 
-The counts are the drill's, not the lab's. Check them against what you expect
-the lab to have. A restore that reports far fewer members than the lab has is a
-restore of the wrong archive, and step 3 is how you get back.
+When the `oro` database has been dropped rather than emptied, one more line
+appears near the top and everything else is the same:
+
+```
+there was no oro database in container oro-db-1, so an empty one was created
+```
+
+That line is expected in that case and is not a warning. The archive carries the
+contents of a database rather than the database itself, so something has to make
+the empty one first.
+
+Check the counts against what you expect the lab to have. A restore that reports
+far fewer members than the lab has is a restore of the wrong archive, and step 3
+is how you get back.
 
 The last line is the one to read twice. A slot is an address in the door
 controller's memory, so a card at a different slot is a member with somebody
@@ -136,7 +155,83 @@ command it printed, exactly as printed. If the count is not what you expected,
 you are pointed at a database you did not mean to touch, and the thing to change
 is which stack you are in rather than the number.
 
-## 6. Check what came back
+`OVERWRITE` has to be on the command line. If you exported it into your shell
+earlier, `make` refuses and says so:
+
+```
+OVERWRITE is set in this shell rather than on this command line, and
+make restore reads it only from the command line. A confirmation you
+cannot see in the command you typed is not a confirmation.
+Nothing was restored. Run: unset OVERWRITE
+```
+
+## 6. If it refuses because the roles are not in this cluster
+
+```
+restore.sh: this archive grants privileges to roles that are not in this
+cluster: door_reader oro_api
+The restore was not attempted, because it would fail on the first GRANT.
+Nothing was changed.
+
+There is no roles file beside the archive. backup.sh writes one under
+the same timestamp, and the restore looks for it here:
+  /Users/you/oro-backups/oro-20260829T045220Z.roles.sql
+Find it in the backup directory, put it back next to the archive, and
+run the restore again.
+```
+
+Do what the last paragraph says: find the `.roles.sql` under the same timestamp
+and put it back beside the archive. Roles belong to the Postgres cluster rather
+than to one database, so a database archive cannot carry them, and this restore
+would have died on the archive's first `GRANT`.
+
+The same refusal appears with a different last paragraph when the roles file is
+there and the roles still are not:
+
+```
+/Users/you/oro-backups/oro-20260829T045220Z.roles.sql was applied and those roles are still not here, so it belongs to
+a different cluster. What psql made of it:
+  ERROR:  role "some_other_role" already exists
+```
+
+That is a roles file from another machine sitting under the right name. Find the
+one that came with this archive.
+
+## 7. If it refuses the archive itself
+
+```
+pg_restore: error: could not read from input file: end of file
+restore.sh: ... is not an archive this can restore, and the error
+above says why. Nothing was changed.
+```
+
+The archive is damaged or was never finished. The database has not been touched.
+Go back to step 1 and use the archive before it.
+
+If every archive you try reads back the same way, stop restoring and say so out
+loud to whoever is awake. Backups that cannot be read have been failing for as
+long as they have been unreadable, and that is a bigger problem than tonight's.
+
+## 8. If you started the wrong restore
+
+Press ctrl-c. That is enough, and this is what you will see:
+
+```
+restore.sh: stopped part way, and the restore went with it. pg_restore
+ran the archive inside one transaction and that transaction was
+terminated, so nothing it had done was kept.
+The oro database in container oro-db-1 holds 12 member rows.
+```
+
+The count on the last line is read out of the database after the stop, so it is
+what is there now rather than what was expected to be there. `kill` and a
+dropped ssh session do the same thing.
+
+`kill -9` does not, because no program can catch it. If somebody ended the
+restore that way, the restore carried on inside the container and probably
+finished. Go to step 9 and read the database rather than guessing.
+
+## 9. Check what came back
 
 ```
 make psql
@@ -155,32 +250,7 @@ Expected: a member count that matches what the lab has, and a card list where
 issued after the migration has no `legacy_id`, and its slot is whatever the
 admin who issued it chose.
 
-## 7. When the restore refuses the archive
-
-```
-pg_restore: error: could not read from input file: end of file
-restore.sh: ... is not an archive this can restore, and the error
-above says why. Nothing was changed.
-```
-
-The archive is damaged or was never finished. The database has not been touched.
-Go back to step 1 and use the archive before it.
-
-If every archive you try reads back the same way, stop restoring and say so out
-loud to whoever is awake. Backups that cannot be read have been failing for as
-long as they have been unreadable, and that is a bigger problem than tonight's.
-
-```
-restore.sh: these roles are named by the archive's grants and are not
-in this cluster: oro_api door_reader
-```
-
-The `.roles.sql` file is missing from beside the archive, or it was not carried
-with it. Find it in `$HOME/oro-backups` under the same timestamp, put it back
-next to the archive, and run step 4 again. The restore was not attempted, so
-nothing has changed.
-
-## 8. When you are done
+## 10. When you are done
 
 Say in the lab's channel what you restored, which archive you used, and what the
 member and card counts came out as. The next person needs to know the database

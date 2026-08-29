@@ -10,11 +10,15 @@ transaction and a pooled connection is handed to the next request. The suite
 runs the service with a pool of exactly one connection, so every request here
 lands on the same connection and a leak has nowhere to hide.
 """
+import hashlib
+import hmac
 import os
 import subprocess
 import sys
 
-from harness import IDA, STRANGER_KEY, WREN, fetch, mint, run
+from harness import (IDA, KEY_ID, STRANGER_KEY, WREN, base64url, fetch, mint,
+                     public_key_pem, run, signed_token, signing_input,
+                     token_claims)
 
 SERVICE_CONTAINER = os.environ["ORO_API_TEST_CONTAINER"]
 
@@ -49,6 +53,94 @@ def test_the_database_is_what_refuses_an_anonymous_caller():
 def test_a_token_signed_by_somebody_else_is_refused():
     forged = mint("sub-c-wren", key_path=STRANGER_KEY)
     refused = fetch("/me", forged)
+    assert refused.status == 401, refused.body
+    assert refused.json()["title"] == "Sign in first", refused.body
+
+
+def test_a_token_that_asks_for_no_signature_is_refused():
+    """`alg: none`, which is the oldest attack there is on a JWT library.
+
+    The header names the key this service does publish, so the refusal is
+    about the algorithm and nothing else.
+
+    Two things hold it shut, which was measured rather than assumed. First,
+    app/identity.py names RS256 instead of reading the algorithm off the
+    token. Second, NoneAlgorithm.verify in pyjwt 2.13.0 returns False for
+    every signature, so putting "none" in ALGORITHMS on its own still refuses
+    this. Loosen both, by accepting "none" and by making that verify return
+    True, and this comes back 200 carrying Wren.
+    """
+    header = {"alg": "none", "typ": "JWT", "kid": KEY_ID}
+    forged = signing_input(header, token_claims("sub-c-wren")) + "."
+    refused = fetch("/me", forged)
+    assert refused.status == 401, refused.body
+    assert refused.json()["title"] == "Sign in first", refused.body
+
+
+def test_a_token_signed_with_the_public_key_as_an_hmac_secret_is_refused():
+    """The other half of the pair, and the one that still catches libraries.
+
+    The provider's public key is public. A caller who treats those bytes as an
+    HMAC secret can sign any claims they like, and a verifier that reads `alg`
+    off the token checks the signature against exactly that key and believes
+    it.
+
+    Two things hold this one shut as well. Adding HS256 to ALGORITHMS in
+    app/identity.py is not enough on its own, because HMACAlgorithm.prepare_key
+    in pyjwt 2.13.0 refuses a key that reads as a public key. Loosen both, by
+    accepting HS256 and by handing that check something it will take, and this
+    comes back 200 carrying Wren.
+    """
+    header = {"alg": "HS256", "typ": "JWT", "kid": KEY_ID}
+    part = signing_input(header, token_claims("sub-c-wren"))
+    forged = part + "." + base64url(
+        hmac.new(public_key_pem(), part.encode(), hashlib.sha256).digest())
+    refused = fetch("/me", forged)
+    assert refused.status == 401, refused.body
+    assert refused.json()["title"] == "Sign in first", refused.body
+
+
+def test_an_expired_token_is_refused():
+    """A token this service signed off on an hour ago is not a session.
+
+    Drop verify_exp from the options in app/identity.py and this comes back
+    200, which is a stolen token working for as long as somebody keeps it.
+    """
+    claims = token_claims("sub-c-wren")
+    claims["exp"] = claims["iat"] - 60
+    stale = signed_token({"alg": "RS256", "typ": "JWT", "kid": KEY_ID}, claims)
+    refused = fetch("/me", stale)
+    assert refused.status == 401, refused.body
+    assert refused.json()["title"] == "Sign in first", refused.body
+
+
+def test_a_token_with_no_expiry_at_all_is_refused():
+    """The same attack with the claim missing rather than in the past.
+
+    Checking `exp` is not enough on its own: a token that carries none passes
+    an expiry check that only looks at the claims present. app/identity.py
+    requires exp, iss, aud and sub. Take "exp" out of that list and this comes
+    back 200 holding a credential that never stops working.
+    """
+    claims = token_claims("sub-c-wren")
+    del claims["exp"]
+    forever = signed_token({"alg": "RS256", "typ": "JWT", "kid": KEY_ID}, claims)
+    refused = fetch("/me", forever)
+    assert refused.status == 401, refused.body
+    assert refused.json()["title"] == "Sign in first", refused.body
+
+
+def test_a_token_naming_a_key_that_was_never_published_is_refused():
+    """A correctly signed token whose header points at nothing.
+
+    The signature is real and made with the real key. Only the `kid` is wrong,
+    so what refuses this is the key lookup rather than the signature check.
+    Make app/identity.py fall back to any published key when the kid matches
+    none and this comes back 200.
+    """
+    header = {"alg": "RS256", "typ": "JWT", "kid": "a-key-nobody-published"}
+    stranger = signed_token(header, token_claims("sub-c-wren"))
+    refused = fetch("/me", stranger)
     assert refused.status == 401, refused.body
     assert refused.json()["title"] == "Sign in first", refused.body
 

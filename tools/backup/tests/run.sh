@@ -16,8 +16,13 @@
 #
 # Both directions are checked. The restore has to bring the database back
 # exactly, down to the slot each card sits at, and it has to refuse loudly
-# rather than leave a half restored database when the archive is damaged or
-# when the database it is pointed at still holds members.
+# rather than leave a half restored database when the archive is damaged, when
+# the cluster is missing the roles the archive's grants name, when the database
+# it is pointed at still holds members, or when somebody stops it part way.
+#
+# The assertions themselves are in checks.sh beside this file, and the second
+# half of the drill, everything about what a restore does and does not change,
+# is in what_a_restore_changes.sh.
 #
 # Needs docker and nothing else. Two throwaway containers on no published port,
 # a temporary directory for the archives, and it removes all of it.
@@ -37,33 +42,26 @@ cleanup() {
 }
 trap cleanup EXIT
 
-step() { echo; echo "== $1"; }
-ok()   { echo "  ok    $1"; }
-bad()  { echo "  FAIL  $1" >&2; FAILURES=$((FAILURES + 1)); }
+. "$TESTS/checks.sh"
 
-# psql -tA and nothing else, so the output is data rather than a table drawing.
-snapshot() {  # snapshot CONTAINER FILE
-  docker exec -i "$1" psql -U postgres -d oro -tA -q -v ON_ERROR_STOP=1 \
-    < "$TESTS/what_must_match.sql" > "$2"
-}
-
-members_in() {  # members_in CONTAINER
-  docker exec "$1" psql -U postgres -d oro -tAc 'SELECT count(*) FROM members'
-}
-
-must_say() {  # must_say FILE "text that has to appear"
-  if grep -qF "$2" "$1"; then ok "said: $2"; else bad "never said: $2"; fi
-}
-
-unchanged() {  # unchanged FILE_TAKEN_BEFORE, against the restored container now
-  snapshot "$RESTORED" "$WORK/now.txt"
-  if diff -u "$1" "$WORK/now.txt" > "$WORK/now.diff"; then
-    ok "the database is exactly as it was before that attempt"
-  else
-    bad "the database changed during an attempt that was refused"
-    cat "$WORK/now.diff" >&2
-  fi
-}
+step "A confirmation that was never typed"
+# The count that arms a restore is meant to be visible in the command somebody
+# ran. make imports the environment into its own variables, so without the
+# origin test in the Makefile an exported OVERWRITE would arm every later
+# restore in that shell. make -n prints the recipe and runs none of it, so
+# nothing here goes near a database.
+TYPED="$(cd "$ROOT" && make -n restore FILE=/no/such/archive.dump \
+         OVERWRITE=12-members 2>&1 | grep 'restore.sh' || true)"
+EXPORTED="$(cd "$ROOT" && OVERWRITE=12-members make -n restore \
+            FILE=/no/such/archive.dump 2>&1 | grep 'restore.sh' || true)"
+case "$TYPED" in
+  *--overwrite*) ok "a count typed on the command line reaches restore.sh" ;;
+  *) bad "a count typed on the command line never reached restore.sh" ;;
+esac
+case "$EXPORTED" in
+  *--overwrite*) bad "an exported OVERWRITE armed a restore nobody confirmed" ;;
+  *) ok "an exported OVERWRITE does not arm anything" ;;
+esac
 
 step "A database shaped like the day of the migration"
 "$TESTS/load_a_migrated_database.sh" "$SOURCE"
@@ -95,27 +93,44 @@ else ok "the container and its cluster are gone, so there is nothing to restore 
 step "A new database with nothing in it"
 docker run -d --rm --name "$RESTORED" -e POSTGRES_PASSWORD=drill \
   -e POSTGRES_DB=oro postgres:18 >/dev/null
-printf '  waiting for postgres'
-i=0
-seen=0
-while [ "$seen" -lt 2 ]; do
-  if docker exec "$RESTORED" psql -U postgres -d oro -tAc 'SELECT 1' >/dev/null 2>&1; then
-    seen=$((seen + 1))
-  else
-    seen=0
-  fi
-  i=$((i + 1))
-  if [ "$i" -gt 90 ]; then echo " timed out"; exit 1; fi
-  printf '.'
-  sleep 1
-done
-echo " ready"
+wait_for_postgres "$RESTORED"
 EMPTY="$(docker exec "$RESTORED" psql -U postgres -d oro -tAc "SELECT coalesce(to_regclass('public.members')::text, 'no members table')")"
 if [ "$EMPTY" = "no members table" ]; then ok "no members table, so nothing here can pass by accident"
 else bad "the new database already holds $EMPTY"; fi
 NOROLE="$(docker exec "$RESTORED" psql -U postgres -d oro -tAc "SELECT count(*) FROM pg_roles WHERE rolname = 'oro_api'")"
 if [ "$NOROLE" = "0" ]; then ok "and no oro_api role, which is the half a database archive does not carry"
 else bad "the new cluster already has an oro_api role"; fi
+
+step "The archive with its roles file left behind, which has to be refused"
+# No policy in db/migrations names a role. What needs oro_api and door_reader is
+# the grants in 004_security.sql, and they are inside the archive, so the check
+# reads the archive rather than the file beside it.
+LEFTBEHIND="$WORK/roles-file-left-behind.dump"
+cp "$ARCHIVE" "$LEFTBEHIND"
+if ORO_DB_CONTAINER="$RESTORED" "$ROOT/tools/backup/restore.sh" "$LEFTBEHIND" \
+     > "$WORK/leftbehind.out" 2>&1; then
+  bad "an archive restored into a cluster without the roles its grants name"
+else
+  ok "refused"
+fi
+sed 's/^/  | /' "$WORK/leftbehind.out"
+must_say "$WORK/leftbehind.out" "cluster: door_reader oro_api"
+must_say "$WORK/leftbehind.out" "Nothing was changed"
+
+step "And with a roles file belonging to a different cluster"
+OTHER="$WORK/from-another-cluster.dump"
+cp "$ARCHIVE" "$OTHER"
+echo "CREATE ROLE drill_unrelated_role;" > "${OTHER%.dump}.roles.sql"
+if ORO_DB_CONTAINER="$RESTORED" "$ROOT/tools/backup/restore.sh" "$OTHER" \
+     > "$WORK/othercluster.out" 2>&1; then
+  bad "a roles file that creates the wrong roles was accepted"
+else
+  ok "refused, because the roles it created are not the roles the archive needs"
+fi
+must_say "$WORK/othercluster.out" "cluster: door_reader oro_api"
+STILL="$(docker exec "$RESTORED" psql -U postgres -d oro -tAc "SELECT coalesce(to_regclass('public.members')::text, 'no members table')")"
+if [ "$STILL" = "no members table" ]; then ok "and neither attempt touched the database"
+else bad "the database holds a $STILL after two attempts that were refused"; fi
 
 step "Restored from the archive"
 ORO_DB_CONTAINER="$RESTORED" "$ROOT/tools/backup/restore.sh" "$ARCHIVE"
@@ -143,92 +158,9 @@ else
   cat "$WORK/verify.out" >&2
 fi
 
-step "A restore over a database that holds members, which has to be refused"
-snapshot "$RESTORED" "$WORK/populated.txt"
-HOLDS="$(members_in "$RESTORED")"
-if ORO_DB_CONTAINER="$RESTORED" "$ROOT/tools/backup/restore.sh" "$ARCHIVE" \
-     > "$WORK/refused.out" 2>&1; then
-  bad "it restored over $HOLDS members without being asked twice"
-else
-  ok "refused"
+if ! "$TESTS/what_a_restore_changes.sh" "$RESTORED" "$ARCHIVE" "$WORK"; then
+  bad "what a restore changes reported failures, listed above"
 fi
-sed 's/^/  | /' "$WORK/refused.out"
-must_say "$WORK/refused.out" "already holds $HOLDS member"
-must_say "$WORK/refused.out" "Nothing was changed"
-must_say "$WORK/refused.out" "OVERWRITE=$HOLDS-members"
-unchanged "$WORK/populated.txt"
-
-step "The same restore with the wrong number of members named"
-if ORO_DB_CONTAINER="$RESTORED" "$ROOT/tools/backup/restore.sh" "$ARCHIVE" \
-     --overwrite "$((HOLDS + 1))-members" > "$WORK/wrongcount.out" 2>&1; then
-  bad "a count that does not match the database was accepted"
-else
-  ok "refused, because the count names a database this is not"
-fi
-must_say "$WORK/wrongcount.out" "holds $HOLDS member"
-unchanged "$WORK/populated.txt"
-
-step "And the same restore with the count named correctly"
-if ORO_DB_CONTAINER="$RESTORED" "$ROOT/tools/backup/restore.sh" "$ARCHIVE" \
-     --overwrite "$HOLDS-members" > "$WORK/overwrite.out" 2>&1; then
-  ok "it went ahead when the caller said what they were destroying"
-else
-  bad "a restore that named the count correctly was still refused"
-  cat "$WORK/overwrite.out" >&2
-fi
-unchanged "$WORK/populated.txt"
-
-step "An archive with its tail cut off, which has to be refused"
-CUT="$WORK/cut-in-half.dump"
-BYTES="$(wc -c < "$ARCHIVE" | tr -d ' ')"
-head -c "$((BYTES / 2))" "$ARCHIVE" > "$CUT"
-cp "$ROLES" "${CUT%.dump}.roles.sql"
-if ORO_DB_CONTAINER="$RESTORED" "$ROOT/tools/backup/restore.sh" "$CUT" \
-     --overwrite "$HOLDS-members" > "$WORK/cut.out" 2>&1; then
-  bad "half an archive restored, which means half a database"
-else
-  ok "refused"
-fi
-sed 's/^/  | /' "$WORK/cut.out"
-must_say "$WORK/cut.out" "Nothing was changed"
-unchanged "$WORK/populated.txt"
-
-# The cut above stops short of the archive's own table of contents, so it is
-# refused before the database is touched. This one keeps the table of contents
-# and loses the end of the data, which is the shape a disk that filled up
-# leaves behind. Either layer may catch it: the read back, or the transaction
-# the restore runs inside. What the drill asserts is the part that matters
-# either way, which is that it was refused and that the database did not move.
-step "An archive with only its last bytes cut off"
-NEARLY="$WORK/nearly-whole.dump"
-head -c "$((BYTES * 99 / 100))" "$ARCHIVE" > "$NEARLY"
-cp "$ROLES" "${NEARLY%.dump}.roles.sql"
-if ORO_DB_CONTAINER="$RESTORED" "$ROOT/tools/backup/restore.sh" "$NEARLY" \
-     --overwrite "$HOLDS-members" > "$WORK/nearly.out" 2>&1; then
-  bad "an archive missing its last bytes restored anyway"
-else
-  ok "refused"
-fi
-if grep -q "is not an archive this can restore" "$WORK/nearly.out"; then
-  echo "  caught by the read back, before the database was touched"
-else
-  echo "  caught by the transaction the restore runs inside, and rolled back"
-fi
-must_say "$WORK/nearly.out" "Nothing was changed"
-unchanged "$WORK/populated.txt"
-
-step "A file that is not an archive at all"
-NOTADUMP="$WORK/not-an-archive.dump"
-echo "this is a text file somebody renamed" > "$NOTADUMP"
-if ORO_DB_CONTAINER="$RESTORED" "$ROOT/tools/backup/restore.sh" "$NOTADUMP" \
-     --overwrite "$HOLDS-members" > "$WORK/notadump.out" 2>&1; then
-  bad "a text file was accepted as a backup"
-else
-  ok "refused"
-fi
-must_say "$WORK/notadump.out" "Nothing was changed"
-unchanged "$WORK/populated.txt"
-
 echo
 if [ "$FAILURES" -gt 0 ]; then
   echo "$FAILURES check(s) failed" >&2

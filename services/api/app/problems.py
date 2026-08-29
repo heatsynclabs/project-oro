@@ -4,6 +4,14 @@ The contract says every refusal carries a sentence a person wrote, naming the
 rule that refused. The sentences below are the ones in
 docs/api/members-v1.yaml, copied rather than paraphrased, so a client reading
 the document and a client reading a response see the same words.
+
+Only shape is meant literally, and it took two problems below to make it so.
+An unknown path and a method a path does not take are answered by Starlette
+before any endpoint here runs, and its answer is `{"detail": ...}` as
+`application/json`. That is a second shape, and the contract opens by saying
+errors are problem details in one shape everywhere.
+app/main.py:refused_by_the_router turns both into NO_SUCH_PATH and
+WRONG_METHOD, and check_members_api.py holds it there.
 """
 
 import dataclasses
@@ -73,6 +81,31 @@ NO_MEMBER_RECORD = Problem(
     ),
 )
 
+# Starlette's own two refusals, said in the contract's shape. Neither is a
+# response the contract declares, because it declares paths rather than the
+# absence of them, and both are reachable from any client that guesses a URL.
+NO_SUCH_PATH = Problem(
+    slug="no-such-path",
+    status=404,
+    title="Nothing is served at that path",
+    detail=(
+        "This API has no operation at that path, so nothing was read or "
+        "changed. Check the path against docs/api/members-v1.yaml, which "
+        "lists every one there is."
+    ),
+)
+
+WRONG_METHOD = Problem(
+    slug="wrong-method",
+    status=405,
+    title="That path does not take this method",
+    detail=(
+        "This path exists and answers a different HTTP method, so nothing was "
+        "read or changed. The Allow header on this response names the methods "
+        "it does take."
+    ),
+)
+
 UNEXPECTED = Problem(
     slug="unexpected",
     status=500,
@@ -85,7 +118,14 @@ UNEXPECTED = Problem(
 )
 
 
-def problem_response(problem: Problem, instance: str, errors=()) -> JSONResponse:
+def problem_response(problem: Problem, instance: str, errors=(),
+                     headers=None) -> JSONResponse:
+    """One refusal, in the one shape.
+
+    `headers` carries through the headers whatever refused already set. The
+    only one today is Allow on a 405, which RFC 9110 requires and which
+    Starlette had put there before this replaced its body.
+    """
     body = {
         "type": ERROR_BASE + problem.slug,
         "title": problem.title,
@@ -99,4 +139,5 @@ def problem_response(problem: Problem, instance: str, errors=()) -> JSONResponse
         status_code=problem.status,
         content=body,
         media_type="application/problem+json",
+        headers=headers,
     )

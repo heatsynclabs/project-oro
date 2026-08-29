@@ -34,6 +34,40 @@ with its small label and display heading, the label and value grid, the inline
 chip, the sheet, and the caution stripe under the masthead. What did not come
 out of them is the section "Where this and the mockups differ" below.
 
+## The mark
+
+The masthead carries `hsl-mark-current.svg` and `hsl-wordmark-current.svg` from
+`heatsync-brand/assets/logos` in the hsl-forge brand skill package, which is
+internal HeatSync Labs work product and the same package
+`packages/gantry-tokens/tokens.css` is taken from. sha256
+`e8bb9cc8edf7ebd31ebdfd28488602a94a1d339308251271a5dcf35079111152` and
+`0a531347ca539e35afd9289037a131a91810202000948db078dd34b2efe662fa`.
+
+Three things from that package's `references/logos.md` decided how they are used
+here, and each one has a check behind it in
+`tools/members-portal/tests/check_appearance.py`.
+
+**The mark is two pieces in two colours.** The sun disc keeps the logo orange,
+`#F99A1C`, and the flames and the sync arrow take `currentColor`. Filling the
+disc with the flame colour makes a shape that is no longer the HeatSync mark,
+and `hsl-mark-current.svg` exists so that cannot happen whatever colour a page
+sets. That document also says do not redraw or simplify the flames, which is
+what an earlier version of this portal did with a sun drawn from scratch.
+
+**The wordmark is Charis SIL 700, outlined.** It depends on no font being
+installed, which matters because this portal ships no font files. Setting it in
+any other face is named as misuse.
+
+**Both keep their packaged width and height.** Stripping them to size with CSS
+alone leaves the element with no intrinsic aspect ratio, and an SVG with no
+ratio in a flex row falls back to the full width of that row. That is what the
+wordmark did until the attributes went back. Only the accessible name was
+changed: the mark is `aria-hidden`, the wordmark keeps the packaged label, so a
+screen reader announces the lab once rather than twice.
+
+The sizes are the lockup proportion that document measures off the live site,
+34px of mark against a 23px cap height.
+
 ## How to run it
 
 ```sh
