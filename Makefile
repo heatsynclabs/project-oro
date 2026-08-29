@@ -10,7 +10,7 @@
 DEV = docker compose -f compose.yaml -f compose.development.yaml
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure bootstrap-admins migration-test ceilings
+.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure bootstrap-admins migration-test ceilings backup restore backup-test api-test
 
 help:
 	@echo "make up                start the stack in the background"
@@ -29,6 +29,10 @@ help:
 	@echo "make bootstrap-admins  seat the first three admins, who can then administer everything"
 	@echo "make migration-test    prove the legacy import, and prove it refuses dirty data"
 	@echo "make ceilings          check every file and function against the ceilings in rule 6"
+	@echo "make backup            write a backup of the members database outside this repository"
+	@echo "make restore FILE=...  restore one. It refuses over a database that holds members"
+	@echo "make backup-test       run the restore drill: back up, destroy, restore, check"
+	@echo "make api-test          prove the members API against a real Postgres and the real policies"
 	@echo ""
 	@echo "The database this stack starts is empty. make test applies"
 	@echo "db/migrations to a throwaway container, never to this stack."
@@ -67,8 +71,8 @@ psql:
 test:
 	./db/tests/run.sh
 
-# One command, because thirteen of them is twelve too many to remember at 2am.
-# Each still runs on its own, and this is the order CI runs them in.
+# One command, because nobody remembers every suite by name at 2am. Each still
+# runs on its own, and this is the order CI runs them in.
 check:
 	./db/tests/run.sh
 	./services/door/tests/run.sh
@@ -84,6 +88,8 @@ check:
 	./tools/identity/tests/run.sh
 	./tools/migration/tests/run.sh
 	./tools/bootstrap/tests/run.sh
+	./tools/backup/tests/run.sh
+	./services/api/tests/run.sh
 	@echo
 	@echo "every suite passed"
 
@@ -178,3 +184,42 @@ migration-test:
 # ADR 0005 records which does what and what was priced against it.
 ceilings:
 	./tools/ceilings/run.sh
+
+# Gate 1 of rule 12: a verified, restorable backup of the members database.
+# Two files land in $ORO_BACKUP_DIR, which defaults to $HOME/oro-backups and is
+# never allowed to be inside this working tree. A dump is member data, and rule
+# 13 says member data is not committed and is not carried around on laptops.
+backup:
+	@test -f .env || { echo "No .env file, so docker compose cannot read compose.yaml and nothing was backed up. Copy .env.example to .env and run make backup again." >&2; exit 1; }
+	@./tools/backup/backup.sh
+
+# make restore FILE=$$HOME/oro-backups/oro-20260828T204500Z.dump
+#
+# Restoring into an empty database needs nothing else. Restoring over a database
+# that still holds members is refused, and the refusal prints the command that
+# goes ahead, which carries the number of members it is about to replace:
+#
+#   make restore FILE=... OVERWRITE=12-members
+#
+# docs/runbooks/restore-the-members-database.md is the version of this to read
+# at 2am, with the expected output at every step.
+restore:
+	@test -f .env || { echo "No .env file, so docker compose cannot read compose.yaml and nothing was restored. Copy .env.example to .env and run make restore again." >&2; exit 1; }
+	@test -n "$(FILE)" || { echo "Name the archive to restore: make restore FILE=$$HOME/oro-backups/oro-20260828T204500Z.dump" >&2; echo "The newest one is the last line of: ls -l $$HOME/oro-backups" >&2; exit 1; }
+	@./tools/backup/restore.sh "$(FILE)" $(if $(OVERWRITE),--overwrite "$(OVERWRITE)")
+
+# The drill. It builds its own database, backs it up, destroys it, restores it,
+# and then checks that what came back is the same database down to the slot each
+# card sits at. It touches nothing that make up started.
+backup-test:
+	./tools/backup/tests/run.sh
+
+# The first slice of the members API, against a real Postgres carrying the real
+# migrations. It builds its own database, its own signing key, its own JWKS
+# server and its own image, all named after its own process id, so it neither
+# reads nor disturbs a stack you have up.
+#
+# The service is not in compose.yaml and make up is unchanged. services/api is
+# ahead of the order on purpose and its README says so.
+api-test:
+	./services/api/tests/run.sh

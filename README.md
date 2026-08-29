@@ -156,7 +156,9 @@ not start while the roles it needs have no names against them.
 
 - [x] Repository, working rules, prose gate, commit hook, CI running all of it
 - [x] Compose stack, Makefile, documented environment
-- [ ] Backups on a timer, and a restore drill that runs unattended
+- [x] A backup command, and a restore drill that proves the mechanism
+- [ ] That backup running on a timer, with an offsite copy and the drill
+      posting a result somewhere a named person reads
 - [ ] DNS for `id`, `api`, `admin`, `door`
 - [ ] A verified restore of production onto a staging copy
 
@@ -183,7 +185,9 @@ not start while the roles it needs have no names against them.
 - [x] The members portal, read only, against the contract mock
 - [x] The legacy import: members, cards, roles and waivers, with every card at
       the slot it had
-- [ ] `services/api`, the service the portal will actually read
+- [x] `services/api`, first slice: your own record and the directory, with the
+      database policies deciding every answer. Built ahead of the order and not
+      yet wired into the stack, so the portal still reads the mock
 - [ ] Certifications, payments and door events carried across
 
 **Phase 4, admin.** Blocked on a vote at Hack Your Hackerspace.
@@ -224,6 +228,7 @@ make help               # every target, with a line each
 | `make portal-test` | the members portal through Caddy | no, own project |
 | `make identity-test` | the identity service holds the lab's existing passwords | no, own project |
 | `make migration-test` | the legacy import, and every refusal it makes | no, own project |
+| `make backup-test` | the restore drill: back up, destroy the database, restore, check every row came back | no, own project |
 | `make ceilings` | file and function size limits | no |
 | `./tools/ci/voice-gate.sh` | the writing rules, over every tracked file | no |
 | `./services/door/tests/run.sh` | the door port, its fake, and the conformance suite | no, python only |
@@ -231,6 +236,8 @@ make help               # every target, with a line each
 | `make up` / `make down` / `make ps` / `make psql` / `make logs` | operating the stack | **yes** |
 | `make development` | starts the laptop stack and leaves it running | **yes** |
 | `make bootstrap-admins` | seats the first three admins | **yes** |
+| `make backup` | writes a backup outside this repository | **yes**, reads it |
+| `make restore FILE=...` | restores one. Refuses over a database that holds members unless you name how many you are destroying | **yes** |
 
 Every suite builds and removes its own containers and leaves nothing behind. Each
 one prints its own counts, so run it rather than trusting a number written down

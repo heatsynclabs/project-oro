@@ -7,9 +7,10 @@ Rule 9 of `CLAUDE.md`.
 
 Two halves. The **prior work** table is hand maintained and covers designs,
 schemas, protocols, and code taken from named projects. The **dependencies**
-table will be generated from the lockfiles by `tools/attributions/generate.py`,
-which is not written yet because there is no lockfile to read. Until then the
-dependencies section below says so rather than looking complete.
+table is to be generated from the lockfiles by `tools/attributions/generate.py`,
+which is still not written. There is now a lockfile for it to read,
+`services/api/requirements.txt`, so the table below is hand maintained from that
+file until somebody writes the generator.
 
 Every licence claim below was read from the repository at the commit named. Where
 a repository has no licence, that is recorded as a fact and as an action item,
@@ -73,6 +74,8 @@ moving tag, so a tag repointed at different code cannot change what runs.
 | [Zitadel](https://github.com/zitadel/zitadel) 4.17.1 | image digest `sha256:3ac6910685d48f32481f01f45e3e6215efe5a9df2c069591b481e9a101712db5`, in `compose.yaml` | **AGPL-3.0**, Zitadel. Read from the GitHub API on 2026-08-28, and see the note below | The identity service. Chosen in [ADR 0004](./docs/decisions/0004-identity-service.md) |
 | [Ruff](https://github.com/astral-sh/ruff) 0.16.5 | image digest `sha256:8355b79edf35788aef97ac9b1ff3b758604a5d67963ead617c45c72e1d92871f`, in `tools/ceilings/run.sh` | MIT, Astral. Read from the repository `LICENSE` on 2026-08-28 | Three of the five ceilings in rule 6. Chosen in [ADR 0005](./docs/decisions/0005-file-and-function-ceilings.md) |
 | [bcrypt-ruby](https://github.com/bcrypt-ruby/bcrypt-ruby) 3.1.20 | the gem version, in `tools/identity/tests/generate_hashes.sh`, installed into a throwaway `ruby:3.3-alpine` | MIT, Coda Hale and Jeremy Kemper | Writing the fixture hashes the phase 2 password proof runs on. It is the library the legacy Rails application hashes with, which is the whole reason it is this one and not another |
+| [uv](https://github.com/astral-sh/uv) 0.12.7 | the PyPI version, named in the header of `services/api/requirements.txt` | `MIT OR Apache-2.0` on PyPI, Apache-2.0 on the GitHub repository record, Astral. Both read on 2026-08-28 | Compiling `services/api/requirements.in` into a lock carrying a hash for every wheel on every platform. It runs when a dependency changes and is not in any image. Chosen in [ADR 0012](./docs/decisions/0012-python-dependencies.md) |
+| [python](https://hub.docker.com/_/python) 3.13.15 slim | image digest `sha256:7ce4b6dfe35e55397b7cda544f8a13f191b7ae28dc5aad71fe664dbc9bc2623f`, in `services/api/Dockerfile` | Python Software Foundation licence for Python itself, on a Debian trixie base. Digest read from `docker buildx imagetools inspect` on 2026-08-28 | The base of the members API image, and the JWKS server its suite runs |
 
 Every other image the stack runs is named by tag: `postgres:18` and
 `caddy:2-alpine`. Neither is vendored and neither is modified. `ruby:3.3-alpine`
@@ -86,6 +89,17 @@ licence's copyleft reaches nothing here. If somebody ever patches that image,
 that changes, and the obligation to offer the modified source starts at the same
 moment. Rule 9 says copyleft is checked before the dependency lands rather than
 after, and this is that check.
+
+**On the LGPL.** psycopg 3, the Postgres driver the members API imports, is
+LGPL-3.0-only. It arrives as a published wheel, unmodified, installed beside the
+service rather than vendored into it, and nothing here is derived from its
+source. The lab runs the image rather than handing it to anybody, so the
+licence's copyleft reaches nothing in this repository. Two things would change
+that: copying psycopg into this tree, and publishing an image in which nobody
+can replace the library. [ADR 0012](./docs/decisions/0012-python-dependencies.md)
+records the check and names pg8000, which is BSD, as the thing to price again if
+either happens. Rule 9 says copyleft is checked before the dependency lands
+rather than after, and this is that check.
 
 The jobs otherwise run scripts that live in this repository, on the runner's own
 Docker, Python and Node, so the CI configuration stays portable enough to be
@@ -113,9 +127,42 @@ citation only when it names the parts.
 
 ## Dependencies
 
-Generated. Do not hand edit below this line.
+Hand maintained, and it should not be. `tools/attributions/generate.py` does not
+exist, and writing it against the file below is the way this section stops being
+somebody's job. The generator replaces everything between the two markers.
 
 <!-- BEGIN GENERATED DEPENDENCIES -->
-Not yet generated. Run `python3 tools/attributions/generate.py` once the first
-lockfile exists.
+
+### `services/api`, from `services/api/requirements.txt`
+
+Every version below was read from that lock, and every licence from the
+installed package's own metadata inside the built image on 2026-08-28, with
+`importlib.metadata`. Four were asked for and the rest came with them. The four
+are chosen in [ADR 0012](./docs/decisions/0012-python-dependencies.md), which
+also carries the copyleft check on psycopg.
+
+| Package | Version | Licence | Asked for, or brought in by |
+|---|---|---|---|
+| annotated-doc | 0.0.5 | MIT | fastapi |
+| annotated-types | 0.8.0 | MIT | pydantic |
+| anyio | 4.14.2 | MIT | starlette |
+| cffi | 2.1.1 | MIT-0 | cryptography |
+| click | 8.5.0 | BSD-3-Clause | uvicorn |
+| cryptography | 50.0.1 | Apache-2.0 OR BSD-3-Clause | pyjwt[crypto] |
+| fastapi | 0.141.1 | MIT | asked for |
+| h11 | 0.16.0 | MIT | uvicorn |
+| idna | 3.19 | BSD-3-Clause | anyio |
+| psycopg | 3.3.4 | **LGPL-3.0-only** | asked for |
+| psycopg-binary | 3.3.4 | **LGPL-3.0-only** | psycopg[binary] |
+| psycopg-pool | 3.3.1 | **LGPL-3.0-only** | psycopg[pool] |
+| pycparser | 3.0 | BSD-3-Clause | cffi |
+| pydantic | 2.13.5 | MIT | fastapi |
+| pydantic-core | 2.46.5 | MIT | pydantic |
+| PyJWT | 2.13.0 | MIT | asked for |
+| starlette | 1.6.0 | BSD-3-Clause | fastapi |
+| typing-extensions | 4.16.0 | PSF-2.0 | fastapi, pydantic |
+| typing-inspection | 0.4.4 | MIT | pydantic |
+| tzdata | 2026.3 | Apache-2.0 | psycopg, on Windows only. Never installed here |
+| uvicorn | 0.52.4 | BSD-3-Clause | asked for |
+
 <!-- END GENERATED DEPENDENCIES -->

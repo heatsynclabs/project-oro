@@ -1,0 +1,23 @@
+# What this service imports. Four lines, and everything else in
+# requirements.txt is something one of these four brought with it.
+#
+#   fastapi           the framework, chosen in docs/plan/architecture.md
+#                     section 2
+#   uvicorn           the ASGI server that runs it
+#   psycopg[binary]   the Postgres driver, version 3, with the wheel that
+#                     carries libpq so the image installs no build tools
+#   psycopg[pool]     the connection pool. The pool is load bearing rather than
+#                     a performance choice: an identity set on a connection that
+#                     is handed to the next request is the leak SET LOCAL exists
+#                     to stop, and a service that opened a fresh connection every
+#                     time could never demonstrate the difference
+#   pyjwt[crypto]     offline signature checking of the access token, which is
+#                     what the contract's memberToken scheme describes
+#
+# requirements.txt beside this file is the lock, and its first two lines are the
+# command that regenerates it. Read docs/decisions/0012-python-dependencies.md
+# before changing either.
+fastapi
+uvicorn
+psycopg[binary,pool]
+pyjwt[crypto]

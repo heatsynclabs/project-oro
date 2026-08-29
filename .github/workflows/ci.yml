@@ -234,3 +234,49 @@ jobs:
       # quota is three rather than two.
       - name: Three seated, the fourth refused
         run: ./tools/bootstrap/tests/run.sh
+
+  backup:
+    name: Restore drill
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Gate 1 of the three rules above every phase in
+      # docs/plan/order-of-operations.md: a backup that has been restored. The
+      # drill builds a database by running the legacy import into a throwaway
+      # container, backs it up with the command make backup runs, removes the
+      # container so the cluster is gone, restores into a new one, and then
+      # requires every card to be at the slot it had. It also requires the
+      # restore to refuse a damaged archive and to refuse a database that still
+      # holds members, and it checks after each refusal that nothing moved.
+      #
+      # What this proves is the mechanism. The lab's own data is phase 0 item 5,
+      # it needs a shell on the server, and no job here can stand in for it.
+      - name: Backed up, destroyed, restored, and every card still at its slot
+        run: ./tools/backup/tests/run.sh
+
+  api:
+    name: Members API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # The first slice of the members API, three of the contract's twenty
+      # three operations, against a real Postgres carrying the real migrations
+      # rather than a stubbed query builder. The suite builds its own database,
+      # its own RSA key, its own JWKS server and the service image, all named
+      # after its own process id, and removes every one of them.
+      #
+      # The check worth being red is the last one in
+      # check_identity_isolation.py. It runs three requests down a pool held to
+      # one connection and requires the anonymous one in the middle to be
+      # refused, which is what a plain SET in place of SET LOCAL would break.
+      # Measured on 2026-08-28: with that one argument flipped, the anonymous
+      # request came back 200 carrying the previous caller's phone number,
+      # postal code and emergency contact.
+      #
+      # Docker, python3, openssl and curl are all on the runner image, so this
+      # job installs nothing. The build pulls from PyPI, which is the one thing
+      # here that reaches the network for something other than an image.
+      - name: Three operations, against the real policies
+        run: ./services/api/tests/run.sh
