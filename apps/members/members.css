@@ -80,18 +80,31 @@ body {
  * token colour and needs no file. It carries no accessible name: the wordmark
  * beside it is the name, and a screen reader saying the lab twice is worse
  * than saying it once. */
+/* references/logos.md sets the floor at 24px for the mark on its own and says
+ * anything smaller wants a one colour file. 30px clears it. The colour set here
+ * reaches the flames only: the sun disc carries the logo orange inside the file
+ * and must never take the flame colour, because the two pieces merging is the
+ * one misuse that stops it being the HeatSync mark. */
 .sunmark {
-	width: 30px;
-	height: 30px;
+	width: 34px;
+	height: 34px;
 	flex: none;
-	color: var(--g-accent);
+	color: var(--g-ink);
 }
 
-.wordmark {
-	font-family: var(--font-logo);
-	font-weight: var(--font-bold);
-	font-size: var(--text-xl);
-	margin: 0;
+/* The packaged wordmark, Charis SIL 700 outlined, so it does not depend on that
+ * font being installed. references/logos.md forbids setting it in any other
+ * face, which a font-family with a fallback stack would quietly do on a machine
+ * that has none of them. Height is set and width follows the aspect ratio in
+ * the file's own viewBox. */
+.wordmark-svg {
+	/* 34px of mark against a 23px cap height is the proportion logos.md measures
+	 * off the live site. The packaged box is 97.12 units tall and the caps run
+	 * about three quarters of it, so 30px of box lands the caps near 23. */
+	height: 30px;
+	width: auto;
+	flex: none;
+	color: var(--g-ink);
 }
 
 .tag {

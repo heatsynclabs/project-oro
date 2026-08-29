@@ -33,6 +33,12 @@ const formats = {
   // card number on a screen somebody can read over a shoulder.
   last4: (value) => "Ending " + String(value).slice(-4).toUpperCase(),
   yesno: (value) => (value ? "Yes" : "No"),
+  // A confirmed address is a signal and never a gate. The member record exists
+  // and works either way, so this reports what the lab knows rather than what
+  // the member is allowed to do. data-model.md section 1.6 is the reason the
+  // date can be absent: changing your own email clears it, and you cannot set
+  // it yourself.
+  confirmed: () => "Email confirmed",
   // The four rules card eligibility is decided on, as words a member would
   // use. The enum is closed by the CardEligibility schema in
   // docs/api/members-v1.yaml, so an unmapped value is a contract change and
@@ -65,11 +71,20 @@ function present(value, format, fallback) {
 // so a member reading down a column sees the shape before they read the word.
 // Only a field that is genuinely a yes or a no carries one, which is why the
 // rule is the raw value rather than the text it was formatted into.
+//
+// data-chip="present" is the second rule and it exists for one shape: a column
+// that holds a date or nothing, where having the date is the yes. An email
+// confirmation is that shape. Keeping it as a named rule rather than making the
+// first one truthy means a field that is genuinely a boolean still cannot be
+// filled in by an empty string or a zero.
 function markChip(element, value) {
   if (!("chip" in element.dataset)) {
     return;
   }
-  element.dataset.state = value === true ? "on" : "off";
+  const filled = element.dataset.chip === "present"
+    ? value !== null && value !== undefined && value !== ""
+    : value === true;
+  element.dataset.state = filled ? "on" : "off";
 }
 
 function bindFields(root, record) {

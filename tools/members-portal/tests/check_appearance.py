@@ -50,20 +50,61 @@ def stylesheet_rules():
 
 # ------------------------------------- what the mockups drew and this keeps
 
-def test_the_masthead_mark_is_an_inline_svg():
-    """Rule 11 names an emoji standing in for an icon as a correctness defect.
-    The mark is drawn in the document so it inherits a token colour, carries no
-    request, and cannot render as somebody else's yellow blob."""
+def test_the_masthead_mark_is_the_packaged_one_in_two_colours():
+    """The brand package's own rule, from heatsync-brand/references/logos.md:
+    the mark is two pieces in two colours, and filling the sun disc with the
+    flame colour makes a shape that is no longer the HeatSync mark. So the disc
+    carries the logo orange and the flames carry currentColor, and an earlier
+    version of this portal that drew its own simplified sun broke the rule the
+    same document states as "do not redraw or simplify the flames"."""
     marks = [svg for svg in page.named(HTML, "svg")
              if "sunmark" in svg.get("class", "")]
     assert marks, "no element with class sunmark, so the masthead has no mark"
     holder = marks[0].enclosing("class")
     assert holder is not None and "topbar" in holder.get("class"), \
         "the mark is not in the masthead"
-    assert "currentColor" in HTML, \
-        "the mark names a colour rather than inheriting one from a token"
+
+    at = HTML.index('class="sunmark"')
+    start = HTML.rindex("<svg", 0, at)
+    mark = HTML[start:HTML.index("</svg>", at)]
+    assert "#F99A1C" in mark, (
+        "the sun disc does not carry the logo orange #F99A1C. logos.md samples "
+        "it from the canonical raster and says --hazard is the UI accent, not "
+        "the logo orange")
+    assert "currentColor" in mark, \
+        "the flames do not take currentColor, so the mark cannot follow the theme"
+    fills = re.findall(r'fill="([^"]+)"', mark)
+    assert fills == ["#F99A1C", "currentColor"], (
+        f"the mark is filled {fills}, and logos.md says it is two pieces in two "
+        "colours: the disc, then the flames and the arrow as one piece")
+    assert len(mark) > 8000, (
+        f"the mark is {len(mark)} characters, which is too little path data to "
+        "be the traced original. logos.md forbids redrawing or simplifying the "
+        "flames, and a hand drawn approximation is what this catches")
 
 
+
+def test_an_unconfirmed_email_is_a_signal_and_not_a_gate():
+    """The lab asked for confirmation to read as a more verified account rather
+    than as a blocker. So the portal carries a chip that reports it and a line
+    saying it takes nothing away, and it must not tell a member that anything
+    is withheld until they confirm. The account works either way: both paths
+    that create one, tools/identity/api.py and tools/bootstrap/, and the
+    nullable email_verified_at column, all treat unconfirmed as a valid state."""
+    chips = [e for e in page.named(HTML, "span")
+             if e.get("data-field") == "email_verified_at"]
+    assert chips, "nothing reports whether the email address is confirmed"
+    assert chips[0].get("data-chip") == "present", (
+        "the confirmation is not a chip, so it reads as a row of state rather "
+        "than as a signal")
+
+    lowered = HTML.lower()
+    for gate in ["must confirm", "confirm your email to",
+                 "until you confirm", "unverified accounts",
+                 "verify your email to", "confirm to continue"]:
+        assert gate not in lowered, (
+            f"the portal says {gate!r}, which makes confirmation a gate. It is "
+            "a signal: an account that is never confirmed still works")
 def test_the_page_wears_the_components_the_mockups_use():
     """The cards, the chips and the sheet, taken from the mockups rather than
     invented. A view that went back to a bare definition list is the drift this
