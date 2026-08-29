@@ -56,7 +56,7 @@ This table is the single place this is tracked. Update it as things land.
 | `packages/gantry-css`, `gantry-vue` | Not started. Later in phase 1 and after |
 | `compose.yaml`, `compose.development.yaml`, `Makefile`, `.env.example`, `caddy/`, `db/init/` | **Built.** Postgres, Caddy and the identity service. The override file adds the mock, points Caddy at the development routes and publishes the identity service on a port, so the portal and the mock share one origin over plain HTTP and a browser can open a login screen. `make up` on a clean machine, proven |
 | `docs/api/members-v1.yaml` | **Written.** OpenAPI 3.1.1, validates clean. Still needs the review by somebody who did not write it that phase 1 asks for |
-| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Twelve jobs, all green on a real runner on 2026-08-28. They run in parallel, so the wall clock is the slowest job and not the sum. Seven of them start containers, the ceilings one included, because it runs ruff as a pinned image rather than installing it. Which job is slowest was the identity one when it was last timed, and that has not been re-measured since the migration job grew to eleven cases each building its own database. A thirteenth workflow, the deploy, is dormant and runs only when somebody asks |
+| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Twelve jobs, all green on a real runner, most recently run 33228017933 on 2026-08-29, which is the run pull request 1 was merged on. They run in parallel, so the wall clock is the slowest job and not the sum, and that is now the migration one. Measured on run 33228017933, the last before the merge: legacy import 58s, identity 55s, development stack 48s, database 20s, portal and mock 18s each, contract 11s, door 9s, prose and ceilings 7s each, commits 6s, theme 5s. The migration job took the lead from identity when it grew to eleven cases, each building its own database. Seven of the twelve start containers, the ceilings one included, because it runs ruff as a pinned image rather than installing it. A thirteenth workflow, the deploy, is dormant and runs only when somebody asks |
 | File and function ceiling linting | **Built.** `make ceilings`, in CI, with 8 tests of its own over a throwaway repository: five put one violation in it and assert the checker catches it, three put something that is not a violation in it and assert the checker stays quiet. Ruff in a pinned container for complexity, parameters and nesting depth, and `tools/ceilings/check_ceilings.py` for the two ceilings no tool measures. [ADR 0005](docs/decisions/0005-file-and-function-ceilings.md). Two files are exempt with a reason, and an exemption that stops being needed fails the check |
 | Import boundary linting | **Decided, not built.** [ADR 0006](docs/decisions/0006-import-boundaries.md): there is no TypeScript at all and only `services/door` is an importable Python package, so neither gate has anything to refuse yet. Each lands with the first code that gives it something |
 | `tools/attributions/generate.py` | Not started. Needs a lockfile first |
@@ -110,7 +110,8 @@ Seven of those jobs start containers and are slow: the database, the mock, the
 development stack, the portal, the identity service, the ceilings and the
 migration. Counted by reading which of the scripts each job runs mention docker.
 The identity one applies its own schema and seeds an instance before it answers
-anything, and the migration one now builds eleven databases.
+anything, and the migration one builds eleven databases, which is what makes it
+the slowest of the twelve at 58 seconds.
 
 `tools/ci/` holds the two checks that need a git range, so what CI runs is the
 same script a person runs rather than a copy of it that drifts. The contract lint
@@ -193,8 +194,13 @@ phases at once.
 4. Get `docs/api/members-v1.yaml` reviewed by somebody who did not write it, and
    merged. Phase 1 step 1 asks for that review by name, and everything
    downstream is built against it.
-5. Get pull request 1 reviewed and merged. CI is green, so what is left there is
-   a person reading the diff.
+5. **Done.** Pull request 1 was merged into main on 2026-08-29 as a merge
+   commit, with all twelve CI jobs green on 9289dff. Note what that did not
+   include: nobody outside the change read the diff, because there is nobody
+   named to. Main has no branch protection, so none of the twelve jobs is a
+   required check and the merge button does not wait for them. That is worth
+   fixing before the next change lands, and it is a repository setting rather
+   than code.
 6. **Decided, not built.** [ADR 0010](docs/decisions/0010-bootstrap-token.md)
    proposes minting no machine account at all, so there is no token to revoke or
    to leave behind. It is proposed rather than accepted, because it changes who
