@@ -31,11 +31,12 @@ make identity-test
 
 That brings up a Postgres and an identity service on their own ports as a
 throwaway compose project, reads the bootstrap token out of the container, runs
-`configure.py` twice, then all three check files, and takes it all down. Thirty
-three checks: sixteen on the passwords, eleven on what was configured and on one
-whole sign in, and six on members carried over from a replica of the legacy
-application. It is the slowest suite in this repository, because the identity service
-applies its own schema and seeds an instance before it answers anything.
+`configure.py` twice, then all four check files, and takes it all down. Thirty
+nine checks: sixteen on the passwords, eleven on what was configured and on one
+whole sign in, six on what a second run of `configure.py` does to that, and six
+on members carried over from a replica of the legacy application. It is the
+slowest suite in this repository, because the identity service applies its own
+schema and seeds an instance before it answers anything.
 
 To run the checks against a stack you already have up instead:
 
@@ -64,9 +65,10 @@ server error rather than as a wrong password.**
 
 This is measured, not predicted. `bcrypt` reads at most 72 bytes of input.
 Ruby's implementation truncates silently, so the legacy application accepts a
-password of any length and verifies it against its first 72 bytes. Go's refuses,
-and the identity service turns that refusal into HTTP 500 with the text `An
-internal error occurred`. Read from the running service's own log on 2026-08-28:
+password of any length and verifies it against its first 72 bytes. The
+implementation this service uses refuses instead, and the service turns that
+refusal into HTTP 500 with the text `An internal error occurred`. Read from the
+running service's own log on 2026-08-28:
 
 ```
 err.parent="bcrypt: password length exceeds 72 bytes"
@@ -74,6 +76,16 @@ err.reportLocation.filePath=.../internal/command/user_human_password.go
 ```
 
 Measured boundary: 71 bytes signs in, 72 bytes signs in, 73 bytes does not.
+
+**Changing identity service does not fix this.** Logto 1.42.0, the runner up in
+[ADR 0004](../../docs/decisions/0004-identity-service.md) and the obvious thing
+to reach for if this one mishandled the lab's hashes, refuses at exactly the same
+boundary and answers with the same HTTP 500. Its log names a different library
+for the same rule, `Password should be at most 72 bytes long` out of hash-wasm.
+Measured on 2026-08-28 through its real hosted screens. Two independent
+implementations refuse what Ruby truncates, so this is a property of bcrypt and
+not of the service that was chosen, and the answer is a reset path for the
+members it locks out rather than a different product.
 
 Two things follow, and both matter more than the defect itself.
 
@@ -94,15 +106,30 @@ at migration, which is the only complete fix and costs every member an email.
 The suite asserts the behaviour as it stands, so whichever is chosen, a change
 in it fails a check rather than passing quietly.
 
+**An application update that repeats the name it already holds is refused, and
+the configuration change sent with it is dropped.**
+
+`UpdateApplication` stops at the name. Give it the name the service is already
+holding and it answers HTTP 400 `No changes` without reading the OIDC
+configuration underneath, so a redirect URI that really did change is reported as
+nothing to do. The same request with the name left out applies it. Measured
+against 4.17.1 on 2026-08-29, both ways, with the redirect read back after each.
+
+So `configure.py` sends the name only when the name is the thing that changed.
+`tests/check_reconfiguration.py` moves a portal's origin, reads it back, puts it
+back, and reads it back again. Nothing else in this directory would notice,
+because every other check reads a configuration that was right on the first run.
+
 ## What is here
 
 | File | What it is |
 |---|---|
 | `configure.py` | Registers the project, the three portals as public PKCE clients, the door service machine account, and the GANTRY branding. Idempotent |
-| `api.py` | Calls to the management API, shared by the configuration step and the suites |
+| `api.py` | Calls to the identity service, shared by the configuration step and the suites |
 | `flow.py` | One whole sign in, driven through the hosted screens with a cookie jar |
 | `tests/check_identity.py` | Part (a) of the password proof |
 | `tests/check_configuration.py` | What was configured, read back, plus the sign in and what the tokens do afterwards |
+| `tests/check_reconfiguration.py` | What a second run of `configure.py` does to all of that |
 | `tests/check_legacy_import.py` | Hashes a replica of the legacy application wrote, imported and signed in with |
 | `fixtures/legacy-hashes.json` | The hashes, committed |
 
@@ -110,6 +137,30 @@ in it fails a check rather than passing quietly.
 The three portals do not share a hostname on a deployment, and guessing one from
 another is the mistake [ADR 0002](../../docs/decisions/0002-mock-server.md)
 records.
+
+### Which API each part calls
+
+The project, the clients and the door service account go through the v2 services,
+`zitadel.project.v2.ProjectService`, `zitadel.application.v2.ApplicationService`
+and the user service under `/v2/`. Every management API method this step used to
+call is marked deprecated in the 4.17.1 image's own embedded proto descriptors,
+read on 2026-08-29. Those two v2 services carry no `google.api.http` option, so
+they answer on a path built from the proto package and the service name rather
+than under `/v2/`, which is why the paths in `api.py` look different from the
+ones beside them.
+
+The branding is the exception and stays on `/management/v1/policies/label`. The
+three label policy methods are not marked deprecated, and settings v2 can read a
+branding policy back but has nothing that sets one.
+
+Everything the step registers is held under an identifier this repository chose:
+`oro-project`, `oro-members-portal` and its two siblings, and `oro-door-service`.
+That is what makes a second run exact. It reads back the thing it made instead of
+searching for something with the right name, which on an instance holding two
+projects of the same name is a coin toss. An instance configured before this
+change has those things under identifiers the service generated, and the step
+adopts what it finds and says so, because the portals are already carrying the
+client ids from the first run.
 
 ## What it depends on
 

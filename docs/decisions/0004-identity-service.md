@@ -59,7 +59,18 @@ from each project's own repository or documentation.
   `user-password-verification.ts` dispatches that case to `bcryptVerify`, and
   its own unit test verifies a `$2a$12$` string. Import is `passwordDigest` plus
   `passwordAlgorithm` on `POST /api/users`. Hosted, brandable login screens.
-- **Cost:** none found on paper. Nothing here has been run against it.
+- **Cost:** the same 72 byte defect Zitadel has, measured on 2026-08-28 rather
+  than read. The numbers are under "the condition that would flip this", which
+  is the question they were gathered to settle. Two other things came out of
+  the same run. Import validates nothing: `POST /api/users` answered 200 to
+  `this is not a bcrypt hash at all` and to a real hash cut to 40 characters,
+  and stored both with a `passwordEncryptionMethod` of `Bcrypt`. It reports no
+  distribution of cost prefixes and refuses no rows, so a bad export lands
+  quietly and then surfaces one member at a time as HTTP 500, whose cause in
+  the log is `Error: Hash should be 60 bytes long`. At the desk that reads
+  exactly like a password over 72 bytes. The second thing is kinder: a bcrypt
+  row is rewritten to Argon2i on the first sign in that succeeds, so the rows
+  still on bcrypt after cutover are the members who have never got in.
 
 ### Option C: Keycloak, the obvious default
 
@@ -116,6 +127,11 @@ to write it down at all is the correction underneath it: **Zitadel is not the
 only candidate that imports these hashes**, and until today two documents here
 said it was. Logto is a live alternative, not a fallback.
 
+Later the same day Logto was run against those fixtures too, and the two came
+out level on the hash. So the weak reason above has stopped distinguishing
+them. What holds this decision in place now is the cost of reversing it, which
+is the last bullet under Consequences.
+
 The reasons that are not doing the deciding, stated so nobody mistakes them for
 the argument: Zitadel is a single Go binary in a distroless image against
 Logto's Node runtime, which is a smaller thing to patch; and Zitadel's AGPL is
@@ -128,8 +144,50 @@ Any of these, and each is checkable:
 - A real member's hash from the staging copy fails to verify. Phase 2 already
   says stop and switch rather than work around it.
 - The 72 byte defect turns out to matter to real members, and Logto's
-  `bcryptVerify` proves not to have it. That is a ten minute test and it has not
-  been run.
+  `bcryptVerify` proves not to have it. **Run on 2026-08-28. It has it, at the
+  same boundary and in the same shape, so this condition is closed and the
+  decision does not move.**
+
+  What was run: Logto 1.42.0, released 2026-07-30, read from the project's own
+  releases API rather than from memory, as `svhd/logto:1.42.0`, image digest
+  `sha256:aac94e24ab7bef59be5d1809b1481b179495aaa75bb9dc2895ceae46e4117854`.
+  The running binary named itself `@logto/core@1.42.0` in its first log line.
+  Every hash in `tools/identity/fixtures/legacy-hashes.json` went in through
+  `POST /api/users` with `passwordAlgorithm: "Bcrypt"`, under a client
+  credentials token from the `m-default` machine to machine application the
+  seed creates, for the resource `https://default.logto.app/api`. All eight
+  were accepted. Five of them, the ordinary one and the four around the
+  boundary, were then signed in with the way a member signs in: through the
+  hosted screens, ending on the application's redirect uri carrying an
+  authorization code. The remaining
+  three went through `POST /api/users/:id/password/verify`, which reaches the
+  same `verifyUserPassword` one layer higher up.
+
+  Measured boundary: 71 bytes signs in, 72 bytes signs in, 73 bytes does not.
+  Nor does the 81 byte passphrase that is 27 Japanese characters. The refusal
+  arrives as HTTP 500 with the body `{"message":"Internal server error."}`,
+  which is what Zitadel does under different wording, and Logto's own log names
+  the cause: `Error: Password should be at most 72 bytes long`, raised by
+  `validateVerifyOptions` in `hash-wasm` 4.11.0. Zitadel's parent error is
+  `bcrypt: password length exceeds 72 bytes`, from Go. One limit, reached by
+  two implementations that share nothing but the algorithm.
+
+  A wrong password on Logto is HTTP 422 `session.invalid_credentials`,
+  "Incorrect account or password. Please check your input." That is the answer
+  a member can act on, and the long password does not get it.
+
+  The refusal is about the length of what the member types, not about the row
+  that was imported. The 73 byte member's own hash accepts the first 72 bytes
+  of that same password, which is the string bcrypt-ruby hashed in the first
+  place.
+
+  Zitadel was re-measured the same day rather than taken from the README, on a
+  throwaway stack of this repository's own compose files: 500 and
+  `An internal error occurred (COMMAND-CahN2)` over the limit, 400 and
+  `Password is invalid (COMMAND-3M0fs)` for a wrong password.
+
+  Choosing Logto after this would still need its own record superseding this
+  one. This measurement is not a reason to write it.
 - The volunteers who end up maintaining this are a TypeScript group.
 
 ## Consequences
@@ -146,7 +204,10 @@ Any of these, and each is checkable:
   identified in advance.** `tools/identity/README.md` carries the measurement
   and what the options are. This is the single most important consequence on
   this page and it was found by running the thing rather than by reading about
-  it.
+  it. It also survives a change of identity service. Logto refuses the same
+  passwords at the same boundary, measured on 2026-08-28, so whatever is
+  decided about the affected members is owed to them whichever of the two ends
+  up running.
 - The AGPL means anyone who ever patches that image owes the modified source to
   its users from that moment.
 - Reversing this costs the compose block, the init script, the environment
@@ -163,10 +224,13 @@ digest in `compose.yaml`. Nothing is vendored and no code is copied. Recorded in
 
 ## Open questions
 
-- Whether Logto has the 72 byte defect. The test is: hash a known password with
-  bcrypt-ruby at cost 10, `POST /api/users` with `passwordAlgorithm: "Bcrypt"`,
-  and sign in. Ten minutes, and worth doing before phase 2 exits, because the
-  answer could flip this decision.
+- Whether Logto has the 72 byte defect. **Answered on 2026-08-28: it has it.**
+  The measurement is under the flip condition above, which is where it changes
+  something. This bullet stays put so that anyone following `HANDOFF.md`
+  section 6 item 10 lands on the answer rather than on the question. It took
+  longer than the ten minutes claimed, mostly in working out how a self hosted
+  Logto hands out a Management API token without somebody clicking through a
+  console.
 - Whether the bootstrap token should exist at all. It administers the whole
   instance, it is written once into a volume and is durable across restarts and
   recreates, it expires in a year, and nothing revokes it. Registering the four

@@ -3,6 +3,10 @@
 Shared by tools/identity/configure.py, which is operational, and by the suite
 under tools/identity/tests/, which proves what it did.
 
+This file is how to reach the service at all. What the service is holding for us,
+the project and the clients and the door service account, is read back through
+tools/identity/registrations.py.
+
 The identity service resolves which instance a request is for by comparing the
 Host header against the domain it was configured with, so a call to 127.0.0.1
 is refused with "Instance not found" even when the port is right. Everything
@@ -185,13 +189,6 @@ def search(path: str, token: str) -> list:
     return answer.body.get("result") or []
 
 
-def named(items: list, name: str) -> dict | None:
-    for item in items:
-        if item.get("name") == name:
-            return item
-    return None
-
-
 def token_from_environment() -> str:
     return os.environ.get("ORO_IDENTITY_TOKEN", "")
 
@@ -234,23 +231,6 @@ def apply_branding(token: str) -> None:
         raise SystemExit(f"branding could not be activated: "
                          f"{activated.status} {activated.message()}")
     print("branding: applied and activated")
-
-
-def differences(actual: dict, wanted: dict) -> list[str]:
-    """Which of the fields we asked for the service does not already hold.
-
-    Lists are compared as sets, because the order Zitadel returns a redirect
-    URI list in is not the order it was given.
-    """
-    wrong = []
-    for key, value in wanted.items():
-        held = actual.get(key)
-        if isinstance(value, list):
-            if set(held or []) != set(value):
-                wrong.append(f"{key} is {held!r}, wanted {value!r}")
-        elif held != value:
-            wrong.append(f"{key} is {held!r}, wanted {value!r}")
-    return wrong
 
 
 def post_form(path: str, fields: dict) -> Answer:

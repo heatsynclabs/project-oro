@@ -9,14 +9,15 @@
 # already running is neither read nor touched, and no .env has to exist. Leaves
 # nothing behind. Exit code is 1 if any check failed.
 #
-# Four suites. check_api_refusals.py needs nothing running and goes first, so a
+# Five suites. check_api_refusals.py needs nothing running and goes first, so a
 # fault in how a refusal is read is reported before anything is started.
 # check_identity.py is part (a) of the phase 2 password proof:
 # hashes the lab already holds, imported and signed in with. check_configuration.py
 # is what configure.py registered, and one whole sign in through the hosted
-# screens ending in a refresh token that rotates. check_legacy_import.py takes
-# hashes written by a replica of the legacy application and signs in with the
-# passwords that produced them.
+# screens ending in a refresh token that rotates. check_reconfiguration.py is
+# what a second run of configure.py does to all of that. check_legacy_import.py
+# takes hashes written by a replica of the legacy application and signs in with
+# the passwords that produced them.
 #
 # Part (b) of the password proof is ten real members signing in to staging with
 # the password they already use. It needs the production hashes and volunteers,
@@ -129,6 +130,8 @@ echo
 python3 "$ROOT/tools/identity/tests/check_identity.py" || FAILED=1
 echo
 python3 "$ROOT/tools/identity/tests/check_configuration.py" || FAILED=1
+echo
+python3 "$ROOT/tools/identity/tests/check_reconfiguration.py" || FAILED=1
 echo
 python3 "$ROOT/tools/identity/tests/check_legacy_import.py" || FAILED=1
 exit "${FAILED:-0}"

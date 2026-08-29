@@ -225,20 +225,40 @@ phases at once.
    Nobody has decided anything about MFA, which `order-of-operations.md` lists
    as later, so the prompt is left alone rather than configured away. ADR 0007
    has it as an open question.
-8. Move `tools/identity/configure.py` off the v1 management API. Its proto marks
-   those methods deprecated in 4.17.1 and still routes them. The v2 service
-   accepts an application id of our choosing, which makes a re-run exact instead
-   of a lookup by name. Small work, and it wants doing before the next Zitadel
-   major.
+8. **Done, except for one part that has nowhere to go.** `configure.py`
+   registers the project, the three portals and the door service account through
+   the v2 services, each under an identifier this repository chose, so a re-run
+   reads back exactly what it wrote rather than looking it up by name.
+
+   How the deprecation was established, because it is not where anyone would
+   look: Zitadel does not set the proto `deprecated` option on any of its 310
+   management methods. It marks deprecation in the grpc-gateway openapiv2
+   operation option instead, and 145 of the 310 carry it. That was read out of
+   the descriptors embedded in the image's own binary.
+
+   The branding stays on the v1 management API and that is not unfinished work.
+   `AddCustomLabelPolicy`, `UpdateCustomLabelPolicy` and
+   `ActivateCustomLabelPolicy` are not marked deprecated, and settings v2 has
+   `GetBrandingSettings` and no setter at all. There is nowhere to move it to.
+
+   Two things in `api.py` are still on deprecated methods and were left alone
+   deliberately: `machine_token` uses the v1 machine user calls, and
+   `import_member` and `set_password` use v2 methods that are themselves marked
+   deprecated. The second pair is the password proof, which is the one thing in
+   this repository nobody should disturb without a reason.
 
 9. Give the door app the door API in its audience, which
    `docs/plan/api-design.md` section 2 asks for. It cannot be done yet: an
    audience is another project's id and the door API has no project until phase
    5. `configure.py` says so where the client is defined.
 
-10. Find out whether Logto has the 72 byte defect. ADR 0004 has the exact test
-    and calls it ten minutes. The answer could change which identity service
-    this project runs.
+10. **Answered on 2026-08-28, and the answer is yes.** Logto 1.42.0 has the
+    defect at the same boundary and in the same shape: 72 bytes signs in, 73
+    does not, and over the limit is HTTP 500 rather than a wrong password.
+    Measured through its real hosted screens against a throwaway instance, with
+    the measurement in [ADR 0004](docs/decisions/0004-identity-service.md) under
+    the flip condition it settles. That flip condition is now closed and the
+    decision does not move.
 
 11. **Decided, not built.**
     [ADR 0009](docs/decisions/0009-password-policy-at-cutover.md) proposes
@@ -427,6 +447,21 @@ nothing about it looks long. And the members it affects cannot be found in
 advance, because finding them would need the plaintext. `tools/identity/README.md`
 carries the measurement and the three options. The suite asserts the behaviour as
 it stands, so an improvement fails a check rather than passing quietly.
+
+**The 72 byte limit belongs to bcrypt, not to the identity service that was
+chosen.** Logto was the runner up in ADR 0004 and the obvious thing to reach for
+if Zitadel turned out to mishandle the lab's hashes. It does not help: measured
+on 2026-08-28, Logto 1.42.0 refuses at exactly the same boundary and answers
+with the same HTTP 500. Its log names the cause, `Password should be at most 72
+bytes long`, out of hash-wasm rather than out of Go. Two independent
+implementations refuse what Ruby truncates, so nobody should go looking for an
+identity service that does not have this. The fix, whenever somebody takes it, is
+a reset path for the members it locks out.
+
+One thing found alongside it and not yet used: Logto rehashes a bcrypt row to
+Argon2i on the first successful sign in, which would name the affected cohort
+cheaply after cutover. Whether Zitadel does anything similar has not been
+measured, and it is worth ten minutes to somebody planning that day.
 
 **docker cp cannot read a file on a tmpfs.** It reads the container filesystem,
 and a tmpfs is not part of it, so the file is written correctly and the copy

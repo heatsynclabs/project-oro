@@ -17,7 +17,9 @@ mistake ADR 0002 records.
 
 Idempotent. Run it twice and the second run reports every client as already
 correct rather than failing, because a configuration step somebody is afraid to
-re-run is a configuration step that stops being run.
+re-run is a configuration step that stops being run. Everything it registers is
+held under an identifier chosen here rather than one the service generates, so
+the second run reads back exactly what the first one made.
 
 Needs a token that can administer the instance. The compose stack writes one to
 /bootstrap/pat inside the identity container and `make identity-configure`
@@ -26,21 +28,35 @@ copies it out.
 from __future__ import annotations
 
 import argparse
+import collections
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-import api      # noqa: E402, after the path insert above
+import api              # noqa: E402, after the path insert above
+import registrations    # noqa: E402
 
 PROJECT = "Project ORO"
 
-# These call the v1 management API, whose proto marks these methods deprecated
-# in 4.17.1 while still routing them. The v2 replacement can be handed an
-# application id of our choosing, which would make a re-run exact rather than a
-# lookup by name. That is the better shape and it is not what is written here,
-# because this version has been run against a live instance and the other has
-# not. HANDOFF.md section 6 carries it.
+# The identifiers this step gives the things it registers. They are ours rather
+# than the service's, so a second run addresses exactly what the first one made
+# instead of searching for it by name and hoping one thing came back.
+PROJECT_ID = "oro-project"
+
+# What an instance configured before this step chose its own identifiers looks
+# like. Adopting what is already there beats registering a second one beside it,
+# because the portals are carrying the client ids the first run gave them.
+_GENERATED_INSTEAD = ("held under an identifier the service generated, which is "
+                      "what the older version of this step left behind. Using")
+
+# The project and the clients are registered through the v2 services and the
+# branding through the v1 management API, which is not an inconsistency anybody
+# gets to fix. Every management method this step used to call is marked
+# deprecated in the 4.17.1 image's own embedded descriptors, read on 2026-08-29.
+# The three label policy methods are not, and settings v2 can read branding back
+# but has nothing that sets it, so the branding stays where it is until Zitadel
+# gives it somewhere to go.
 
 # The door app is supposed to carry the door API in its audience, per
 # docs/plan/api-design.md section 2. Nothing here does that, and nothing can
@@ -56,15 +72,18 @@ PROJECT = "Project ORO"
 # The redirect is the origin itself rather than a path under it. The portals are
 # static files with fragment routing, so a path would need a rewrite in Caddy
 # and a reload of that path would answer 404 without one.
+Portal = collections.namedtuple("Portal", "name flag identifier")
+
 PORTALS = (
-    ("Members portal", "members"),
-    ("Admin portal", "admin"),
-    ("Door app", "door"),
+    Portal("Members portal", "members", "oro-members-portal"),
+    Portal("Admin portal", "admin", "oro-admin-portal"),
+    Portal("Door app", "door", "oro-door-app"),
 )
 
 # The door service is not an application. It is a machine account using client
 # credentials, because nothing about it involves a person at a browser.
 DOOR_SERVICE = "door-service"
+DOOR_SERVICE_ID = "oro-door-service"
 
 
 def public_client(origin: str) -> dict:
@@ -74,7 +93,7 @@ def public_client(origin: str) -> dict:
         "responseTypes": ["OIDC_RESPONSE_TYPE_CODE"],
         "grantTypes": ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE",
                        "OIDC_GRANT_TYPE_REFRESH_TOKEN"],
-        "appType": "OIDC_APP_TYPE_USER_AGENT",
+        "applicationType": "OIDC_APP_TYPE_USER_AGENT",
         "authMethodType": "OIDC_AUTH_METHOD_TYPE_NONE",
         # A JWT, because docs/plan/api-design.md section 2 says both APIs
         # validate tokens offline against the published JWKS. The default is an
@@ -86,74 +105,136 @@ def public_client(origin: str) -> dict:
         # other kind. On a deployment every origin is https and this changes
         # nothing, so it is set from the origin rather than from a flag nobody
         # would remember to turn off.
-        "devMode": origin.startswith("http://"),
+        "developmentMode": origin.startswith("http://"),
     }
 
 
-def ensure_project(token: str) -> str:
-    existing = api.named(api.search("/management/v1/projects/_search", token), PROJECT)
-    if existing:
+def ensure_project(organisation: str, token: str) -> str:
+    held = registrations.get_project(PROJECT_ID, token)
+    if held.status == 200:
         print(f"project {PROJECT}: already there")
-        return existing["id"]
-    answer = api.call("/management/v1/projects", {"name": PROJECT}, token)
+        return PROJECT_ID
+    if held.status != 404:
+        raise api.Refused(f"reading the project back was refused: "
+                          f"{held.status} {held.message()}. Nothing was created "
+                          "or changed. A 401 here is the token rather than the "
+                          "project: a revoked or expired one looks like this.")
+
+    older = registrations.project_named(PROJECT, token)
+    if older is not None:
+        print(f"project {PROJECT}: {_GENERATED_INSTEAD} {older['projectId']}")
+        return older["projectId"]
+
+    answer = registrations.project_call("CreateProject", {
+        "organizationId": organisation,
+        "projectId": PROJECT_ID,
+        "name": PROJECT,
+    }, token)
     if answer.status != 200:
         raise SystemExit(f"could not create the project: {answer.status} {answer.message()}")
     print(f"project {PROJECT}: created")
-    return answer.body["id"]
+    return PROJECT_ID
 
 
-def ensure_app(project: str, name: str, origin: str, token: str) -> None:
-    apps = api.search(f"/management/v1/projects/{project}/apps/_search", token)
-    existing = api.named(apps, name)
-    wanted = public_client(origin)
-    if existing is None:
-        answer = api.call(f"/management/v1/projects/{project}/apps/oidc",
-                          dict(wanted, name=name), token)
-        if answer.status != 200:
-            raise SystemExit(f"{name}: {answer.status} {answer.message()}")
-        print(f"{name}: created")
-        return
-
-    answer = api.call(
-        f"/management/v1/projects/{project}/apps/{existing['id']}/oidc_config",
-        wanted, token, method="PUT")
+def held_application(project: str, portal: Portal, token: str) -> dict | None:
+    answer = registrations.get_application(portal.identifier, token)
     if answer.status == 200:
-        print(f"{name}: updated")
+        return answer.body["application"]
+    if answer.status != 404:
+        raise api.Refused(f"{portal.name}: reading the application back was "
+                          f"refused: {answer.status} {answer.message()}. "
+                          "Nothing was created or changed.")
+    older = registrations.application_named(project, portal.name, token)
+    if older is not None:
+        print(f"{portal.name}: {_GENERATED_INSTEAD} {older['applicationId']}")
+    return older
+
+
+def ensure_app(project: str, portal: Portal, origin: str, token: str) -> None:
+    held = held_application(project, portal, token)
+    wanted = public_client(origin)
+    if held is None:
+        answer = registrations.application_call("CreateApplication", {
+            "projectId": project,
+            "applicationId": portal.identifier,
+            "name": portal.name,
+            "oidcConfiguration": wanted,
+        }, token)
+        if answer.status != 200:
+            raise SystemExit(f"{portal.name}: {answer.status} {answer.message()}")
+        print(f"{portal.name}: created")
+        return
+    update_app(portal, held, wanted, token)
+
+
+def update_app(portal: Portal, held: dict, wanted: dict, token: str) -> None:
+    """Put back whatever differs, and say so when nothing does."""
+    wrong = registrations.differences(held.get("oidcConfiguration", {}), wanted)
+    misnamed = held.get("name") != portal.name
+    if not wrong and not misnamed:
+        print(f"{portal.name}: already correct")
         return
 
-    # An update that would change nothing is refused, and the wording differs by
-    # endpoint: "No changes" here, "has not been changed" on the label policy.
-    # So the state is read back and compared rather than the message parsed. A
-    # refusal for any other reason then still fails, and it fails naming the
-    # field that disagrees.
-    wrong = api.differences(existing.get("oidcConfig", {}), wanted)
-    if wrong:
-        raise SystemExit(f"{name}: {answer.status} {answer.message()}. "
-                         f"What differs: {'; '.join(wrong)}")
-    print(f"{name}: already correct")
+    request = {"applicationId": held["applicationId"],
+               "projectId": held["projectId"],
+               "oidcConfiguration": wanted}
+    # The name is sent only when it is the thing that changed. An update whose
+    # name matches the name already held is refused with "No changes" before the
+    # OIDC configuration is looked at, so a real redirect change sent alongside
+    # an unchanged name is dropped and reported as nothing to do. Measured
+    # against 4.17.1 on 2026-08-29: the same request without the name applied.
+    if misnamed:
+        request["name"] = portal.name
+
+    answer = registrations.application_call("UpdateApplication", request, token)
+    if answer.status != 200:
+        raise SystemExit(f"{portal.name}: {answer.status} {answer.message()}. "
+                         f"What differs: {'; '.join(wrong) or 'the name'}")
+    print(f"{portal.name}: updated")
 
 
-def ensure_door_service(token: str) -> None:
-    answer = api.call("/management/v1/users/machine", {
-        "userName": DOOR_SERVICE, "name": "Door service",
-        "description": "Reads the card table. docs/plan/api-design.md section 2",
-        "accessTokenType": "ACCESS_TOKEN_TYPE_JWT",
+def ensure_door_service(organisation: str, token: str) -> None:
+    held = registrations.get_user(DOOR_SERVICE_ID, token)
+    if held.status == 200:
+        print(f"{DOOR_SERVICE}: already there")
+        return
+    if held.status != 404:
+        raise api.Refused(f"{DOOR_SERVICE}: reading the account back was "
+                          f"refused: {held.status} {held.message()}. Nothing "
+                          "was created or changed.")
+
+    answer = api.call("/v2/users/new", {
+        "organizationId": organisation,
+        "userId": DOOR_SERVICE_ID,
+        "username": DOOR_SERVICE,
+        "machine": {
+            "name": "Door service",
+            "description": "Reads the card table. docs/plan/api-design.md section 2",
+            "accessTokenType": "ACCESS_TOKEN_TYPE_JWT",
+        },
     }, token)
     if answer.status == 200:
         print(f"{DOOR_SERVICE}: created")
         return
-    if "AlreadyExists" in answer.message() or answer.status == 409:
-        print(f"{DOOR_SERVICE}: already there")
+    # Nothing is held under our identifier, so an account that already exists is
+    # one holding the login name, which is the older version of this step under
+    # an identifier the service generated. Two answers say that and they say it
+    # differently, both measured against 4.17.1 on 2026-08-29: a login name
+    # already taken is 409 "User already exists", an identifier already taken is
+    # 400 "Errors.User.AlreadyExisting".
+    if answer.status == 409 or "AlreadyExisting" in answer.message():
+        print(f"{DOOR_SERVICE}: already there, under an identifier the service "
+              "generated")
         return
     raise SystemExit(f"{DOOR_SERVICE}: {answer.status} {answer.message()}")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    for name, _ in PORTALS:
-        flag = "--" + name.split()[0].lower() + "-origin"
-        parser.add_argument(flag, required=True,
-                            help=f"the origin {name} is served from, with no trailing slash")
+    for portal in PORTALS:
+        parser.add_argument("--" + portal.flag + "-origin", required=True,
+                            help=f"the origin {portal.name} is served from, "
+                                 "with no trailing slash")
     parser.add_argument("--token", default=api.token_from_environment(),
                         help="a token that can administer the instance")
     args = parser.parse_args()
@@ -162,10 +243,12 @@ def main() -> int:
                          "make identity-configure reads one out of the container.")
 
     try:
-        project = ensure_project(args.token)
-        for name, key in PORTALS:
-            ensure_app(project, name, getattr(args, key + "_origin").rstrip("/"), args.token)
-        ensure_door_service(args.token)
+        organisation = registrations.organisation(args.token)
+        project = ensure_project(organisation, args.token)
+        for portal in PORTALS:
+            origin = getattr(args, portal.flag + "_origin").rstrip("/")
+            ensure_app(project, portal, origin, args.token)
+        ensure_door_service(organisation, args.token)
         api.apply_branding(args.token)
     except api.Refused as refused:
         # Nothing here is partially applied by a refused search: each step reads

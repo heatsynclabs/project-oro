@@ -25,6 +25,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import api                       # noqa: E402, after the path insert above
+import registrations             # noqa: E402
 import flow                      # noqa: E402
 import configure                 # noqa: E402
 
@@ -36,57 +37,63 @@ STATE: dict = {}
 
 
 def _project() -> str:
-    found = api.named(api.search("/management/v1/projects/_search", TOKEN),
-                      configure.PROJECT)
+    found = registrations.project_named(configure.PROJECT, TOKEN)
     assert found, f"there is no project named {configure.PROJECT!r}"
-    return found["id"]
+    return found["projectId"]
 
 
 def _app(name: str) -> dict:
-    apps = api.search(f"/management/v1/projects/{_project()}/apps/_search", TOKEN)
-    found = api.named(apps, name)
+    found = registrations.application_named(_project(), name, TOKEN)
     assert found, f"there is no application named {name!r}"
-    return found["oidcConfig"]
+    return found["oidcConfiguration"]
 
 
 # --------------------------------------------------------------------------
 # The clients, read back from the service rather than from what was sent.
 
 def test_the_three_portals_are_registered():
-    for name, _ in configure.PORTALS:
-        _app(name)
+    for portal in configure.PORTALS:
+        _app(portal.name)
 
 
 def test_every_portal_is_a_public_client_holding_no_secret():
     """PKCE stands in for the secret, because these are pages a browser downloads.
 
     A secret shipped inside a downloadable page is not a secret, and a client
-    that has one is a client somebody can impersonate.
+    that has one is a client somebody can impersonate. There is no field in the
+    read back for a secret, so the second half asks the service instead. Client
+    credentials is the grant a secret alone completes, and a portal completing
+    it would mean it holds one.
     """
-    for name, _ in configure.PORTALS:
-        config = _app(name)
+    for portal in configure.PORTALS:
+        config = _app(portal.name)
         assert config["authMethodType"] == "OIDC_AUTH_METHOD_TYPE_NONE", \
-            f"{name} uses {config['authMethodType']}"
-        assert not config.get("clientSecret"), f"{name} was given a secret"
+            f"{portal.name} uses {config['authMethodType']}"
+        alone = api.post_form("/oauth/v2/token", {
+            "grant_type": "client_credentials", "scope": "openid",
+            "client_id": config["clientId"]})
+        assert alone.status >= 400, (
+            f"{portal.name} was given a token for its client id on its own, so "
+            "it is not the public client it is registered as")
 
 
 def test_every_portal_uses_authorization_code_and_can_refresh():
-    for name, _ in configure.PORTALS:
-        config = _app(name)
-        assert config["responseTypes"] == ["OIDC_RESPONSE_TYPE_CODE"], name
-        assert "OIDC_GRANT_TYPE_AUTHORIZATION_CODE" in config["grantTypes"], name
+    for portal in configure.PORTALS:
+        config = _app(portal.name)
+        assert config["responseTypes"] == ["OIDC_RESPONSE_TYPE_CODE"], portal.name
+        assert "OIDC_GRANT_TYPE_AUTHORIZATION_CODE" in config["grantTypes"], portal.name
         assert "OIDC_GRANT_TYPE_REFRESH_TOKEN" in config["grantTypes"], (
-            f"{name} cannot refresh, so a member is signed out every ten minutes")
+            f"{portal.name} cannot refresh, so a member is signed out every ten "
+            "minutes")
 
 
 def test_the_door_service_is_a_machine_account_and_not_an_application():
     """It talks to no browser, so it has no redirect and no login screen."""
-    users = api.call("/management/v1/users/_search", {"queries": [
+    users = api.call("/v2/users", {"queries": [
         {"userNameQuery": {"userName": configure.DOOR_SERVICE}}]}, TOKEN)
     assert users.status == 200, users.message()
     assert users.body.get("result"), f"there is no {configure.DOOR_SERVICE} account"
-    apps = api.search(f"/management/v1/projects/{_project()}/apps/_search", TOKEN)
-    assert api.named(apps, "Door service") is None, \
+    assert registrations.application_named(_project(), "Door service", TOKEN) is None, \
         "the door service was registered as an application as well"
 
 
