@@ -15,7 +15,7 @@ whole thing on a laptop today, with invented data.
 
 Those are real screenshots of `make development` on a laptop. The amber band is
 there because the portal is reading a mock of the API contract, not a database.
-The API service is not built yet.
+The API service exists as a first slice, and the portal does not read it yet: wiring the two together needs a sign in, which is the rest of phase 3.
 
 ---
 
@@ -106,7 +106,7 @@ One override file is the whole difference.
 | Scheme | plain HTTP, nothing redirects | HTTPS, and plain HTTP redirects to it |
 | Certificate | none, so nothing to click through | from `ORO_TLS`, either Caddy's local authority or Let's Encrypt |
 | The root serves | the members portal | a 404 saying no application is deployed here yet |
-| `/v1/*` | the contract mock | nothing. There is no API service yet |
+| `/v1/*` | the contract mock | nothing yet. `services/api` is built but not wired into either shape |
 | Identity service | `localhost:8180`, loopback only | `id.YOURHOST`, through Caddy |
 | The mock | running | absent. It never reaches a deployment |
 

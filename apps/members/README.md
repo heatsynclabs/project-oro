@@ -6,8 +6,10 @@ The six self service views a member has of their own record: the record itself,
 their cards, their certifications, their waiver, whether they can be nominated
 for card access, and the member directory.
 
-It reads the members API contract through a mock. There is no API service and no
-database behind it. Every name, card, date and skill it shows is an example out
+It reads the members API contract through a mock. `services/api` now exists as
+a first slice, and this portal does not read it: doing that needs a sign in,
+which is the rest of phase 3. So there is still no service and no database
+behind this page. Every name, card, date and skill it shows is an example out
 of `docs/api/members-v1.yaml`, and the page says so at the top where a reader
 cannot miss it.
 

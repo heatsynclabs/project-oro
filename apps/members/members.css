@@ -76,15 +76,17 @@ body {
 	padding: var(--space-3) max(var(--space-4), var(--safe-l));
 }
 
-/* The sun off the HeatSync mark, drawn rather than fetched, so it inherits a
- * token colour and needs no file. It carries no accessible name: the wordmark
- * beside it is the name, and a screen reader saying the lab twice is worse
- * than saying it once. */
 /* references/logos.md sets the floor at 24px for the mark on its own and says
- * anything smaller wants a one colour file. 30px clears it. The colour set here
- * reaches the flames only: the sun disc carries the logo orange inside the file
- * and must never take the flame colour, because the two pieces merging is the
- * one misuse that stops it being the HeatSync mark. */
+ * anything smaller wants a one colour file. 34px clears it, and 34 against the
+ * wordmark's 23px cap height is the lockup proportion that document measures
+ * off the live site.
+ *
+ * The colour set here reaches the flames only. The sun disc carries the logo
+ * orange inside the file and must never take the flame colour: the two pieces
+ * merging is the one misuse that stops it being the HeatSync mark.
+ *
+ * It carries no accessible name. The wordmark beside it is the name, and a
+ * screen reader saying the lab twice is worse than saying it once. */
 .sunmark {
 	width: 34px;
 	height: 34px;
