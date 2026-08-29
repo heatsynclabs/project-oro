@@ -27,9 +27,71 @@
    ============================================================ */
 
 /* ============================================================
-   1. RAW TOKENS, DARK (the default)
+   1. RAW TOKENS, LIGHT (paper and ink), the default
+
+   Bare :root carries this set, so a page that sets no data-theme is light.
+   The lab asked for light by default: most of the day the workshop is bright
+   and a member reads this on a phone in it.
+
+   This block comes first, before the dark one, and that order is load bearing.
+   The base set has to be declared before the theme that overrides it, because
+   packages/gantry-tokens/validator/cascade.py merges blocks in document order
+   and treats a bare :root as applying under every theme. Put this block after
+   the dark one and the validator measures the dark theme against these values
+   while a browser, which reads specificity, does not. The two would disagree
+   and only the browser would be right.
    ============================================================ */
 :root,
+:root[data-theme="light"] {
+  --char:        #f4efe3;
+  --grime:       #ebe3d3;
+  --slab:        #faf6ec;
+  --slab-hi:     #f0e8d8;
+  --steel:       rgba(28, 24, 18, 0.16);
+  --steel-hi:    #1c1812;
+
+  --bone:        #1c1812;
+  --ash:         #4a4236;
+  --smoke:       #6f6555;
+
+  --hazard:      #f2ab1e;
+  --hazard-deep: #b9740f;
+  --hazard-dim:  rgba(242, 171, 30, 0.18);
+  --accent-text: #97600c;
+
+  --rust:        #c2542c;
+  --rust-deep:   #9a3f20;
+  --live:        #2f8562;
+  --fault:       #b8341f;
+  --idle:        #97600c;
+  --violet:      #6a4fa0;
+  --info:        #35648f;
+
+  --tape-dark:   #14110d;
+  --on-dark:     #ece3d3;
+  --on-dark-line: rgba(236, 227, 211, 0.24);
+
+  --grain-op:    0.05;
+  --grain-blend: multiply;
+  --shadow:      6px 6px 0 #1c1812;
+  --shadow-sm:   4px 4px 0 #1c1812;
+  --shadow-lg:   10px 10px 0 #1c1812;
+
+  --nav-bg:      rgba(244, 239, 227, 0.94);
+
+  /* Status inks for the page and raised grounds, measured against --char
+     and --slab. */
+  --theme-ink-ok:      #216b4d;
+  --theme-ink-warn:    #8a5a09;
+  --theme-ink-err:     #a52d1a;
+  --theme-ink-info:    #2b5578;
+  --theme-ink-faint:   #5f5648;
+  --theme-ink-ghost:   #8a8071;
+}
+
+/* ============================================================
+   2. RAW TOKENS, DARK
+   ============================================================ */
 :root[data-theme="dark"] {
   --char:        #15120f;
   --grime:       #1d1915;
@@ -76,56 +138,6 @@
   --theme-ink-info:    #8fbde6;
   --theme-ink-faint:   #9c9384;
   --theme-ink-ghost:   #6a6255;
-}
-
-/* ============================================================
-   2. RAW TOKENS, LIGHT (paper and ink)
-   ============================================================ */
-:root[data-theme="light"] {
-  --char:        #f4efe3;
-  --grime:       #ebe3d3;
-  --slab:        #faf6ec;
-  --slab-hi:     #f0e8d8;
-  --steel:       rgba(28, 24, 18, 0.16);
-  --steel-hi:    #1c1812;
-
-  --bone:        #1c1812;
-  --ash:         #4a4236;
-  --smoke:       #6f6555;
-
-  --hazard:      #f2ab1e;
-  --hazard-deep: #b9740f;
-  --hazard-dim:  rgba(242, 171, 30, 0.18);
-  --accent-text: #97600c;
-
-  --rust:        #c2542c;
-  --rust-deep:   #9a3f20;
-  --live:        #2f8562;
-  --fault:       #b8341f;
-  --idle:        #97600c;
-  --violet:      #6a4fa0;
-  --info:        #35648f;
-
-  --tape-dark:   #14110d;
-  --on-dark:     #ece3d3;
-  --on-dark-line: rgba(236, 227, 211, 0.24);
-
-  --grain-op:    0.05;
-  --grain-blend: multiply;
-  --shadow:      6px 6px 0 #1c1812;
-  --shadow-sm:   4px 4px 0 #1c1812;
-  --shadow-lg:   10px 10px 0 #1c1812;
-
-  --nav-bg:      rgba(244, 239, 227, 0.94);
-
-  /* Status inks for the page and raised grounds, measured against --char
-     and --slab. */
-  --theme-ink-ok:      #216b4d;
-  --theme-ink-warn:    #8a5a09;
-  --theme-ink-err:     #a52d1a;
-  --theme-ink-info:    #2b5578;
-  --theme-ink-faint:   #5f5648;
-  --theme-ink-ghost:   #8a8071;
 }
 
 /* ============================================================

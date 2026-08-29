@@ -28,6 +28,25 @@ _VAR = re.compile(r"var\(\s*(--[\w-]+)\s*(?:,\s*([^()]*))?\)")
 _MAX_LINKS = 32
 
 
+class BaseAfterThemeError(Exception):
+    """A bare `:root` block is declared after a `:root[data-theme=...]` block.
+
+    The model here merges in document order and treats a bare `:root` as
+    applying under every theme, because that is what it is: the base. A browser
+    does not, because `:root[data-theme="dark"]` is the more specific selector
+    and wins wherever it is written.
+
+    So in that order the two disagree. The checker measures the later base
+    values as if they were the theme's, the browser paints the theme's, and the
+    checker is the one that is wrong. It reports a clean run on a file whose
+    dark theme it never looked at.
+
+    Teaching this model specificity would make it a CSS engine, which the
+    docstring above refuses. Refusing the one arrangement where the shortcut
+    breaks costs a rule and keeps the model honest. Declare the base first.
+    """
+
+
 class NestedGroundError(Exception):
     """A theme or ground block sits inside an at-rule.
 
@@ -51,9 +70,43 @@ def _strip_comments(css: str) -> str:
 
 def parse_blocks(css: str) -> list[Block]:
     """Every rule in the file, in document order, with its custom properties."""
-    return [(selectors, {name: value for name, value in declarations.items()
-                         if name.startswith("--")})
-            for selectors, declarations in parse_rules(css)]
+    blocks = [(selectors, {name: value for name, value in declarations.items()
+                           if name.startswith("--")})
+              for selectors, declarations in parse_rules(css)]
+    _refuse_base_after_theme(blocks)
+    return blocks
+
+
+def _refuse_base_after_theme(blocks: list[Block]) -> None:
+    """Refuse the one block order this model reads differently from a browser.
+
+    Only a collision matters. A later bare `:root` block that declares tokens
+    no theme declares is theme independent, which is what the type scale and
+    the spacing steps are, and it is fine where it is. What is not fine is a
+    later base block redeclaring a token a theme already set, because then the
+    two disagree about which value that token has under that theme.
+    """
+    claimed: dict[str, str] = {}
+    for selectors, declarations in blocks:
+        # Grounds are meant to layer over a theme, per the docstring above, so
+        # `:root, [data-ground="page"]` is the intended shape and not a clash.
+        is_ground = any(s.startswith("[data-ground") for s in selectors)
+        if not is_ground and any(s == ":root" for s in selectors):
+            clash = sorted(set(declarations) & set(claimed))
+            if clash:
+                theme = claimed[clash[0]]
+                raise BaseAfterThemeError(
+                    f"the bare :root block declaring {', '.join(clash[:3])} is "
+                    f"written after the :root[data-theme=\"{theme}\"] block "
+                    f"that also declares {clash[0]}. Declare the base set "
+                    "first. This model merges in document order, so in this "
+                    "order it would measure the base value as if it were the "
+                    "theme's, while a browser would paint the theme's. It "
+                    "would report a clean run on a theme it never looked at.")
+        for selector in selectors:
+            if (match := _THEME.match(selector)):
+                for name in declarations:
+                    claimed.setdefault(name, match.group(1))
 
 
 def parse_rules(css: str) -> list[Block]:

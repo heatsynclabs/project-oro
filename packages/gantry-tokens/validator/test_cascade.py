@@ -13,7 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from cascade import (  # noqa: E402
+from cascade import (
+    BaseAfterThemeError,  # noqa: E402
     NestedGroundError, environment, grounds, parse_blocks, parse_rules, resolve,
     themes,
 )
@@ -171,6 +172,45 @@ def test_a_var_inside_a_larger_value_is_substituted_in_place():
     css = ':root { --line-colour: #3a342b; --bd: 1px solid var(--line-colour); }'
     env = environment(parse_blocks(css), "dark", None)
     assert resolve("--bd", env) == "1px solid #3a342b"
+
+
+# The base set has to be declared before the theme that overrides it. This model
+# merges in document order and a browser reads specificity, so in the other
+# order the two disagree and only the browser is right. Found the hard way:
+# moving the light block to the front of tokens.css to make light the default
+# changed six measured dark pairs, because the light block carried a bare :root
+# and sat after the dark one.
+
+def test_a_base_block_redeclaring_a_theme_token_after_it_is_refused():
+    css = (':root[data-theme="dark"] { --paper: #000000; }\n'
+           ':root, :root[data-theme="light"] { --paper: #ffffff; }')
+    try:
+        parse_blocks(css)
+    except BaseAfterThemeError as refused:
+        assert "--paper" in str(refused), f"the clashing token is not named: {refused}"
+        assert "dark" in str(refused), f"the theme it clashes with is not named: {refused}"
+        return
+    raise AssertionError("a base block after a theme block was accepted")
+
+
+def test_the_base_may_be_declared_before_the_theme():
+    css = (':root, :root[data-theme="light"] { --paper: #ffffff; }\n'
+           ':root[data-theme="dark"] { --paper: #000000; }')
+    assert parse_blocks(css), "the correct order was refused"
+
+
+def test_a_base_block_of_theme_independent_tokens_may_come_after():
+    """The type scale and the spacing steps are not a theme's business."""
+    css = (':root[data-theme="dark"] { --paper: #000000; }\n'
+           ':root { --space-1: 4px; }')
+    assert parse_blocks(css), "a theme independent base block was refused"
+
+
+def test_a_ground_block_may_carry_a_bare_root_after_a_theme():
+    """A ground layers over a theme on purpose, so this shape is the file's own."""
+    css = (':root[data-theme="dark"] { --paper: #000000; }\n'
+           ':root, [data-ground="page"] { --g-bg: var(--paper); }')
+    assert parse_blocks(css), "the shape tokens.css actually uses was refused"
 
 
 def _run() -> int:
