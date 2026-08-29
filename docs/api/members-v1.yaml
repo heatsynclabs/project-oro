@@ -140,8 +140,10 @@ paths:
         Card access is decided by a vote of cardholders.
 
         Changing your `email` clears its verified date, and you cannot set that
-        date yourself. An address that already belongs to another member is
-        refused, because one address identifies one member.
+        date yourself. Losing that date costs the member nothing: an unconfirmed
+        address is a valid state and no operation here refuses anybody for it.
+        An address that already belongs to another member is refused, because one
+        address identifies one member.
 
         The database refuses standing, paid through, orientation, the identity
         your account is joined by, and the legacy columns, by trigger. This
@@ -192,7 +194,7 @@ paths:
             application/json:
               schema:
                 type: array
-                items: { $ref: '#/components/schemas/Card' }
+                items: { $ref: '#/components/schemas/MyCard' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
 
   /me/certifications:
@@ -1347,8 +1349,25 @@ components:
           format: date-time
           readOnly: true
           description: >-
-            Cleared whenever the member changes their own email. A member cannot
-            set this.
+            When the lab last confirmed it can reach this address. Cleared
+            whenever the member changes their own email, by trigger, and a member
+            cannot set it.
+
+            Absent is a valid state and it is not a gate. An account with no
+            confirmed address works exactly like one that has it: no operation in
+            this document refuses a member for it, and nothing is withheld until
+            they confirm. It reports what the lab knows about reaching them,
+            which is why a portal should show it as a signal rather than as a
+            step somebody is stuck on.
+
+            Nothing in this API sets it, and that is the open question a reviewer
+            should settle rather than a gap to fill with an endpoint.
+            Confirmation belongs to the identity service, and no mail sender is
+            configured anywhere in this project yet, so today the only writers
+            are the legacy import and the bootstrap command, both of which record
+            the address as already confirmed and say so where they do it. An
+            endpoint here that promised to send a confirmation would be
+            documenting a sender that does not exist.
         phone: { type: [string, 'null'] }
         postal_code: { type: [string, 'null'] }
         tier_id:
@@ -1495,6 +1514,49 @@ components:
         phone_visible: { type: boolean }
         listed_in_directory: { type: boolean }
       additionalProperties: false
+
+    MyCard:
+      type: object
+      description: >-
+        A card as its own holder sees it. Deliberately not `Card`: this shape
+        carries no `controller_slot` and no `permission_mask`, because both name
+        the door hardware and `info.description` at the top of this file says
+        nothing here names the hardware, which is what keeps the controller
+        replaceable. A slot is an EEPROM address, and a member reading one has
+        been handed a fact about the wiring that they can do nothing with and
+        that stops being true the day the controller is replaced.
+
+        The rule was enforced in the members portal before it was written here,
+        by a client side check. That was the wrong layer: rule 5 of `CLAUDE.md`
+        says a rule lives in exactly one place and this document is the one all
+        three portals are built against.
+      required: [id]
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        tag_number:
+          type: string
+          readOnly: true
+          description: >-
+            Masked to the last four characters. A member does not need the full
+            number of the card in their pocket, and a full number read off a
+            screen is a card somebody can clone. The mask is applied by the
+            service, so the pattern `Card.tag_number` carries does not hold here.
+          examples: ['C4D9']
+        label:
+          type: [string, 'null']
+          readOnly: true
+          description: What this card is, in the member's words. For example, front desk spare.
+        active: { type: boolean, readOnly: true }
+        issued_at: { type: string, format: date-time, readOnly: true }
+        revoked_at: { type: [string, 'null'], format: date-time, readOnly: true }
+        revoked_by:
+          $ref: '#/components/schemas/Member'
+          readOnly: true
+          description: >-
+            Who revoked it. Only `id` and `name` are populated. A member is told
+            who took their card back: it is an action taken on them and the
+            person who took it is not a secret.
+        revoked_reason: { type: [string, 'null'], readOnly: true }
 
     Card:
       type: object

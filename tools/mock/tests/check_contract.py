@@ -163,6 +163,25 @@ def test_a_reference_that_closes_no_cycle_comes_back_whole():
     assert revoked_by["oriented_by"] == BROKEN_CYCLE, revoked_by["oriented_by"]
 
 
+def test_a_member_is_never_handed_a_door_controller_address():
+    """docs/plan/data-model.md makes controller_slot the EEPROM address on the
+    door controller, and this document's own info.description says nothing here
+    names the hardware, which is what keeps the controller replaceable. Those
+    cannot both hold if /me/cards returns a Card. It returns MyCard, and this is
+    what holds that.
+
+    The rule was enforced in the members portal first, by a client side check.
+    That was the wrong layer: rule 5 says a rule lives in exactly one place, and
+    all three portals are built against this contract rather than against each
+    other's tests."""
+    card = signed_in("GET", "/me/cards").json()[0]
+    for hardware in ["controller_slot", "permission_mask"]:
+        assert hardware not in card, (
+            f"/me/cards returned {hardware}, which names the door hardware to "
+            "the member holding the card")
+    assert "tag_number" in card, "a member cannot identify their own card"
+
+
 def test_a_path_this_document_does_not_declare_is_not_served():
     answer = signed_in("GET", "/tool-interlocks")
     assert answer.status == 404, f"got {answer.status}: {answer.body[:200]}"
