@@ -10,7 +10,7 @@
 DEV = docker compose -f compose.yaml -f compose.development.yaml
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure migration-test ceilings
+.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure bootstrap-admins migration-test ceilings
 
 help:
 	@echo "make up                start the stack in the background"
@@ -26,6 +26,7 @@ help:
 	@echo "make portal-test       prove the members portal against the contract mock"
 	@echo "make identity-test     prove the identity service holds the lab's existing passwords"
 	@echo "make identity-configure  register the project, the clients and the branding"
+	@echo "make bootstrap-admins  seat the first three admins, who can then administer everything"
 	@echo "make migration-test    prove the legacy import, and prove it refuses dirty data"
 	@echo "make ceilings          check every file and function against the ceilings in rule 6"
 	@echo ""
@@ -82,6 +83,7 @@ check:
 	./tools/members-portal/tests/run.sh
 	./tools/identity/tests/run.sh
 	./tools/migration/tests/run.sh
+	./tools/bootstrap/tests/run.sh
 	@echo
 	@echo "every suite passed"
 
@@ -133,6 +135,37 @@ identity-test:
 identity-configure:
 	@test -f .env || { echo "No .env file. Copy .env.example to .env and set the values in it." >&2; exit 1; }
 	@ORO_IDENTITY_TOKEN="$$(docker compose cp identity:/bootstrap/pat - 2>/dev/null | tar -xO)" 	 ORO_IDENTITY_URL="https://id.$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)" 	 python3 tools/identity/configure.py 	   --members-origin "https://$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)" 	   --admin-origin "https://admin.$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)" 	   --door-origin "https://door.$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)"
+
+# The first three admins. Nothing else in this repository can make one: the
+# database allows three admin grants with no approval behind them, and after
+# that a grant needs a second admin to approve it. Three rather than two so the
+# lab has a spare, per docs/plan/people-and-custody.md section 1.
+#
+#   make bootstrap-admins ADMIN1="Ada Byron <ada@example.org>" \
+#     ADMIN2="Grace Hopper <grace@example.org>" \
+#     ADMIN3="Katherine Johnson <katherine@example.org>"
+#
+# Run it from a terminal. Each new admin gets a password that is printed there
+# and written to no file, and the command refuses rather than seating people
+# whose passwords nobody can read. Safe to run again: it reports what is already
+# seated and changes nothing.
+#
+# The origins are the deployment's, from .env, the same way identity-configure
+# reads them. A laptop passes its own ORO_IDENTITY_URL:
+#
+#   ORO_IDENTITY_URL=http://localhost:8180 make bootstrap-admins ADMIN1=...
+bootstrap-admins:
+	@test -f .env || { echo "No .env file. Copy .env.example to .env and set the values in it." >&2; exit 1; }
+	@if [ -z "$(ADMIN1)" ] || [ -z "$(ADMIN2)" ] || [ -z "$(ADMIN3)" ]; then \
+	  echo 'Name three people, each as a name and an address:' >&2; \
+	  echo '  make bootstrap-admins ADMIN1="Ada Byron <ada@example.org>" ADMIN2=... ADMIN3=...' >&2; \
+	  echo 'For any other number of people, tools/bootstrap/seat_admins.py takes --admin as many times as you name it.' >&2; \
+	  exit 1; \
+	fi
+	@ORO_IDENTITY_TOKEN="$$(docker compose cp identity:/bootstrap/pat - 2>/dev/null | tar -xO)" \
+	 ORO_IDENTITY_URL="$${ORO_IDENTITY_URL:-https://id.$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)}" \
+	 python3 tools/bootstrap/seat_admins.py \
+	   --admin "$(ADMIN1)" --admin "$(ADMIN2)" --admin "$(ADMIN3)"
 
 # The legacy import, eleven cases. Ten import the same fixture: three carry it
 # and seven are refused, each for a reason the suite checks by name. The

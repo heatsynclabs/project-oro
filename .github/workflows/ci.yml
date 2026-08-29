@@ -218,3 +218,19 @@ jobs:
       # tools/migration/README.md says how the replica is built.
       - name: Refused while undecided, and correct once decided
         run: ./tools/migration/tests/run.sh
+
+  bootstrap:
+    name: First three admins
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # The command that spends the bootstrap escape, which is the only way a
+      # database with no members gets its first admin. The suite seats three
+      # against a throwaway stack, proves each can sign in, runs it again and
+      # requires that nothing changed, and then asks for a fourth and requires
+      # the database to refuse it. db/migrations/013_bootstrap_three_admins.sql
+      # is the rule being exercised, and tools/bootstrap/README.md says why the
+      # quota is three rather than two.
+      - name: Three seated, the fourth refused
+        run: ./tools/bootstrap/tests/run.sh
