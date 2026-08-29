@@ -43,13 +43,10 @@ const formats = {
     standing: "Standing",
     waiver: "Waiver",
   }[value] || value),
-  // Mask 1 is full access and mask 255 is no access. docs/glossary.md, and the
-  // Open_Access_Control firmware underneath it.
-  mask: (value) => {
-    if (value === 1) { return "1, full access"; }
-    if (value === 255) { return "255, no access"; }
-    return String(value);
-  },
+  // What a member chose to show, in the words the directory page uses, so the
+  // same setting reads the same wherever it appears.
+  visibility: (value) => (value ? "Visible to members" : "Hidden"),
+  state: (value) => (value ? "Active" : "Not active"),
 };
 
 function present(value, format, fallback) {
@@ -64,13 +61,26 @@ function present(value, format, fallback) {
   return String(value);
 }
 
+// A chip is filled when what it reports is true and outlined when it is not,
+// so a member reading down a column sees the shape before they read the word.
+// Only a field that is genuinely a yes or a no carries one, which is why the
+// rule is the raw value rather than the text it was formatted into.
+function markChip(element, value) {
+  if (!("chip" in element.dataset)) {
+    return;
+  }
+  element.dataset.state = value === true ? "on" : "off";
+}
+
 function bindFields(root, record) {
   for (const element of root.querySelectorAll("[data-field]")) {
+    const value = readPath(record, element.dataset.field);
     element.textContent = present(
-      readPath(record, element.dataset.field),
+      value,
       element.dataset.format,
       element.dataset.fallback
     );
+    markChip(element, value);
   }
 }
 

@@ -2,22 +2,32 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Members portal, contract mock</title>
 <link rel="stylesheet" href="/theme/tokens.css">
+<link rel="stylesheet" href="/components.css">
 <link rel="stylesheet" href="/members.css">
 </head>
 <body>
 <a class="skip" href="#main">Skip to the main content</a>
 
-<header class="masthead">
+<header class="topbar">
+<div class="topbar-in">
+<svg class="sunmark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><circle cx="16" cy="16" r="6.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M16 1.5v4.5M16 26v4.5M1.5 16H6M26 16h4.5M5.6 5.6l3.2 3.2M23.2 23.2l3.2 3.2M26.4 5.6l-3.2 3.2M8.8 23.2l-3.2 3.2"/></g></svg>
 <p class="wordmark">HeatSync Labs</p>
-<h1 class="portal">Members portal</h1>
+<p class="tag">Open Source. Open Doors.</p>
+</div>
 </header>
+<div class="tape" aria-hidden="true"></div>
+
+<div class="appbar" data-ground="plate">
+<h1 class="appname">Members portal</h1>
+<p class="who"><span class="chip" data-state="off">Not signed in</span></p>
+</div>
 
 <div class="notice" data-ground="hazard" role="note">
 <svg class="notice-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2 23 21H1Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v6M12 17.5v.5" stroke="currentColor" stroke-width="2"/></svg>
-<p>Everything below comes from the contract mock, which answers with the examples written into the API contract. No real member data is involved and nothing here is saved. There is no sign in either: the identity service is not built, so the mock takes any token and nobody is signed in as anybody.</p>
+<p>Everything below comes from the contract mock, which answers with the examples written into the API contract. No real member data is involved and nothing here is saved. There is no sign in either: the identity service is not built, so the mock takes any token and nobody is signed in as anybody. The name and the record you are about to read belong to nobody.</p>
 </div>
 
 <nav class="views" aria-label="Portal views">
@@ -39,99 +49,121 @@
 <p class="lede">What the lab holds about you. Your roles are read from your member record on every request rather than from your sign in, so losing a role takes effect on the next thing you do.</p>
 <p class="status" role="status" data-status></p>
 <div class="error" data-error hidden></div>
-<div data-target hidden>
-<dl class="fields">
-<div><dt>Name</dt><dd data-field="name"></dd></div>
-<div><dt>Display name</dt><dd data-field="display_name" data-fallback="Not set"></dd></div>
-<div><dt>Pronouns</dt><dd data-field="pronouns" data-fallback="Not set"></dd></div>
-<div><dt>Email</dt><dd data-field="email"></dd></div>
-<div><dt>Email confirmed</dt><dd data-field="email_verified_at" data-format="date" data-fallback="Not confirmed"></dd></div>
-<div><dt>Phone</dt><dd data-field="phone" data-fallback="Not set"></dd></div>
-<div><dt>Postal code</dt><dd data-field="postal_code" data-fallback="Not set"></dd></div>
+<div class="grid2" data-target hidden>
+
+<article class="card">
+<p class="card-label">Profile</p>
+<h3 class="card-title" data-field="name"></h3>
+<dl class="kv">
+<dt>Display name</dt><dd data-field="display_name" data-fallback="Not set"></dd>
+<dt>Pronouns</dt><dd data-field="pronouns" data-fallback="Not set"></dd>
+<dt>Email</dt><dd><span data-field="email"></span> <span class="chip" data-chip data-field="email_visible" data-format="visibility"></span></dd>
+<dt>Confirmed</dt><dd data-field="email_verified_at" data-format="date" data-fallback="Not confirmed"></dd>
+<dt>Phone</dt><dd><span data-field="phone" data-fallback="Not set"></span> <span class="chip" data-chip data-field="phone_visible" data-format="visibility"></span></dd>
+<dt>Postal code</dt><dd data-field="postal_code" data-fallback="Not set"></dd>
 </dl>
-<h3>Membership</h3>
-<dl class="fields">
-<div><dt>Tier</dt><dd data-field="tier.name"></dd></div>
-<div><dt>Card eligible tier</dt><dd data-field="tier.card_eligible" data-format="yesno"></dd></div>
-<div><dt>Joined</dt><dd data-field="joined_on" data-format="date"></dd></div>
-<div><dt>Paid through</dt><dd data-field="paid_through" data-format="date" data-fallback="Not recorded"></dd></div>
-<div><dt>Standing</dt><dd data-field="standing"></dd></div>
-<div><dt>Orientation</dt><dd data-field="oriented_at" data-format="date" data-fallback="Not recorded"></dd></div>
+</article>
+
+<article class="card">
+<p class="card-label">Membership</p>
+<h3 class="card-title" data-field="tier.name"></h3>
+<dl class="kv">
+<dt>Standing</dt><dd><span class="chip" data-field="standing"></span></dd>
+<dt>Dues paid through</dt><dd data-field="paid_through" data-format="date" data-fallback="Not recorded"></dd>
+<dt>Joined</dt><dd data-field="joined_on" data-format="date"></dd>
+<dt>Orientation</dt><dd data-field="oriented_at" data-format="date" data-fallback="Not recorded"></dd>
+<dt>Tier carries a card</dt><dd data-field="tier.card_eligible" data-format="yesno"></dd>
 </dl>
-<h3>What the directory shows</h3>
-<dl class="fields">
-<div><dt>Listed in the directory</dt><dd data-field="listed_in_directory" data-format="yesno"></dd></div>
-<div><dt>Email shown</dt><dd data-field="email_visible" data-format="yesno"></dd></div>
-<div><dt>Phone shown</dt><dd data-field="phone_visible" data-format="yesno"></dd></div>
-<div><dt>Skills you have</dt><dd data-field="current_skills" data-fallback="Not set"></dd></div>
-<div><dt>Skills you want</dt><dd data-field="desired_skills" data-fallback="Not set"></dd></div>
-<div><dt>Website</dt><dd data-field="website_url" data-fallback="Not set"></dd></div>
+<p class="note">Standing and the date above are set by an admin. Payments are out of scope for this build, so nothing here records money or how you pay.</p>
+</article>
+
+<article class="card">
+<p class="card-label">Directory</p>
+<h3 class="card-title">What other members see</h3>
+<dl class="kv">
+<dt>Listed</dt><dd><span class="chip" data-chip data-field="listed_in_directory" data-format="visibility"></span></dd>
+<dt>Skills you have</dt><dd data-field="current_skills" data-fallback="Not set"></dd>
+<dt>Skills you want</dt><dd data-field="desired_skills" data-fallback="Not set"></dd>
+<dt>Website</dt><dd data-field="website_url" data-fallback="Not set"></dd>
 </dl>
-<h3>Emergency contact</h3>
-<dl class="fields">
-<div><dt>Name</dt><dd data-field="emergency_name" data-fallback="Not set"></dd></div>
-<div><dt>Phone</dt><dd data-field="emergency_phone" data-fallback="Not set"></dd></div>
-<div><dt>Email</dt><dd data-field="emergency_email" data-fallback="Not set"></dd></div>
+</article>
+
+<article class="card">
+<p class="card-label">Emergency contact</p>
+<h3 class="card-title">Who the lab calls</h3>
+<dl class="kv">
+<dt>Name</dt><dd data-field="emergency_name" data-fallback="Not set"></dd>
+<dt>Phone</dt><dd data-field="emergency_phone" data-fallback="Not set"></dd>
+<dt>Email</dt><dd data-field="emergency_email" data-fallback="Not set"></dd>
 </dl>
-<h3>Your roles</h3>
+</article>
+
+<article class="card card-wide">
+<p class="card-label">Roles</p>
+<h3 class="card-title">What you hold</h3>
 <ul class="rows" data-list="roles"></ul>
+</article>
+
+</div>
 <template data-item-for="roles">
-<li class="row" data-ground="raised">
+<li class="row">
 <p class="row-title" data-field="role.name"></p>
 <p class="row-note" data-field="role.description"></p>
-<dl class="fields">
-<div><dt>Granted</dt><dd data-field="granted_at" data-format="date"></dd></div>
-<div><dt>Expires</dt><dd data-field="expires_at" data-format="date" data-fallback="Does not expire"></dd></div>
-<div><dt>Revoked</dt><dd data-field="revoked_at" data-format="date" data-fallback="Not revoked"></dd></div>
+<dl class="kv">
+<dt>Granted</dt><dd data-field="granted_at" data-format="date"></dd>
+<dt>Expires</dt><dd data-field="expires_at" data-format="date" data-fallback="Does not expire"></dd>
+<dt>Revoked</dt><dd data-field="revoked_at" data-format="date" data-fallback="Not revoked"></dd>
 </dl>
 </li>
 </template>
-</div>
 </section>
 
 <section class="view" id="view-cards" data-route="/cards" data-source="/me/cards"
 	data-loading="Reading your cards." data-loaded="Your cards, from the contract mock." hidden>
 <h2 tabindex="-1">Your cards</h2>
-<p class="lede">The API sends a tag number masked to its last four characters, and this page shows no more than that. A slot is the card's position in the door controller's own table, and it is never reassigned, because a slot is a physical address.</p>
+<p class="lede">The API sends a tag number masked to its last four characters, and this page shows no more than that. Where a card sits inside the door controller is the door service's business, so it is not on this page and never reaches a browser.</p>
 <p class="status" role="status" data-status></p>
 <div class="error" data-error hidden></div>
-<p class="empty" data-empty hidden>No card is recorded for you. Card access is decided by a vote of card members, and the card access view says what that involves.</p>
-<ul class="rows" data-target hidden></ul>
+<p class="empty" data-empty hidden>No card is recorded for you. The card access view says what being nominated involves.</p>
+<div class="sheet-scroll">
+<table class="sheet">
+<thead><tr><th scope="col">Card</th><th scope="col">Tag</th><th scope="col">State</th><th scope="col">Issued</th><th scope="col">Revoked</th></tr></thead>
+<tbody data-target hidden></tbody>
+</table>
+</div>
 <template data-item>
-<li class="row" data-ground="raised">
-<p class="row-title" data-field="label" data-fallback="Card"></p>
-<dl class="fields">
-<div><dt>Tag number</dt><dd data-field="tag_number" data-format="last4"></dd></div>
-<div><dt>Slot</dt><dd data-field="controller_slot" data-fallback="Not assigned"></dd></div>
-<div><dt>Permission mask</dt><dd data-field="permission_mask" data-format="mask"></dd></div>
-<div><dt>Active</dt><dd data-field="active" data-format="yesno"></dd></div>
-<div><dt>Issued</dt><dd data-field="issued_at" data-format="date"></dd></div>
-<div><dt>Revoked</dt><dd data-field="revoked_at" data-format="date" data-fallback="Not revoked"></dd></div>
-</dl>
-</li>
+<tr>
+<td data-field="label" data-fallback="Card"></td>
+<td class="mono" data-field="tag_number" data-format="last4"></td>
+<td><span class="chip" data-chip data-field="active" data-format="state"></span></td>
+<td data-field="issued_at" data-format="date"></td>
+<td data-field="revoked_at" data-format="date" data-fallback="Not revoked"></td>
+</tr>
 </template>
+<p class="note">If you lose a card, tell an admin and they revoke it. Issuing one is an ordinary admin action, and what authorises it is a vote of card members at Hack Your Hackerspace.</p>
 </section>
 
 <section class="view" id="view-certifications" data-route="/certifications" data-source="/me/certifications"
 	data-loading="Reading your certifications." data-loaded="Your certifications, from the contract mock." hidden>
 <h2 tabindex="-1">Certifications</h2>
-<p class="lede">A certification is per tool. Certification is required before you use the tool it covers. A revoked one stays on this list with its date. A certification can be revoked and granted again later, and that history is what an instructor needs to see.</p>
+<p class="lede">A certification is per tool. Certification is required before you use the tool it covers. A revoked one stays on this list with its date, because a certification can be revoked and granted again later, and that history is what an instructor needs to see.</p>
 <p class="status" role="status" data-status></p>
 <div class="error" data-error hidden></div>
 <p class="empty" data-empty hidden>Nothing is recorded for you yet. An instructor for a tool records a certification after they have run you through it.</p>
-<ul class="rows" data-target hidden></ul>
+<div class="grid2" data-target hidden></div>
 <template data-item>
-<li class="row" data-ground="raised">
-<p class="row-title" data-field="certification.name"></p>
-<p class="row-note" data-field="certification.description" data-fallback=""></p>
-<dl class="fields">
-<div><dt>Granted by</dt><dd data-field="granted_by.name"></dd></div>
-<div><dt>Granted</dt><dd data-field="granted_at" data-format="date"></dd></div>
-<div><dt>Expires</dt><dd data-field="expires_at" data-format="date" data-fallback="Does not expire"></dd></div>
-<div><dt>Revoked</dt><dd data-field="revoked_at" data-format="date" data-fallback="Not revoked"></dd></div>
-<div><dt>Reason</dt><dd data-field="revoked_reason" data-fallback="Not revoked"></dd></div>
+<article class="card">
+<p class="card-label">Certified on</p>
+<h3 class="card-title" data-field="certification.name"></h3>
+<p class="card-note" data-field="certification.description" data-fallback=""></p>
+<dl class="kv">
+<dt>Granted by</dt><dd data-field="granted_by.name"></dd>
+<dt>Granted</dt><dd data-field="granted_at" data-format="date"></dd>
+<dt>Expires</dt><dd data-field="expires_at" data-format="date" data-fallback="Does not expire"></dd>
+<dt>Revoked</dt><dd data-field="revoked_at" data-format="date" data-fallback="Not revoked"></dd>
+<dt>Reason</dt><dd data-field="revoked_reason" data-fallback="Not revoked"></dd>
 </dl>
-</li>
+</article>
 </template>
 </section>
 
@@ -142,43 +174,58 @@
 <p class="status" role="status" data-status></p>
 <div class="error" data-error hidden></div>
 <p class="empty" data-empty hidden>No waiver is recorded for you. That is an answer rather than a fault: it means nobody has written one down. An admin records it once you have signed.</p>
-<div data-target hidden>
-<dl class="fields">
-<div><dt>Signed</dt><dd data-field="signed_at" data-format="date"></dd></div>
-<div><dt>Expires</dt><dd data-field="expires_at" data-format="date" data-fallback="Does not expire"></dd></div>
-<div><dt>Kept in</dt><dd data-field="storage"></dd></div>
-<div><dt>Reference</dt><dd data-field="reference" data-fallback="Not recorded"></dd></div>
-<div><dt>Recorded by</dt><dd data-field="recorded_by.name"></dd></div>
-<div><dt>Note</dt><dd data-field="note" data-fallback="None"></dd></div>
+<div class="grid2" data-target hidden>
+<article class="card">
+<p class="card-label">Waiver</p>
+<h3 class="card-title">On file</h3>
+<dl class="kv">
+<dt>Signed</dt><dd data-field="signed_at" data-format="date"></dd>
+<dt>Expires</dt><dd data-field="expires_at" data-format="date" data-fallback="Does not expire"></dd>
+<dt>Kept in</dt><dd data-field="storage"></dd>
+<dt>Reference</dt><dd class="mono" data-field="reference" data-fallback="Not recorded"></dd>
+<dt>Recorded by</dt><dd data-field="recorded_by.name"></dd>
+<dt>Note</dt><dd data-field="note" data-fallback="None"></dd>
 </dl>
+</article>
 </div>
 </section>
 
 <section class="view" id="view-eligibility" data-route="/card-eligibility" data-source="/me/card-eligibility"
 	data-loading="Working out where you stand." data-loaded="Your card access standing, from the contract mock." hidden>
 <h2 tabindex="-1">Card access</h2>
-<p class="lede">Whether you can be nominated for card access, and what is missing if you cannot be. Being eligible is not the same as having a card: a cardholder nominates you, and card members vote.</p>
+<p class="lede">Whether you can be nominated for card access, and what is missing if you cannot be. Being eligible is not the same as holding a card. A cardholder nominates you, the proposal is posted publicly at least two weeks ahead, and card members vote on it at Hack Your Hackerspace.</p>
 <p class="status" role="status" data-status></p>
 <div class="error" data-error hidden></div>
-<div data-target hidden>
-<dl class="fields">
-<div><dt>Eligible now</dt><dd data-field="eligible" data-format="yesno"></dd></div>
-<div><dt>Eligible on</dt><dd data-field="eligible_on" data-format="date" data-fallback="Waiting on something that is not about time"></dd></div>
+<div class="grid2" data-target hidden>
+<article class="card">
+<p class="card-label">Where you stand</p>
+<h3 class="card-title">Eligible to be nominated</h3>
+<dl class="kv">
+<dt>Eligible now</dt><dd><span class="chip" data-chip data-field="eligible" data-format="yesno"></span></dd>
+<dt>Eligible on</dt><dd data-field="eligible_on" data-format="date" data-fallback="Waiting on something that is not about time"></dd>
 </dl>
-<h3>What the rules ask for</h3>
+<p class="note">The numbers behind these rules live in the governance parameters table, because the membership has voted them up and down three times in eight months.</p>
+</article>
+<article class="card">
+<p class="card-label">What happens next</p>
+<h3 class="card-title">The vote</h3>
+<p class="process" data-field="process"></p>
+</article>
+<article class="card card-wide">
+<p class="card-label">Requirements</p>
+<h3 class="card-title">What the rules ask for</h3>
 <ul class="rows" data-list="requirements"></ul>
+</article>
+</div>
 <template data-item-for="requirements">
-<li class="row" data-ground="raised">
+<li class="row">
 <p class="row-title" data-field="rule" data-format="requirement"></p>
-<dl class="fields">
-<div><dt>Met</dt><dd data-field="met" data-format="yesno"></dd></div>
-<div><dt>Where you stand</dt><dd data-field="detail"></dd></div>
+<dl class="kv">
+<dt>Met</dt><dd><span class="chip" data-chip data-field="met" data-format="yesno"></span></dd>
+<dt>Where you stand</dt><dd data-field="detail"></dd>
 </dl>
 </li>
 </template>
-<h3>What happens next</h3>
-<p class="process" data-field="process"></p>
-</div>
 </section>
 
 <section class="view" id="view-directory" data-route="/directory" data-source="/members"
@@ -188,27 +235,30 @@
 <p class="status" role="status" data-status></p>
 <div class="error" data-error hidden></div>
 <p class="empty" data-empty hidden>Nobody is listed. Every member has chosen not to appear, which is theirs to choose.</p>
-<ul class="rows" data-target hidden></ul>
+<div class="grid2" data-target hidden></div>
 <template data-item>
-<li class="row" data-ground="raised">
-<p class="row-title" data-field="name"></p>
-<p class="row-note" data-field="pronouns" data-fallback=""></p>
-<dl class="fields">
-<div><dt>Email</dt><dd data-field="email" data-fallback="Not shown"></dd></div>
-<div><dt>Phone</dt><dd data-field="phone" data-fallback="Not shown"></dd></div>
-<div><dt>Skills they have</dt><dd data-field="current_skills" data-fallback="Not set"></dd></div>
-<div><dt>Skills they want</dt><dd data-field="desired_skills" data-fallback="Not set"></dd></div>
-<div><dt>Website</dt><dd data-field="website_url" data-fallback="Not set"></dd></div>
+<article class="card">
+<p class="card-label">Member</p>
+<h3 class="card-title" data-field="name"></h3>
+<p class="card-note" data-field="pronouns" data-fallback=""></p>
+<dl class="kv">
+<dt>Email</dt><dd data-field="email" data-fallback="Not shown"></dd>
+<dt>Phone</dt><dd data-field="phone" data-fallback="Not shown"></dd>
+<dt>Skills they have</dt><dd data-field="current_skills" data-fallback="Not set"></dd>
+<dt>Skills they want</dt><dd data-field="desired_skills" data-fallback="Not set"></dd>
+<dt>Website</dt><dd data-field="website_url" data-fallback="Not set"></dd>
 </dl>
-</li>
+</article>
 </template>
 </section>
 
 </main>
 
 <footer class="foot" data-ground="plate">
+<div class="foot-in">
 <p>Static files behind Caddy, reading the members API contract through a mock on this same origin. Nothing on this page reaches a database.</p>
-<p>Open Source. Open Doors.</p>
+<p class="tag">Open Source. Open Doors.</p>
+</div>
 </footer>
 
 <noscript>

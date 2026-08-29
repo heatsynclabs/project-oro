@@ -1,0 +1,242 @@
+/* The GANTRY component layer, as far as the members portal needs one.
+ *
+ * These are the components in the ORO mockups, taken from them rather than
+ * invented here: the card with its small label and display heading, the label
+ * and value grid, the inline chip, the sheet, and the mono footnote. They are
+ * written against the tokens in packages/gantry-tokens/tokens.css and name no
+ * colour of their own, because the contrast validator in that package measures
+ * tokens and cannot measure a literal somebody typed here.
+ *
+ * They live in this app because there is one app. HANDOFF.md section 2 has
+ * packages/gantry-css as a later step, and the second app that wants a card is
+ * what should move them.
+ *
+ * Three corrections to what the mockups do, all for the same reason. They
+ * reach for --g-ink-3 on the value labels, the sheet headings and the
+ * footnote, and for --g-plate, which no token file defines. --g-ink-3 measures
+ * below the contrast minimum on three of the four grounds, recorded in
+ * HANDOFF.md section 7, so nothing a person reads uses it here. The third is
+ * the ghosted chip: opacity on text is a contrast cut nothing measures.
+ */
+
+/* ------------------------------------------------------------------ cards */
+
+.grid2 {
+	display: grid;
+	gap: var(--space-4);
+	grid-template-columns: 1fr;
+}
+
+@media (min-width: 52rem) {
+	.grid2 { grid-template-columns: 1fr 1fr; }
+	.card-wide { grid-column: 1 / -1; }
+}
+
+.card {
+	border: var(--bd-2);
+	background-color: var(--g-raised);
+	padding: var(--space-5);
+}
+
+.card-label {
+	font-family: var(--font-ui);
+	font-size: var(--text-xs);
+	font-weight: var(--font-semibold);
+	letter-spacing: var(--tracking-eyebrow);
+	text-transform: uppercase;
+	color: var(--g-on-accent);
+	margin: 0 0 var(--space-2);
+}
+
+.card-title {
+	font-family: var(--font-display);
+	font-size: var(--text-xl);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-tight);
+	text-transform: uppercase;
+	margin: 0 0 var(--space-4);
+}
+
+.card-note {
+	color: var(--g-ink-2);
+	font-size: var(--text-sm);
+	margin: calc(var(--space-4) * -1) 0 var(--space-4);
+}
+
+.card-note:empty { display: none; }
+
+/* ------------------------------------------------- label and value grid */
+
+.kv {
+	margin: 0;
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: var(--space-1) var(--space-4);
+	font-size: var(--text-sm);
+}
+
+@media (min-width: 30rem) {
+	.kv { grid-template-columns: 11rem 1fr; }
+}
+
+.kv dt {
+	font-family: var(--font-ui);
+	font-size: var(--text-xs);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--g-ink-2);
+	padding-top: 0.15em;
+}
+
+.kv dd {
+	margin: 0 0 var(--space-2);
+	overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------ chips */
+
+.chip {
+	display: inline-block;
+	font-family: var(--font-ui);
+	font-size: var(--text-xs);
+	font-weight: var(--font-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	border: 1px solid var(--g-line-hi);
+	padding: 0.15em 0.5em;
+	color: var(--g-ink);
+}
+
+.chip:empty { display: none; }
+
+.chip[data-state="on"] {
+	background-color: var(--g-accent);
+	border-color: var(--g-accent);
+	/* The hazard ground's own ink. A chip filled with the accent is a scrap of
+	   caution tape wherever it sits, so it carries tape ink rather than the
+	   ink of the ground behind it. */
+	color: var(--tape-dark);
+}
+
+.chip[data-state="off"] { color: var(--g-ink-2); }
+
+/* ----------------------------------------------------------------- sheets */
+
+.sheet-scroll { overflow-x: auto; }
+
+.sheet {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: var(--text-sm);
+}
+
+.sheet th {
+	font-family: var(--font-ui);
+	font-size: var(--text-xs);
+	font-weight: var(--font-semibold);
+	letter-spacing: var(--tracking-ui);
+	text-transform: uppercase;
+	color: var(--g-ink-2);
+	text-align: left;
+	padding: var(--space-2) var(--space-3);
+	border-bottom: var(--bd-2);
+	white-space: nowrap;
+}
+
+.sheet td {
+	padding: var(--space-3);
+	border-bottom: 1px solid var(--g-line);
+	vertical-align: top;
+}
+
+.sheet tbody tr:nth-child(even) td { background-color: var(--g-raised); }
+
+/* A sheet whose body is hidden would leave its column headings standing over
+   nothing, which reads as a table that failed rather than a list with nothing
+   in it. Where :has is not supported the headings stay, which is the same
+   thing this page did before it had a sheet at all. */
+.sheet:has(> tbody[hidden]) { display: none; }
+
+.mono { font-family: var(--font-mono); font-size: 0.9em; }
+
+/* --------------------------------------------------------------- footnote */
+
+.note {
+	font-family: var(--font-ui);
+	font-size: var(--text-xs);
+	line-height: var(--leading-relaxed);
+	color: var(--g-ink-2);
+	margin: var(--space-4) 0 0;
+	max-width: 62ch;
+}
+
+/* ------------------------------------------------------------------- rows */
+
+.rows {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: var(--space-3);
+}
+
+.row {
+	border: 1px solid var(--g-line);
+	padding: var(--space-4);
+}
+
+.row-title {
+	font-family: var(--font-display);
+	font-size: var(--text-lg);
+	text-transform: uppercase;
+	margin: 0 0 var(--space-1);
+}
+
+.row-note {
+	color: var(--g-ink-2);
+	font-size: var(--text-sm);
+	margin: 0 0 var(--space-3);
+}
+
+.row-note:empty { display: none; }
+
+.process {
+	border-left: 4px solid var(--g-accent);
+	padding-left: var(--space-4);
+	margin: 0;
+	max-width: 62ch;
+}
+
+/* ------------------------------------------------- refusals and silences */
+
+.error, .empty {
+	border: 1px solid var(--g-line);
+	border-left: 6px solid var(--ink-err);
+	padding: var(--space-4);
+	max-width: 62ch;
+}
+
+.empty { border-left-color: var(--ink-info); }
+
+.error h3 {
+	margin: 0 0 var(--space-2);
+	font-family: var(--font-display);
+	font-size: var(--text-lg);
+	text-transform: uppercase;
+	color: var(--ink-err);
+}
+
+.error p, .empty { margin-bottom: 0; }
+
+.problem-kind {
+	font-size: var(--text-sm);
+	color: var(--g-ink-2);
+	margin-bottom: 0;
+}
+
+code {
+	font-family: var(--font-mono);
+	font-size: 0.9em;
+	background-color: var(--hazard-dim);
+	padding: 0.1em 0.35em;
+}

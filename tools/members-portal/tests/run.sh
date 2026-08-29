@@ -56,7 +56,17 @@ compose_dev up --detach --wait --wait-timeout 180 db caddy mock >/dev/null || {
 }
 echo
 
-# The project name goes with the URL, because one check reads the logs of this
-# stack to prove the command the page sends a reader to reaches the mock.
-ORO_PORTAL_URL="http://$ORO_HOSTNAME:$ORO_HTTP_PORT" ORO_PORTAL_PROJECT="$PROJECT" \
-  python3 "$ROOT/tools/members-portal/tests/check_portal.py"
+# Two suites, both against this one stack. check_portal.py is the page against
+# the contract underneath it; check_appearance.py is the page itself. Split
+# because one file holding both runs past the 300 line ceiling in rule 6.
+#
+# set -e is on, so run each without letting a red one stop the other: a reader
+# who broke both wants to see both.
+set +e
+FAILED=0
+for SUITE in check_portal check_appearance; do
+  ORO_PORTAL_URL="http://$ORO_HOSTNAME:$ORO_HTTP_PORT" ORO_PORTAL_PROJECT="$PROJECT" \
+    python3 "$ROOT/tools/members-portal/tests/$SUITE.py" || FAILED=1
+  echo
+done
+exit "$FAILED"

@@ -119,8 +119,11 @@ def caddy_bind_sources():
     return sources
 
 
-def run(checks) -> int:
-    """Run every test_ function in a namespace and report what failed."""
+def run(checks, what: str = "portal") -> int:
+    """Run every test_ function in a namespace and report what failed.
+
+    `what` names the suite in the summary line, because there are two of them
+    now and a reader looking at a red run needs to know which one went red."""
     found = [(name, function) for name, function in sorted(checks.items())
              if name.startswith("test_") and callable(function)]
     failed = []
@@ -133,5 +136,5 @@ def run(checks) -> int:
         except Exception as problem:  # noqa: BLE001
             failed.append(name)
             print(f"ERROR {name}\n        {type(problem).__name__}: {problem}")
-    print(f"\n{len(found) - len(failed)}/{len(found)} portal checks passed")
+    print(f"\n{len(found) - len(failed)}/{len(found)} {what} checks passed")
     return 1 if failed else 0

@@ -1,9 +1,10 @@
-/* The members portal, phone first.
+/* The members portal page frame, phone first: the masthead, the caution stripe,
+ * the app bar, the view switcher, and the foot. The components inside a view
+ * are in components.css.
  *
  * Every colour, size and border here resolves through a GANTRY token from
- * theme/tokens.css, which is loaded before this file and is a copy of
- * packages/gantry-tokens/tokens.css that the portal test suite holds to being
- * byte for byte the same. Nothing below picks a colour by hand, because the
+ * tokens.css, which Caddy serves at /theme straight out of
+ * packages/gantry-tokens. Nothing below picks a colour by hand, because the
  * contrast validator in that package measures the tokens and cannot measure a
  * literal somebody typed here.
  *
@@ -11,6 +12,11 @@
  * no font files and no components. So the focus ring, the tap target floor and
  * the type stack are set here rather than inherited from it, and the display
  * and mono families fall back to what the machine has.
+ *
+ * Light is the default, because bare :root in tokens.css carries the paper set
+ * and this page names no theme. Setting data-theme="dark" on the html element
+ * flips it, and every rule below is written through the ground tokens so that
+ * flip needs nothing here.
  */
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -32,6 +38,11 @@ body {
 	outline-offset: 2px;
 }
 
+::selection {
+	background-color: var(--g-accent);
+	color: var(--tape-dark);
+}
+
 .skip {
 	position: absolute;
 	left: -9999px;
@@ -44,28 +55,86 @@ body {
 
 .skip:focus { left: var(--space-3); top: var(--space-3); }
 
-/* ------------------------------------------------------------- masthead */
+/* -------------------------------------------------------------- masthead */
 
-.masthead {
-	border-bottom: 2px solid var(--g-line-hi);
-	padding: var(--space-4) var(--space-4) var(--space-3);
+.topbar {
+	position: sticky;
+	top: 0;
+	z-index: var(--z-dropdown);
+	background-color: var(--nav-bg);
+	backdrop-filter: blur(8px);
+	border-bottom: var(--bd-2);
+}
+
+.topbar-in {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+	max-width: var(--container-xl);
+	margin-inline: auto;
+	padding: var(--space-3) max(var(--space-4), var(--safe-l));
+}
+
+/* The sun off the HeatSync mark, drawn rather than fetched, so it inherits a
+ * token colour and needs no file. It carries no accessible name: the wordmark
+ * beside it is the name, and a screen reader saying the lab twice is worse
+ * than saying it once. */
+.sunmark {
+	width: 30px;
+	height: 30px;
+	flex: none;
+	color: var(--g-accent);
 }
 
 .wordmark {
 	font-family: var(--font-logo);
+	font-weight: var(--font-bold);
 	font-size: var(--text-xl);
 	margin: 0;
 }
 
-.portal {
+.tag {
 	font-family: var(--font-ui);
-	font-weight: var(--font-normal);
 	font-size: var(--text-xs);
 	letter-spacing: var(--tracking-ui);
 	text-transform: uppercase;
 	color: var(--g-ink-2);
-	margin: var(--space-1) 0 0;
+	margin: 0;
 }
+
+/* Caution tape, full bleed. Decorative, and hidden from a screen reader in the
+ * markup, so it carries no text and no accessible name. */
+.tape {
+	height: 14px;
+	background-image: repeating-linear-gradient(-45deg,
+		var(--hazard) 0 22px, var(--tape-dark) 22px 44px);
+}
+
+/* --------------------------------------------------------------- app bar */
+
+.appbar {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	flex-wrap: wrap;
+	padding: var(--space-3) max(var(--space-4), var(--safe-l));
+	border-bottom: var(--bd-2);
+}
+
+.appname {
+	font-family: var(--font-display);
+	font-size: var(--text-lg);
+	text-transform: uppercase;
+	letter-spacing: var(--tracking-tight);
+	margin: 0;
+}
+
+/* Where the mockups put an avatar, a member's name and a sign out link. There
+ * is no identity service and nobody is signed in, so this says that instead.
+ * Chrome that names a person nobody authenticated is a lie the page tells
+ * before a reader has read a word of it. */
+.who { margin: 0 0 0 auto; }
 
 /* ------------------------------------------------- the band that says what
  * this is. A hazard ground paints itself and remaps its own inks, so the
@@ -75,11 +144,15 @@ body {
 	display: flex;
 	gap: var(--space-3);
 	align-items: flex-start;
-	padding: var(--space-4);
-	border-bottom: 2px solid var(--g-line-hi);
+	padding: var(--space-4) max(var(--space-4), var(--safe-l));
+	border-bottom: var(--bd-2);
 }
 
-.notice p { margin: 0; }
+.notice p {
+	margin: 0;
+	max-width: 78ch;
+}
+
 .notice-mark {
 	width: 28px;
 	height: 28px;
@@ -87,71 +160,71 @@ body {
 	stroke-linejoin: round;
 }
 
-/* ----------------------------------------------------------- navigation */
+/* --------------------------------------------------------- view switcher */
 
-.views { border-bottom: 1px solid var(--g-line); }
+.views {
+	border-bottom: 1px solid var(--g-line);
+	padding: var(--space-4) max(var(--space-4), var(--safe-l));
+}
 
 .views ul {
 	display: flex;
 	flex-wrap: wrap;
-	gap: var(--space-1);
+	gap: var(--space-2);
 	list-style: none;
 	margin: 0 auto;
-	/* Aligned with the text in main: the same maximum width, and the padding
-	   here plus the padding on a link adds up to the padding there. */
-	padding: 0 var(--space-2);
-	max-width: var(--container-md);
+	padding: 0;
+	max-width: var(--container-xl);
 }
 
 .views a {
-	display: block;
+	display: flex;
+	align-items: center;
 	min-height: var(--tap);
-	padding: var(--space-3) var(--space-2);
+	padding: 0 var(--space-4);
 	font-family: var(--font-ui);
 	font-size: var(--text-xs);
-	letter-spacing: var(--tracking-wide);
+	font-weight: var(--font-semibold);
+	letter-spacing: var(--tracking-ui);
 	text-transform: uppercase;
 	text-decoration: none;
-	color: var(--g-ink-2);
-	border-bottom: 3px solid transparent;
-}
-
-.views a:hover { color: var(--g-ink); }
-.views a[aria-current="page"] {
 	color: var(--g-ink);
-	border-bottom-color: var(--g-accent);
+	border: var(--bd-2);
 }
 
-/* ---------------------------------------------------------------- views */
+.views a:hover { background-color: var(--hazard-dim); }
+
+.views a[aria-current="page"] {
+	background-color: var(--g-accent);
+	border-color: var(--g-accent);
+	color: var(--tape-dark);
+	box-shadow: var(--shadow-sm);
+}
+
+/* ------------------------------------------------------------------ views */
 
 main {
-	max-width: var(--container-md);
+	max-width: var(--container-xl);
 	margin-inline: auto;
-	padding: var(--space-6) var(--space-4) var(--space-16);
+	padding: var(--space-8) max(var(--space-4), var(--safe-l)) var(--space-16);
 }
+
+/* The masthead is sticky, so a heading the skip link or the view switcher
+ * scrolls to would otherwise land underneath it. */
+h2, #main { scroll-margin-top: var(--space-16); }
 
 h2 {
 	font-family: var(--font-display);
 	font-size: var(--text-3xl);
 	line-height: var(--leading-snug);
 	letter-spacing: var(--tracking-tight);
-	margin: 0 0 var(--space-3);
-}
-
-h3 {
-	font-family: var(--font-ui);
-	font-size: var(--text-xs);
-	letter-spacing: var(--tracking-ui);
 	text-transform: uppercase;
-	color: var(--g-ink-2);
-	margin: var(--space-8) 0 var(--space-3);
-	padding-bottom: var(--space-2);
-	border-bottom: 1px solid var(--g-line);
+	margin: 0 0 var(--space-3);
 }
 
 .lede {
 	color: var(--g-ink-2);
-	max-width: 62ch;
+	max-width: 74ch;
 	margin: 0 0 var(--space-5);
 }
 
@@ -165,131 +238,32 @@ h3 {
 	min-height: 1.2em;
 }
 
-/* --------------------------------------------------------------- fields */
-
-.fields {
-	margin: 0;
-	display: grid;
-	gap: var(--space-3);
-}
-
-.fields > div {
-	display: grid;
-	gap: var(--space-1);
-}
-
-.fields dt {
-	font-family: var(--font-ui);
-	font-size: var(--text-xs);
-	letter-spacing: var(--tracking-wide);
-	text-transform: uppercase;
-	color: var(--g-ink-2);
-}
-
-.fields dd { margin: 0; overflow-wrap: anywhere; }
-
-@media (min-width: 40rem) {
-	.fields > div {
-		grid-template-columns: 14rem 1fr;
-		gap: var(--space-4);
-		align-items: baseline;
-	}
-}
-
-/* ----------------------------------------------------------------- rows */
-
-.rows {
-	list-style: none;
-	margin: 0;
-	padding: 0;
-	display: grid;
-	gap: var(--space-4);
-}
-
-.row {
-	border: 1px solid var(--g-line);
-	box-shadow: var(--shadow-sm);
-	padding: var(--card-padding);
-}
-
-.row-title {
-	font-family: var(--font-display);
-	font-size: var(--text-lg);
-	margin: 0 0 var(--space-1);
-}
-
-.row-note {
-	color: var(--g-ink-2);
-	font-size: var(--text-sm);
-	margin: 0 0 var(--space-4);
-}
-
-.row-note:empty { display: none; }
-.process {
-	border-left: 4px solid var(--g-accent);
-	padding-left: var(--space-4);
-	max-width: 62ch;
-}
-
-/* ------------------------------------------------- refusals and silences */
-
-.error, .empty {
-	border: 1px solid var(--g-line);
-	border-left: 6px solid var(--ink-err);
-	padding: var(--space-4);
-	max-width: 62ch;
-}
-
-.empty { border-left-color: var(--ink-info); }
-.error h3 {
-	margin-top: 0;
-	border: 0;
-	padding: 0;
-	font-family: var(--font-display);
-	font-size: var(--text-lg);
-	letter-spacing: var(--tracking-normal);
-	text-transform: none;
-	color: var(--ink-err);
-}
-
-.error p, .empty { margin-bottom: 0; }
-.problem-kind {
-	font-size: var(--text-sm);
-	color: var(--g-ink-2);
-	margin-bottom: 0;
-}
-
-code {
-	font-family: var(--font-mono);
-	font-size: 0.9em;
-	background-color: var(--hazard-dim);
-	padding: 0.1em 0.35em;
-}
-
-/* ------------------------------------------------------- foot and noscript */
+/* ---------------------------------------------------- foot and noscript */
 
 .foot {
-	border-top: 2px solid var(--g-line-hi);
-	padding: var(--space-8) var(--space-4);
+	border-top: var(--bd-2);
+	padding: var(--space-8) max(var(--space-4), var(--safe-l)) var(--space-12);
 	font-size: var(--text-sm);
 }
 
-.foot p {
-	max-width: var(--container-md);
-	margin: 0 auto var(--space-3);
+.foot-in {
+	max-width: var(--container-xl);
+	margin-inline: auto;
 }
 
-.foot p:last-child {
-	font-family: var(--font-ui);
-	letter-spacing: var(--tracking-wide);
-	text-transform: uppercase;
-	color: var(--g-ink-2);
-	margin-bottom: 0;
-}
+.foot p { margin: 0 0 var(--space-3); }
+.foot p:last-child { margin-bottom: 0; }
 
 .noscript {
-	border: 2px solid var(--g-line-hi);
+	border: var(--bd-2);
 	padding: var(--space-4);
-	margin: var(--space-6) var(--space-4);
+	margin: var(--space-6) max(var(--space-4), var(--safe-l));
 	max-width: 62ch;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
 }
