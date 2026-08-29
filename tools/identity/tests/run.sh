@@ -9,7 +9,9 @@
 # already running is neither read nor touched, and no .env has to exist. Leaves
 # nothing behind. Exit code is 1 if any check failed.
 #
-# Three suites. check_identity.py is part (a) of the phase 2 password proof:
+# Four suites. check_api_refusals.py needs nothing running and goes first, so a
+# fault in how a refusal is read is reported before anything is started.
+# check_identity.py is part (a) of the phase 2 password proof:
 # hashes the lab already holds, imported and signed in with. check_configuration.py
 # is what configure.py registered, and one whole sign in through the hosted
 # screens ending in a refresh token that rotates. check_legacy_import.py takes
@@ -45,6 +47,16 @@ compose() { docker compose -p "$PROJECT" -f "$ROOT/compose.yaml" \
 
 cleanup() { compose down --volumes >/dev/null 2>&1 || true; }
 trap cleanup EXIT
+
+# Nothing is running yet and this suite needs nothing running. A refused search
+# read as an empty result sends configure.py to create what already exists, so
+# checking it before the containers start means the reader is told in a second
+# rather than after a stack has come up.
+python3 "$ROOT/tools/identity/tests/check_api_refusals.py" || {
+  echo "api.search does not report a refusal as a refusal, so nothing was started." >&2
+  exit 1
+}
+echo
 
 # Only the two services this needs. Caddy and the mock have nothing to do with
 # a password, and starting them would make this suite wait on them.

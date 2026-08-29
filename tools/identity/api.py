@@ -35,6 +35,16 @@ class Answer:
         return str(self.body.get("message", ""))[:200]
 
 
+class Refused(Exception):
+    """The service answered, and the answer was a refusal.
+
+    An ordinary Exception rather than SystemExit. A check suite wraps each check
+    in `except Exception` so that one failure is one FAIL line and the rest still
+    run. SystemExit is a BaseException, slips past that, and ends the whole run
+    with no summary, which turns a readable failure into a silent one.
+    """
+
+
 def call(path: str, body: dict, token: str, method: str = "POST") -> Answer:
     request = urllib.request.Request(
         BASE + path,
@@ -156,8 +166,22 @@ def get(path: str, token: str) -> Answer:
 
 
 def search(path: str, token: str) -> list:
-    """A Zitadel search, which is a POST with an empty body and a result list."""
+    """A Zitadel search, which is a POST with an empty body and a result list.
+
+    A refusal carries a message and no list, so reading a list out of one gives
+    an empty list, which is what a search that found nothing also gives. The
+    caller cannot tell those apart and acts on the wrong one: told that no
+    project exists, configure.py creates the project that is already there and
+    reports the failure against creating it. Measured on 2026-08-28 by revoking
+    the bootstrap token, after which configure.py said "could not create the
+    project: 401" when the truth was that its token had been revoked.
+    """
     answer = call(path, {}, token)
+    if answer.status >= 400:
+        raise Refused(
+            f"the search {path} was refused: {answer.status} {answer.message()}. "
+            "Nothing was created or changed. A 401 here is the token rather "
+            "than the search: a revoked or expired one looks exactly like this.")
     return answer.body.get("result") or []
 
 

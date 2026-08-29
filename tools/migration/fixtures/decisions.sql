@@ -29,3 +29,41 @@ UPDATE legacy.cards SET card_permissions = 1 WHERE card_permissions IS DISTINCT 
 UPDATE legacy.users
    SET email = format('legacy-%s@members.invalid', id)
  WHERE email IS NULL OR email = '';
+
+-- The legacy instructor flag. An instructor here is an instructor on one tool,
+-- so a global boolean has nothing to land on, and no certification exists yet
+-- for it to land on even per tool. The answer taken here is that the flag is
+-- dropped and the names go to whoever owns certifications, who grants each
+-- person on each tool once the certifications exist. Seeding certifications
+-- first and guessing which ones each instructor covers would be a longer
+-- conversation than an import gets to start.
+UPDATE legacy.users SET instructor = NULL WHERE instructor;
+
+-- A payee, somebody paying on another member's behalf. Nothing in this schema
+-- holds that. The answer taken here is that the name is dropped and whoever
+-- handles payments records the arrangement again, because a name in a text
+-- column is not an arrangement anybody can act on.
+UPDATE legacy.users SET payee = NULL WHERE payee IS NOT NULL AND btrim(payee) <> '';
+
+-- Where the signed waivers are kept. docs/plan/data-model.md section 1.5 says
+-- the lab currently keeps them in a Google Form and its sheet, so that is the
+-- answer taken here, with the sheet row as the reference. A real answer needs a
+-- real reference per document and somebody has to go and look at the sheet.
+INSERT INTO legacy.waiver_documents (user_id, storage, reference)
+SELECT id, 'google-form', format('sheet row for legacy user %s', id)
+  FROM legacy.users WHERE waiver IS NOT NULL;
+
+-- A role flag on somebody who left. The legacy system recorded the departure in
+-- exit_reason and never cleared the boolean, so the row says both things. The
+-- answer taken here is that leaving ends the role: the flag is cleared and the
+-- person arrives as an ordinary former member. If any of them is still an
+-- admin, an admin grants it again afterwards, which puts a real approval behind
+-- it instead of carrying one that never had any.
+--
+-- Nothing in the fixture beside this file matches, so this changes no row here.
+-- It is written down because the production data will have rows that do, and
+-- whoever adapts this file needs the shape of the answer rather than a surprise.
+UPDATE legacy.users
+   SET admin = false, accountant = false
+ WHERE (admin OR accountant)
+   AND exit_reason IS NOT NULL AND btrim(exit_reason) <> '';

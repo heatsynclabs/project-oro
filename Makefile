@@ -134,8 +134,10 @@ identity-configure:
 	@test -f .env || { echo "No .env file. Copy .env.example to .env and set the values in it." >&2; exit 1; }
 	@ORO_IDENTITY_TOKEN="$$(docker compose cp identity:/bootstrap/pat - 2>/dev/null | tar -xO)" 	 ORO_IDENTITY_URL="https://id.$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)" 	 python3 tools/identity/configure.py 	   --members-origin "https://$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)" 	   --admin-origin "https://admin.$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)" 	   --door-origin "https://door.$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)"
 
-# The legacy import, both ways: refused while anything needs a person's
-# decision, and carrying every card to the slot it had once those are made.
+# The legacy import, eleven cases. Ten import the same fixture: three carry it
+# and seven are refused, each for a reason the suite checks by name. The
+# eleventh runs the role step alone and proves it cannot leave the trigger that
+# guards role grants turned off.
 migration-test:
 	./tools/migration/tests/run.sh
 

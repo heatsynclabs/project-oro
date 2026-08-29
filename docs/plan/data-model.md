@@ -358,12 +358,33 @@ make that safe.
 Lookups, then `members`, then the identity import writing subjects back, then
 roles, cards, certifications, waivers, door events. Foreign keys force most of it.
 
-Legacy `admin`, `instructor`, and `accountant` booleans have no approval behind
-them, and inventing one would be a lie in the audit trail. So the import script,
-when it is written in phase 3, will run with the role trigger disabled inside one
-transaction, writing `granted_by = NULL` and recording that these predate the
-policy. A deliberate, logged exception
-rather than a nullable column quietly permitting it forever.
+Legacy `admin` and `accountant` booleans have no approval behind them, and
+inventing one would be a lie in the audit trail. So `tools/migration/022_roles.sql`
+runs with `role_grant_rules` disabled by name inside one transaction, writes
+`granted_by = NULL` and `approval_id = NULL`, and then names every member it
+granted to. A deliberate, logged exception rather than a nullable column quietly
+permitting it forever. `arm_the_rule` is a separate trigger and is left on, so an
+import that takes the lab past three admins arms the two approver rule on the way
+through.
+
+This paragraph named `instructor` as a third boolean until 2026-08-28, and that
+was wrong. An instructor here is an instructor on one tool, per `docs/glossary.md`
+and `certification_instructors`, and `db/seed/001_reference.sql` seeds no
+instructor role and no certifications at all, so a global boolean has nothing to
+become. The import refuses to start while any legacy user still carries it, and
+6.3 lists it with the other decisions a person owns.
+
+Two measured constraints on the order above, both from a real Postgres:
+
+- **Turning the trigger off is required, not defensive.** Four admin grants in a
+  single `INSERT` are refused inside that one statement at the fourth row, with
+  `Granting admin needs an approval from a second admin`, because the bootstrap
+  quota is three. Any lab with four or more admins cannot import them otherwise.
+- **Roles have to come after the identity import, and that is not a preference.**
+  `link_or_create_member` refuses a member row that already holds a live role,
+  saying it must be linked by an admin. That refusal is deliberate and protects
+  an admin's row from whoever turns up with their address. It also means every
+  migrated role holder needs linking by hand if roles land first.
 
 ### 6.2 The assertions that abort the migration
 
@@ -394,5 +415,8 @@ gives each one an owner.
 - Cards at slot 200 or below 10.
 - Members with a `payee`, somebody paying on another member's behalf. There is
   archive precedent and it needs a home if any rows exist.
+- Members carrying the legacy `instructor` flag. It is global and an instructor
+  here is per tool, so somebody has to say which certifications each of them may
+  sign off, or that the flag is dropped and the grants are made again by hand.
 - Where waiver documents live, and what reference identifies one. The import
   needs a `storage` and a `reference` per row, not the documents themselves.

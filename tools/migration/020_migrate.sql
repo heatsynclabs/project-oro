@@ -60,9 +60,17 @@ SELECT
   coalesce(u.phone_visible, false),
   -- hidden is the legacy opt out of the directory.
   NOT coalesce(u.hidden, false),
-  u.orientation,
-  u.created_at,
-  u.updated_at
+  -- Every legacy timestamp column is `timestamp without time zone` and every
+  -- column here is `timestamptz`, so the zone the naive value is read in decides
+  -- the instant that lands. Left implicit it is the session zone, and the lab's
+  -- own is America/Phoenix, which moves all of these seven hours. Rails 3.2
+  -- stores UTC: config.time_zone in the legacy config/application.rb is the
+  -- display zone, and nothing there sets config.active_record.default_timezone,
+  -- which defaults to :utc. joined_on above is safe because a cast from
+  -- timestamp to date involves no zone at all.
+  u.orientation AT TIME ZONE 'UTC',
+  u.created_at AT TIME ZONE 'UTC',
+  u.updated_at AT TIME ZONE 'UTC'
 FROM legacy.users u
 ORDER BY u.id;
 
@@ -88,9 +96,10 @@ SELECT
   -- no revoked_at. Every row it holds is a card the controller is told about,
   -- so every row arrives active. Anything else would be inventing a fact.
   true,
-  c.created_at,
-  c.created_at,
-  c.updated_at
+  -- Read as UTC for the reason given against the member columns above.
+  c.created_at AT TIME ZONE 'UTC',
+  c.created_at AT TIME ZONE 'UTC',
+  c.updated_at AT TIME ZONE 'UTC'
 FROM legacy.cards c
 JOIN members m ON m.legacy_id = c.user_id
 ORDER BY c.id;

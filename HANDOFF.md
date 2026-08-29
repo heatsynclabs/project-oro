@@ -39,8 +39,8 @@ This table is the single place this is tracked. Update it as things land.
 | `.githooks/commit-msg` | **Built.** Install it, see section 3 |
 | The plan documents | **Written.** Reviewed adversarially twice |
 | The identity service, in the stack | **Built.** Zitadel 4.17.1 in `compose.yaml` with its own database and login on the existing Postgres server, ten minute access tokens, and a first instance created from configuration with no console click. Reached at `id.HOSTNAME` on a deployment and on `ORO_IDENTITY_PORT` on a laptop. [ADR 0004](docs/decisions/0004-identity-service.md) |
-| `tools/identity/` password proof | **Built.** 16 checks, part of `make identity-test`, in CI. Part (a) of the phase 2 proof: hashes written by bcrypt-ruby at cost 10 with no pepper, imported and signed in with. It found a real defect, in `tools/identity/README.md` |
-| `tools/migration/` the legacy import | **Built.** `make migration-test`, in CI. Members and cards, with a preflight that refuses to start while anything needs a person and names the rows, and the assertions from `data-model.md` section 6.2 checked afterwards. The fixture was written by a replica of the legacy application through its own models |
+| `tools/identity/` password proof | **Built.** 16 checks, part of `make identity-test`, in CI. A further 6 checks in `check_api_refusals.py` need nothing running and go first: they hold `api.search` to reporting a refused search as a refusal, which it did not do until 2026-08-28, and to raising something a check suite can catch. Part (a) of the phase 2 proof: hashes written by bcrypt-ruby at cost 10 with no pepper, imported and signed in with. It found a real defect, in `tools/identity/README.md` |
+| `tools/migration/` the legacy import | **Built.** `make migration-test`, in CI. Members, cards, the `admin` and `accountant` booleans as roles, and the waiver date as a pointer to where the document is kept. A preflight refuses to start while anything needs a person and names the rows. Eleven cases: ten imports of the same fixture, three that carry and seven that must be refused, plus one that runs the role step alone. Every refusal is checked by its text and not only its exit code. The fixture was written by a replica of the legacy application through its own models |
 | `tools/identity/configure.py`, the four clients and the branding | **Built.** `make identity-configure`. The project, three public PKCE clients with no secret, the door service machine account, and the GANTRY palette on the hosted screens, set and activated. Idempotent, and the suite runs it twice to prove that |
 | Legacy members signing in | **Demonstrated with invented accounts.** 6 checks in `make identity-test` take hashes the legacy application wrote and sign in with the passwords that produced them. Nine of eleven succeed and the two that do not are over the bcrypt limit. This is not part (b) of the phase 2 proof: every password in it was chosen by whoever wrote the replica |
 | `.github/workflows/deploy.yml` | **Written, never run.** Dormant until a server exists and four secrets are set. One step, `make up` over SSH. [ADR 0008](docs/decisions/0008-deploying-from-actions.md), which supersedes what `architecture.md` said about CI never holding a deploy credential |
@@ -56,7 +56,7 @@ This table is the single place this is tracked. Update it as things land.
 | `packages/gantry-css`, `gantry-vue` | Not started. Later in phase 1 and after |
 | `compose.yaml`, `compose.development.yaml`, `Makefile`, `.env.example`, `caddy/`, `db/init/` | **Built.** Postgres, Caddy and the identity service. The override file adds the mock, points Caddy at the development routes and publishes the identity service on a port, so the portal and the mock share one origin over plain HTTP and a browser can open a login screen. `make up` on a clean machine, proven |
 | `docs/api/members-v1.yaml` | **Written.** OpenAPI 3.1.1, validates clean. Still needs the review by somebody who did not write it that phase 1 asks for |
-| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Twelve jobs, all green on a real runner on 2026-08-28. They run in parallel, so the wall clock is the slowest job and not the sum, and that is the identity one. Five of them start containers, the ceilings one included, because it runs ruff as a pinned image rather than installing it. A thirteenth workflow, the deploy, is dormant and runs only when somebody asks |
+| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Twelve jobs, all green on a real runner on 2026-08-28. They run in parallel, so the wall clock is the slowest job and not the sum. Seven of them start containers, the ceilings one included, because it runs ruff as a pinned image rather than installing it. Which job is slowest was the identity one when it was last timed, and that has not been re-measured since the migration job grew to eleven cases each building its own database. A thirteenth workflow, the deploy, is dormant and runs only when somebody asks |
 | File and function ceiling linting | **Built.** `make ceilings`, in CI, with 8 tests of its own over a throwaway repository: five put one violation in it and assert the checker catches it, three put something that is not a violation in it and assert the checker stays quiet. Ruff in a pinned container for complexity, parameters and nesting depth, and `tools/ceilings/check_ceilings.py` for the two ceilings no tool measures. [ADR 0005](docs/decisions/0005-file-and-function-ceilings.md). Two files are exempt with a reason, and an exemption that stops being needed fails the check |
 | Import boundary linting | **Decided, not built.** [ADR 0006](docs/decisions/0006-import-boundaries.md): there is no TypeScript at all and only `services/door` is an importable Python package, so neither gate has anything to refuse yet. Each lands with the first code that gives it something |
 | `tools/attributions/generate.py` | Not started. Needs a lockfile first |
@@ -85,8 +85,8 @@ make mock-test                           # the API contract mock, started, calle
 make development                         # portal at /, contract mock under /v1, one origin, plain HTTP
 make development-test                    # 23 checks over both stack shapes, throwaway project
 make portal-test                         # 22 checks over the members portal, likewise
-make identity-test                       # 33 checks over the phase 2 identity work, likewise
-make migration-test                      # the legacy import, refused and then run
+make identity-test                       # 39 checks over the phase 2 identity work, likewise
+make migration-test                      # eleven cases, ten of them imports: three carried and seven refused
 make identity-configure                  # the project, the clients and the branding, against a running stack
 
 make ceilings                            # rule 6, in a pinned ruff and a line counter
@@ -98,15 +98,19 @@ make ceilings                            # rule 6, in a pinned ruff and a line c
 npx @redocly/cli@2.49.0 lint docs/api/members-v1.yaml   # the API contract
 ```
 
-Four lines in that block have no CI job and none of them could have one. Two are
-not checks at all: `git config core.hooksPath` sets up a clone, and
-`make development` starts a stack and leaves it running. `--update` rewrites the
-expected files. `make check` is the others in one command, and CI runs them
-separately so a failure names the suite. Every check in the block has a job.
+Five lines in that block have no CI job and none of them could have one. Three
+are not checks at all: `git config core.hooksPath` sets up a clone,
+`make development` starts a stack and leaves it running, and
+`make identity-configure` registers clients against a stack that is already up.
+`--update` rewrites the expected files. `make check` is the others in one
+command, and CI runs them separately so a failure names the suite. Every check
+in the block has a job.
 
-Four of those jobs start containers and are slow. The identity one is the
-slowest by a wide margin, because that service applies its own schema and seeds
-an instance before it answers anything.
+Seven of those jobs start containers and are slow: the database, the mock, the
+development stack, the portal, the identity service, the ceilings and the
+migration. Counted by reading which of the scripts each job runs mention docker.
+The identity one applies its own schema and seeds an instance before it answers
+anything, and the migration one now builds eleven databases.
 
 `tools/ci/` holds the two checks that need a git range, so what CI runs is the
 same script a person runs rather than a copy of it that drifts. The contract lint
@@ -191,11 +195,24 @@ phases at once.
    downstream is built against it.
 5. Get pull request 1 reviewed and merged. CI is green, so what is left there is
    a person reading the diff.
-6. Revoke the bootstrap token, or decide it should not be minted. It grants
-   everything, it sits in a volume until somebody removes it, and it expires in
-   a year with nothing watching. `make identity-configure` was the last thing
-   that needed it, and that now exists, so the moment to do this has arrived.
-   ADR 0004 leaves the shape of it open.
+6. **Decided, not built.** [ADR 0010](docs/decisions/0010-bootstrap-token.md)
+   proposes minting no machine account at all, so there is no token to revoke or
+   to leave behind. It is proposed rather than accepted, because it changes who
+   can administer the identity service and `people-and-custody.md` has no name
+   in the secret custody row.
+
+   Five things behind it were measured on 2026-08-28 against throwaway stacks.
+   The token is a personal access token on the machine user `oro-bootstrap`,
+   which holds IAM_OWNER. `DELETE /management/v1/users/{userId}/pats/{tokenId}`
+   revokes it, proven by calling it and then getting 401 on a call that had just
+   worked. Revoking does not remove the file, so the volume keeps a dead
+   credential that looks live. Clearing `ZITADEL_FIRSTINSTANCE_PATPATH` alone is
+   worse than doing nothing: the token is still minted and now nobody holds a
+   copy. And an administrator credential can be obtained with no bootstrap token
+   at all, by signing in as the initial human administrator through the console
+   client, which is what makes minting none of it possible.
+
+   The ADR lists the four edits that implement it. None of them is made.
 
 7. Decide whether the second factor prompt should appear. The hosted screens
    offer a member a second factor after the password and let them decline it.
@@ -217,19 +234,41 @@ phases at once.
     and calls it ten minutes. The answer could change which identity service
     this project runs.
 
-11. Decide what happens to the password policy on cutover day. Every migrated
-    member can sign in and most of them cannot change their password: the
-    legacy application asked for six characters and nothing else, and the
-    identity service defaults to eight with an uppercase, a lowercase, a number
-    and a symbol. Either relax the policy to match what members already have, or
-    tell every member before the day rather than on it. Section 7 has the
-    measurement.
+11. **Decided, not built.**
+    [ADR 0009](docs/decisions/0009-password-policy-at-cutover.md) proposes
+    keeping the strict policy, writing it into `compose.yaml` rather than
+    inheriting it, and telling every member before the day rather than on it.
+    Proposed rather than accepted: nobody is named to accept it.
 
-12. Carry the rest of the member record. `tools/migration/` moves members and
-    cards. It reports what it does not carry, and that list is the work:
-    `admin`, `instructor` and `accountant` become roles and need the exception
-    in `data-model.md` section 6.1, the waiver dates need somewhere to say where
-    a document is kept, and nobody has decided what a `payee` is for.
+    The reasoning that decided it is that no policy setting keeps anybody out on
+    cutover day. An imported hash bypasses complexity entirely, measured on a
+    member carrying a hash the legacy replica wrote: signed in with a six
+    character password under the strict default, HTTP 201. So relaxing buys
+    nothing on the day and costs a weaker floor on every password set afterwards.
+
+    The policy is settable two ways and both were measured:
+    `PUT /admin/v1/policies/password/complexity` on a running instance, and
+    `ZITADEL_DEFAULTINSTANCE_PASSWORDCOMPLEXITYPOLICY_MINLENGTH` and its four
+    siblings at instance creation. The variable names came out of the image's own
+    embedded defaults and were then proven by booting a stack with them set.
+
+12. **Done, and one line of this item was wrong.** `tools/migration/` now
+    carries `admin` and `accountant` as `member_roles` rows under the exception
+    in `data-model.md` section 6.1, and the waiver date as a `waivers` row
+    pointing at `legacy.waiver_documents`, which is where a person writes down
+    where each document is kept.
+
+    This item used to say `instructor` becomes a role too. It cannot.
+    `docs/glossary.md` makes an instructor per tool, `db/seed/001_reference.sql`
+    seeds no instructor role and no certifications at all, so a global boolean
+    has nothing to become. The import refuses to start while any legacy user
+    carries it, and the same is true of `payee`, which has no column anywhere in
+    this schema. Both are now decisions the preflight names row by row.
+
+    What is left of the member record: `payment_method`, `exit_reason` and the
+    legacy `member` integer have no home and are not carried, and the Devise
+    session columns are dropped on purpose. Certifications, payments and door
+    events are still not migrated.
 
 ### The build that is actually left
 
@@ -245,7 +284,7 @@ looks finished and is not.
 | Phase | Buildable now | Waits on a person |
 |---|---|---|
 | 2, identity | **The whole left column is built.** The identity service and its own database in the stack, the four clients, ten minute tokens with rotating refresh demonstrated through the real screens, GANTRY on those screens, and the whole synthetic half of the password proof | The real half. Ten members signing in to staging with the password they already use, which needs the production hashes and volunteers. Choose that cohort for a range of password habits, not only a range of account ages: the 72 byte defect is invisible until somebody hits it |
-| 3, member management | `services/api/`, the FastAPI service against the merged contract, connecting as `oro_api` and setting the member identity per transaction so the policies apply to it too. Repointing `apps/members` off the mock and onto it. **The migration is built and runs against a replica**, so what is left of it is the certifications, waivers, payments and door events | The production dump, and the six decisions section 5 of `people-and-custody.md` lists. `tools/migration/010_preflight.sql` names them row by row when it is run against a real copy, which turns each one into a question with a list attached |
+| 3, member management | `services/api/`, the FastAPI service against the merged contract, connecting as `oro_api` and setting the member identity per transaction so the policies apply to it too. Repointing `apps/members` off the mock and onto it. **The migration is built and runs against a replica**, and now carries roles and waivers as well as members and cards, so what is left of it is the certifications, payments and door events | The production dump, and the six decisions section 5 of `people-and-custody.md` lists. `tools/migration/010_preflight.sql` names four of them row by row when it is run against a real copy, which turns each into a question with a list attached. What `contracts` holds and where signed waivers live are not questions about rows and it does not ask them |
 | 4, admin | `apps/admin`, the two approver flow in the service over the database rules that already enforce it, card issue and revoke with a reason, waiver status for hosts | The HYH vote. If it fails, the trigger and the constraint are dropped and the portal loses a step. That branch is already written down |
 | 5, door | The door service HTTP API, the reconcile loop, the SQLite snapshot and the buffered event log, all against the fake that exists and passes the conformance suite | The real adapter, the VLAN, and a week of read only running beside the live system |
 
@@ -414,8 +453,9 @@ an uppercase, a lowercase, a number and a symbol, read from its
 `cmd/defaults.yaml`. An imported hash is a hash rather than a password, so it
 bypasses the policy and the member gets in. The wall is the first password
 change. Measured: the identity service refused `correct horse battery staple`
-as a new password for a member who had just signed in with it. Somebody has to
-decide whether to relax the policy or to tell every member on cutover day.
+as a new password for a member who had just signed in with it.
+[ADR 0009](docs/decisions/0009-password-policy-at-cutover.md) proposes keeping
+the policy and telling every member before the day. It is not accepted yet.
 
 **A legacy password can be longer than 72 bytes by a wide margin.** Devise
 allowed 128 characters, and it counted characters rather than bytes, so a UTF-8
@@ -575,6 +615,109 @@ darker hazard literal, which are brand colour decisions. Until somebody makes
 them, a `.g-*` component in gantry-css must not put anything a person has to
 read into that token.
 
+**The prose gate and the ceilings gate read `git ls-files`, so a file nobody has
+added is a file neither one checks.** Both were green while ten new files sat
+untracked beside them, and the file count each one prints is the only thing that
+says so.
+Measured on 2026-08-28: `git add -N` on the ten took the voice gate from 140
+files to 150 and the ceiling checker from 101 source files to 109. Neither found
+anything wrong, which is the point. They could not have. Add a new file before
+you believe a green run that was supposed to cover it.
+
+**Turning off `role_grant_rules` for the role import is required, not defensive.**
+Four admin grants in a single `INSERT` are refused inside that one statement, at
+the fourth row, with `Granting admin needs an approval from a second admin`. The
+seat numbers in the warnings count 1, 2, 3 across rows of one statement, so the
+counting functions do see rows inserted earlier in the same statement and there
+is no large-INSERT loophole. `tools/migration/022_roles.sql` disables that one
+trigger by name inside the transaction and `tools/migration/tests/run.sh` runs
+the same import twice, once with the disable and once with it stripped out of a
+copy, so the disable cannot quietly stop being load bearing. That test also
+counts the two `ALTER TABLE` lines it strips and fails if they are not there,
+because a copy identical to the original would pass while proving nothing.
+
+**`arm_the_rule` only fires at the quota, so importing one or two admins leaves
+the escape ajar.** It is a separate trigger and stays on when `role_grant_rules`
+is disabled, which is why the import arms the rule on its way through. But
+`arm_two_approver_rule` inserts only when `bootstrap_is_spent()`, and that needs
+three. Measured: importing two admins leaves `two_approver_armed` empty, and a
+third grant with no approval behind it still succeeds afterwards. A lab whose
+legacy database holds fewer than three admins comes out of the migration with a
+bootstrap seat still open.
+
+**Writing a role onto a member makes their row unclaimable by
+`link_or_create_member`.** It refuses with `That member already holds a role and
+must be linked by an admin`, which is deliberate: it stops an admin's row being
+taken over by whoever turns up with that email address. The consequence is an
+ordering constraint. `data-model.md` section 6.1 puts the identity import before
+roles, and that is the only order that works. Measured both ways, including that
+revoking the role makes the row claimable again, because the check reads
+`revoked_at IS NULL`.
+
+**Revoking the bootstrap token does not remove the file.** Measured on
+2026-08-28: after a successful `DELETE` of the personal access token, the same
+277 bytes were still readable out of the `identity_bootstrap` volume, byte for
+byte identical to the token that no longer works. Anybody who copies it out
+later gets something that looks like a credential and answers 401. This is one
+of the reasons [ADR 0010](docs/decisions/0010-bootstrap-token.md) proposes never
+minting it rather than revoking it afterwards.
+
+**A refused search used to read as a search that found nothing.** `api.search`
+returned `answer.body.get("result") or []` with no status check, and a refusal
+carries no result list, so a 401 and an empty result were the same value. The
+visible symptom was `configure.py` reporting `could not create the project: 401`
+after the bootstrap token was revoked, which names the wrong operation: the
+project existed, the token did not work. Fixed, with five checks in
+`tools/identity/tests/check_api_refusals.py` that need nothing running. The
+general shape is worth remembering: any API wrapper that reads a field out of a
+body without looking at the status turns every refusal into a plausible answer.
+
+**A naive timestamp carried into a `timestamptz` column moves, and a verify that
+casts the same way agrees with it.** The legacy `waiver` column is `timestamp
+without time zone` and `waivers.signed_at` is `timestamptz`, so something has to
+say which zone the naive value is in. Left implicit it is read in the session
+zone, and the lab's own zone is `America/Phoenix`, which moves every waiver seven
+hours. The trap is the second half: an assertion written as
+`w.signed_at = u.waiver` applies the identical cast to both sides and passes
+whatever the session is set to. `020_migrate.sql` and `024_waivers.sql` read every
+one of them `AT TIME ZONE 'UTC'`, because Rails 3.2 stores UTC.
+
+Seven columns are affected, not one. The waiver date was found first and fixed
+first, and `members.oriented_at`, `members.created_at`, `members.updated_at`,
+`cards.issued_at`, `cards.created_at` and `cards.updated_at` had exactly the
+same defect for a while afterwards, with a test in place that was written to
+catch it and asserted on none of them. `members.joined_on` is safe on its own
+terms: a cast from `timestamp` to `date` involves no zone. `config.time_zone = 'America/Phoenix'` in the
+legacy `config/application.rb` is the display zone, and nothing there sets
+`config.active_record.default_timezone`, which defaults to `:utc`. One case in
+`tools/migration/tests/run.sh` runs the whole import in `America/Phoenix` and
+asserts the instant, and with the UTC read removed it fails.
+
+**A `RAISE EXCEPTION` in its own `DO` block does not stop the next statement,
+and that cost a real defect.** `022_roles.sql` turns off `role_grant_rules`. It
+first shipped with a guard in one `DO` block and `ALTER TABLE ... DISABLE
+TRIGGER` in the statement after it. `RAISE EXCEPTION` aborts only its own
+statement, so psql in autocommit went on to the next one and turned the trigger
+off, and committed it, in the very script that had just refused to do it. The
+hand check that passed it used `ON_ERROR_STOP=1`, which is the only setting
+under which it looked right.
+
+Everything is one `DO` block now: the guard, the disable, both inserts, the
+re-enable, and a check that the trigger really came back on. A `DO` block is a
+single statement, so an exception anywhere in it rolls back the `ALTER` as well,
+whether or not the caller opened a transaction and whatever psql was told about
+errors. `tools/migration/tests/check_the_guard.sh` runs the file alone, with no
+`ON_ERROR_STOP`, and asserts the trigger reads `O` and no row was written. Run
+against the old two statement shape that check reports `role_grant_rules is 'D'`.
+
+**A legacy role flag on somebody who left is a security finding, not a data
+error.** The legacy system recorded a departure in `exit_reason` and never
+cleared the `admin` boolean, so one row says both things and an import that
+believes the boolean grants a live admin role to somebody who walked out years
+ago. `010_preflight.sql` refuses while any such row exists and names each one.
+The same reasoning already applied to a card belonging to nobody, and it took an
+audit to notice it applied here too.
+
 ## 8. The research is not in this repository
 
 `.research/` is gitignored on purpose. It holds roughly twenty files of source
@@ -609,3 +752,15 @@ So the next person knows what "green" is worth.
   it. The same pass found that the migration dropped eighteen legacy columns
   without saying so, three of them access, and that the parser reading the
   legacy dump matched fields by position rather than by name.
+- A later pass the same day carried the rest of the member record and found
+  three more false claims, all of them saying the legacy `instructor` boolean
+  becomes a role. It cannot: `docs/glossary.md` makes an instructor per tool and
+  `db/seed/001_reference.sql` seeds no instructor role and no certifications, so
+  there is nothing for a global boolean to become. The claim was in this file,
+  in `data-model.md` section 6.1, and in a `RAISE NOTICE` that told whoever ran
+  the import against production to go and apply an exception that does not
+  apply. That pass also found that the eighteen columns above are seventeen,
+  because `oriented_by_id` is carried by the same file that counted it as lost.
+- Every trigger claim in this file about the role import was taken from a real
+  Postgres 18 rather than read off the SQL, including the four admin refusal,
+  the lock the disable takes, and that it rolls back with its transaction.

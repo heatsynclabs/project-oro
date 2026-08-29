@@ -161,11 +161,17 @@ def main() -> int:
         raise SystemExit("No token. Pass --token, or set ORO_IDENTITY_TOKEN. "
                          "make identity-configure reads one out of the container.")
 
-    project = ensure_project(args.token)
-    for name, key in PORTALS:
-        ensure_app(project, name, getattr(args, key + "_origin").rstrip("/"), args.token)
-    ensure_door_service(args.token)
-    api.apply_branding(args.token)
+    try:
+        project = ensure_project(args.token)
+        for name, key in PORTALS:
+            ensure_app(project, name, getattr(args, key + "_origin").rstrip("/"), args.token)
+        ensure_door_service(args.token)
+        api.apply_branding(args.token)
+    except api.Refused as refused:
+        # Nothing here is partially applied by a refused search: each step reads
+        # before it writes. So the whole message is what happened, and it names
+        # the token rather than the step that was about to run.
+        raise SystemExit(str(refused))
     print(f"\nconfigured against {api.BASE}")
     return 0
 

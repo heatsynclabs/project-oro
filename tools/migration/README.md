@@ -2,8 +2,8 @@
 
 ## What it is
 
-The import that carries the legacy members and cards into this schema, and the
-proof that it either works or refuses.
+The import that carries the legacy members, cards, roles and waivers into this
+schema, and the proof that it either works or refuses.
 
 The legacy system is the Rails 3.2.8 application at `members.heatsynclabs.org`.
 Its source is [Open-Source-Access-Control-Web-Interface](https://github.com/heatsynclabs/Open-Source-Access-Control-Web-Interface),
@@ -23,36 +23,94 @@ moved.
 make migration-test
 ```
 
-That starts a throwaway `postgres:18`, applies `db/migrations` and `db/seed`,
-loads the fixture beside this file, applies the decisions in
-`fixtures/decisions.sql`, migrates, and checks every assertion in
-`docs/plan/data-model.md` section 6.2. It leaves nothing behind.
+That runs eleven cases, each in a throwaway `postgres:18` built from
+`db/migrations` and `db/seed`. Ten are imports of the same fixture: three carry
+everything and seven have to be refused. One of the three runs in
+`America/Phoenix`, which is how the dates are proved not to move. Two are the
+same import past the bootstrap admin quota, run once as it ships and once with
+the role grant trigger left on, which is how the disable in `022_roles.sql` is
+proved to be load bearing. The eleventh runs the role step on its own, outside
+any transaction, and proves it cannot leave that trigger off. Every case is
+checked against what it printed and not only against its exit code. It leaves
+nothing behind.
 
-To watch it refuse instead:
+To watch a single import refuse instead:
 
 ```sh
 tools/migration/run.sh --undecided
 ```
 
 That skips the decisions, and the preflight then names every row a person has to
-rule on before an import can start. That output is the answer to the questions
-`docs/plan/order-of-operations.md` phase 0 asks of the production data, and
-running it against a staging copy is how those get answered for real.
+rule on before an import can start. Several of those rows are what
+`docs/plan/order-of-operations.md` phase 0 asks of the production data, so
+running this against a staging copy is how those get answered for real. It does
+not answer all of phase 0: what `contracts` holds and the spread of bcrypt cost
+prefixes are not questions about rows this import writes.
 
 ## What is here
 
+The steps run in this order, and everything from `010` down runs inside one
+transaction. A migration that half ran is worse than one that did not.
+
 | File | What it is |
 |---|---|
+| `005_staging.sql` | `legacy.waiver_documents`, where a person writes down where each signed waiver is kept. Not legacy data |
 | `010_preflight.sql` | Refuses to start, naming every row a person has to decide on |
-| `020_migrate.sql` | Members and cards. Nothing else yet |
-| `030_verify.sql` | The assertions in `data-model.md` section 6.2, checked after the fact |
+| `020_migrate.sql` | Members and cards |
+| `022_roles.sql` | The legacy `admin` and `accountant` booleans, as `member_roles` rows |
+| `024_waivers.sql` | The legacy `waiver` date, as a `waivers` row pointing at where the document is kept |
+| `040_not_carried.sql` | Names what did not come across, and carries who oriented whom |
+| `030_verify.sql` | The assertions in `data-model.md` section 6.2, and the same kind of assertion over the roles and waivers, checked after the fact |
 | `fixtures/legacy-schema.sql` | The legacy tables, taken with `pg_dump` from a replica |
 | `fixtures/legacy-data.sql` | Invented members and cards, written by a replica through the legacy application's own models |
 | `fixtures/legacy-passwords.json` | The plaintexts for those members, so a sign in can be proven |
 | `fixtures/decisions.sql` | One plausible set of answers to what the preflight refuses. Not a recommendation |
+| `tests/run.sh` | Runs the eleven cases and reads what each one printed |
+| `tests/check_the_guard.sh` | Runs the role step alone, which `run.sh` cannot do, and proves it leaves the trigger on |
+| `tests/*.sql` | Hand authored, one per case the suite adds. Deliberately not part of the fixture, which carries a provenance claim these would make false |
 
-Certifications, waivers, payments and door events are not migrated. Nothing
-reads them yet and rule 10 forbids shipping what does not exist.
+## What comes across, and what does not
+
+The legacy `users` table has forty columns. Twenty six arrive. Fourteen do not. Twelve of
+them are counted by `040_not_carried.sql` on every run, and the other two are
+the ones the preflight refuses, so they never reach it. Nobody gets to mistake
+the import for complete. The suite reads that report and fails if it
+stops being true.
+
+Two of the fourteen are refused rather than dropped. The import will not start
+while any legacy user carries the `instructor` flag or a `payee`:
+
+- **`instructor` cannot be carried.** An instructor here is an instructor on one
+  tool, which `docs/glossary.md` states and `certification_instructors` builds.
+  `db/seed/001_reference.sql` seeds no instructor role and no certifications, so
+  a global boolean has nothing to point at. Somebody has to say which tools each
+  of these people covers.
+- **`payee` has no column anywhere in this schema.** Somebody has to say where it
+  goes, or that it goes nowhere.
+
+Roles come across as the deliberate, logged exception `data-model.md` section
+6.1 authorises. The legacy booleans have no approval behind them, so
+`022_roles.sql` turns off `role_grant_rules` by name inside the transaction,
+writes `granted_by` and `approval_id` null, and then names every member it
+granted to. `arm_the_rule` is left on, so an import that takes the lab past
+three admins arms the two approver rule on its way through. `granted_at` is when
+the import ran: the legacy schema records no date for when anybody was made an
+admin, and inventing one would put a date on a grant nobody can stand behind.
+
+Waivers come across as a date and a pointer, never a document. `waivers.storage`
+is `NOT NULL` and a reference identifies one document, so neither can be guessed
+from a date, and `005_staging.sql` is where a person writes the answer down.
+
+The `legacy` schema is left standing after the import, so that whoever ran it can
+compare against the source. That means a second copy of every member's address,
+phone, emergency contact and password hash is in the database this system serves
+from, which rule 13 says is a second thing to protect and to leak. `030_verify.sql`
+says so on every run and names the statement that removes it. Dropping it is a
+step somebody takes once the import has been checked, not something this script
+does while the evidence is still needed.
+
+Certifications, payments and door events are not migrated. Nothing reads them
+yet and rule 10 forbids shipping what does not exist.
 
 ## Where the fixture came from
 
