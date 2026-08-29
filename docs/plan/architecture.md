@@ -62,7 +62,7 @@ presented as free.
 
 | Layer | Choice | Why | What replaces it |
 |---|---|---|---|
-| Identity | Zitadel | The only candidate that imports Devise bcrypt with no fork, no third party JAR in the credential path, and no bespoke login UI. Verified against its own `cmd/defaults.yaml`. | Logto, if the volunteers are a TypeScript group or the import proves difficult |
+| Identity | Zitadel | Imports Devise bcrypt with no fork, no third party JAR in the credential path, and no bespoke login UI, proven against a running instance rather than read about. [ADR 0004](../decisions/0004-identity-service.md) | Logto, which does the same and was for a long time wrongly recorded here as unable to |
 | Members API | FastAPI, SQLAlchemy 2.0, Alembic, synchronous | Holds the OpenAPI contract, the workflow rules, and the call into the door service. Same language as the door service, so one backend language | Fastify with Kysely, if the maintainers are a TypeScript group |
 | Database | Postgres 18, RLS enabled and forced | Invariants live where they cannot be bypassed | Nothing |
 | Door service | FastAPI plus a controller adapter | Section 4 | Nothing. This is the one bespoke component and it always will be |
@@ -71,7 +71,7 @@ presented as free.
 | Proxy | Caddy | Automatic certificates in a few lines, one binary, and it works on a LAN with internal certificates | Traefik, if per route middleware chains are ever needed |
 | Orchestration | Docker Compose plus a `Makefile` | Three apps and four services do not need a task graph | Swarm, if two hosts must fail over without a human |
 | Secrets | SOPS with age, in git, rendered to Docker secret files | Rotatable, reviewable, and the repository is the source of truth | Nothing until the lab has someone whose job is a secret store |
-| CI | GitHub Actions for tests only, never holding deploy credentials | Tests where the code is. Deployment stays independent of any vendor | Woodpecker, self hosted |
+| CI | GitHub Actions. Tests, and a deploy that is `make up` over SSH and nothing else | Tests where the code is. The deploy holds a key, which [ADR 0008](../decisions/0008-deploying-from-actions.md) supersedes the earlier decision to record, and it stays a command a person can run by hand | Woodpecker, self hosted |
 
 **PostgREST is not deployed.** It was the original proposal's centrepiece and it
 is rejected. It cannot express the approval workflow, cannot produce a designed
@@ -101,10 +101,17 @@ So these are banned from the repository, each with its replacement:
 | Provider CLIs, metadata endpoints, floating IPs | Unrunnable anywhere else | Nothing. One hostname variable |
 | Provider DNS or container registry | A vendor account in the critical path | Any DNS, any registry named by `ORO_REGISTRY` |
 
-GitHub runs the tests. GitHub does not hold deployment credentials and cannot
-deploy. That is deliberate: the archive records a domain expiring under a
-departed member's personal account and taking door access with it. Nothing in
-this system may depend on an account the lab does not control, and the escape
+GitHub runs the tests, and may deploy.
+[ADR 0008](../decisions/0008-deploying-from-actions.md) supersedes what this
+paragraph used to say, which was that GitHub holds no deployment credential and
+cannot deploy. What has not changed is the reason behind it: the archive records
+a domain expiring under a departed member's personal account and taking door
+access with it, so nothing may depend on an account the lab does not control.
+
+The deploy workflow satisfies that by holding nothing that is only possible
+there. Its one step is `make up` over SSH, which is the command in the test
+above, so losing GitHub costs a convenience rather than the ability to deploy.
+It is dormant until somebody has a server and sets four secrets. The escape
 hatch gets rehearsed rather than assumed.
 
 ## 4. The door
@@ -289,11 +296,13 @@ not to be the blocker. The blockers are the base layer rules that do not cross:
 `*:focus-visible` and the `:where(input,textarea,select){font-size:16px}` iOS zoom
 guard both fail to reach shadow content, measured in headless Chromium.
 
-Two token defects to fix before any component is built on them, both measured:
-the `--ink-*` status family is never remapped by `[data-ground]`, so `--ink-warn`
-on a hazard ground is amber on amber at a contrast ratio of 1.00; and
-`[data-ground]` remaps variables but paints nothing, so a bare grounded element
-looks like the mechanism is broken when it is not.
+Two token defects had to be fixed before any component was built on them, both
+measured: the `--ink-*` status family was never remapped by `[data-ground]`, so
+`--ink-warn` on a hazard ground was amber on amber at a contrast ratio of 1.00;
+and `[data-ground]` remapped variables and painted nothing, so a bare grounded
+element looked like the mechanism was broken when it was not. Both are fixed in
+`packages/gantry-tokens`, and the validator there is what stops them coming
+back. It walks the theme by ground cross product on every build.
 
 ## 6. Data and access
 
@@ -331,7 +340,7 @@ hypothesis.
 | "The two admin rule", presented as existing | A new policy, labelled as new. Card access modelled as the real bylaws process | No two admin rule exists in the bylaws. Inventing governance quietly is how a rewrite loses a vote |
 | Six months to card eligibility | Two months, read from `governance_parameters` | The membership voted the change; two research passes disagree on the date, so the seed row carries DATE UNCONFIRMED |
 | Door service as one Python module | Door API plus a controller adapter and a conformance suite | The Arduino is expected to be replaced. The API should not have to change when it is |
-| Secrets in GitHub Environments | SOPS with age in git, GitHub holds no deploy credentials | The system must not require GitHub to run or to be rebuilt |
+| Secrets in GitHub Environments | SOPS with age in git for everything the stack reads. GitHub holds four deploy secrets and nothing else, per [ADR 0008](../decisions/0008-deploying-from-actions.md) | The system must not require GitHub to run or to be rebuilt. A deploy key is a convenience; the database password, the identity master key and the door controller password never leave the host |
 | Door at phase 4, payments absent | Order is identity, members, admin, door. Payments deferred, schema reserved | Directed. The door gets its adapter and fake built early so it is de-risked before its phase |
 
 ## 9. What this is not

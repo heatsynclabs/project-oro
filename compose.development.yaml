@@ -1,0 +1,70 @@
+# What a laptop adds, and the only file to read to know what that is.
+#
+#   docker compose -f compose.yaml -f compose.development.yaml up
+#
+# make development does exactly that. This was a compose profile until an audit
+# found the profile could be asked for two ways that disagreed: the routes were
+# derived from COMPOSE_PROFILES, so `docker compose --profile development`,
+# which sets no such variable, started the mock and left Caddy serving the
+# deployment's 404 in front of it. An override file has one way to ask.
+
+services:
+  caddy:
+    environment:
+      # Deployment serves TLS and a 404. Development serves the portal, proxies
+      # /v1 to the mock, and carries no certificate at all, which ADR 0003
+      # explains and which is what lets a browser open it with nothing to accept.
+      ORO_ROUTES: development
+
+  identity:
+    environment:
+      # A laptop reaches the identity service at http://localhost on the port
+      # below, not at id.localhost through Caddy. That name does not resolve
+      # without an entry in /etc/hosts, and asking a volunteer to edit that file
+      # before they can open a login screen is the friction ADR 0003 refused
+      # when it chose plain HTTP over a certificate nothing trusts.
+      #
+      # These are set here rather than derived from anything in compose.yaml.
+      # One variable doing two jobs is what the profile did, and ADR 0002
+      # records what it cost.
+      ZITADEL_EXTERNALDOMAIN: "${ORO_HOSTNAME}"
+      ZITADEL_EXTERNALPORT: "${ORO_IDENTITY_PORT:-8180}"
+      ZITADEL_EXTERNALSECURE: "false"
+    ports:
+      # Loopback only. Nothing off this machine has any business signing in to
+      # a laptop's identity service.
+      - "127.0.0.1:${ORO_IDENTITY_PORT:-8180}:8080"
+
+  mock:
+    # The members API contract, served as a mock, so the portal can be built
+    # before services/api/ exists. It answers with invented records, which is
+    # why it lives in this file and reaches no deployment. ADR 0002.
+    #
+    # Pinned by digest as well as by tag, because a tag can be moved onto a
+    # different build by whoever publishes it. stoplight/prism 5.15.10,
+    # published 2026-04-20, read from Docker Hub on 2026-08-27. The image has one
+    # manifest and it is linux/amd64, so naming the platform stops a warning on
+    # every start on an arm64 machine, where it runs emulated.
+    image: stoplight/prism:5.15.10@sha256:586d1f0f94f8d0eaf20b26b8b41f985f2a2d494bea297bd3988c3de3eb87094e
+    platform: linux/amd64
+    volumes:
+      - ./docs/api:/spec:ro
+    ports:
+      # Loopback only. The portal reaches the mock through Caddy at /v1; this
+      # port is for curl and for the contract checks.
+      - "127.0.0.1:${ORO_MOCK_PORT:-4010}:4010"
+    # --multiprocess false because the default forks the server off the CLI and
+    # reads cluster.isPrimary on a Node version where it is undefined, so this
+    # image exits 1 with a TypeError before serving anything. Static examples
+    # rather than --dynamic, which answers /me with a 500 on this document.
+    command: ["mock", "--host", "0.0.0.0", "--port", "4010",
+              "--multiprocess", "false", "/spec/members-v1.yaml"]
+    healthcheck:
+      # The contract refuses a call carrying no bearer token, so the header is
+      # what makes a healthy mock answer 200 rather than 401.
+      test: ["CMD", "wget", "--quiet", "--spider", "--header",
+             "Authorization: Bearer healthcheck", "http://127.0.0.1:4010/me"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s

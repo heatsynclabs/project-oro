@@ -11,6 +11,12 @@ NAME="oro-test-$$"
 WORK="$(mktemp -d)"
 PSQL="docker exec -i $NAME psql -U postgres -d oro -v ON_ERROR_STOP=1 -q"
 
+# macOS ships shasum and no sha256sum. A plain Debian or Ubuntu image, which is
+# what CI runs on, ships sha256sum and no shasum. Both print the digest first,
+# so the caller does not care which one answered.
+if command -v shasum >/dev/null 2>&1; then SHA256="shasum -a 256"
+else SHA256="sha256sum"; fi
+
 cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; rm -rf "$WORK"; }
 trap cleanup EXIT
 
@@ -43,7 +49,7 @@ for f in "$ROOT"/db/migrations/*.sql "$ROOT"/db/seed/*.sql; do
   # tracking table rather than leaving it untested.
   case "$base" in
     000_*) : ;;
-    *) sum=$(shasum -a 256 "$f" | cut -d' ' -f1)
+    *) sum=$($SHA256 "$f" | cut -d' ' -f1)
        $PSQL -c "INSERT INTO schema_migrations (filename, sha256)
                  VALUES ('$base', '$sum')" >/dev/null ;;
   esac

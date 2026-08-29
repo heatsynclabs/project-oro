@@ -41,7 +41,7 @@ from checks import Finding, lint  # noqa: E402,F401  (re-exported for tests)
 CHECKED_SUFFIXES = {
     ".md", ".markdown", ".mdx", ".txt", ".rst",
     ".ts", ".tsx", ".js", ".jsx", ".vue", ".py", ".sql", ".html",
-    ".css", ".scss", ".yml", ".yaml",
+    ".css", ".scss", ".yml", ".yaml", ".sh",
 }
 
 SKIP_DIRS = {".git", "node_modules", "dist", "build", ".venv", "__pycache__",

@@ -1,0 +1,1923 @@
+# Members API, version 1.
+#
+# The contract, written before the service, per rule 12 of CLAUDE.md. Everything
+# downstream of an API is cheap to change and the API is not.
+#
+# Sources this file was written from, and the only ones:
+#   docs/plan/api-design.md   sections 1, 2, 3 and 6. The prose contract, binding.
+#   db/migrations/*.sql       the authority for every field name, type and range.
+#   db/seed/001_reference.sql the tiers, the roles, the governance parameters.
+#   docs/glossary.md          the words. This file uses them exactly.
+#
+# Rule 6 sets a 300 line ceiling on a source file. This document exceeds it
+# deliberately, and the reason is not that it is all related. Phase 3 compares
+# the document generated from the running service against this one byte for
+# byte, and a generator emits one file. Splitting the source would put a bundle
+# step between the thing under test and the thing committed, which is how the
+# two drift. When the file ceiling lint is built in phase 0, list this path
+# with this reason rather than covering docs/api with a glob.
+#
+# Two conflicts between the prose contract and the schema were found while
+# writing this, and neither is resolved here because resolving one is a decision:
+#
+#   api-design.md 3.3 lists "notes" among what an admin may change on a member.
+#   No notes column exists on members in db/migrations/001_schema.sql, and an
+#   admin's free text about a person is personal data with no defined read
+#   policy, so no such field is documented below.
+#
+#   api-design.md 3.6 makes cards.note load bearing: it is where the Hack Your
+#   Hackerspace vote gets referenced. No note column exists on cards either. It
+#   is documented below because the contract turns on it, and a migration has to
+#   add the column before the service is implemented.
+
+openapi: 3.1.1
+
+info:
+  title: HeatSync Labs members API
+  version: 1.0.0
+  summary: Members, roles, cards, certifications, waivers, and approvals.
+  description: |
+    The system of record for who the lab knows about, what they hold, and what
+    they may do. The door API is a separate contract: it knows about doors,
+    slots and a card table, and knows nothing about tiers, dues or waivers.
+
+    ## Principles this document is held to
+
+    **One canonical representation per resource.** There is no members list
+    shape and a separate member detail shape. A list returns the same `Member`
+    object with fewer keys, chosen with `?fields=`, so a client never learns two
+    shapes for one thing.
+
+    **Refusals say why.** Every refusal carries a problem detail whose `detail`
+    is a sentence a person wrote, naming the rule that refused. Never a bare
+    403, and never an empty 200 a client has to guess about.
+
+    **Errors are RFC 9457 problem details**, served as
+    `application/problem+json`, in one shape everywhere.
+
+    **Nothing here names the hardware.** That is what keeps the door controller
+    replaceable.
+
+    ## Deliberately absent
+
+    Per api-design.md section 6. Do not add these without amending that
+    document first.
+
+    * Payments. Out of scope. The schema reserves the tables and this contract
+      reserves no paths.
+    * A generic query interface. No arbitrary filter expressions, no GraphQL.
+      A named endpoint per real need.
+    * Bulk endpoints. Three portals and a few hundred members do not need one.
+    * Outbound webhooks. Nothing subscribes yet, and adding them later is
+      additive.
+    * `/space_api/alert_if_not/{status}`, which the legacy application serves.
+      It is a public GET that emails a mailing list, so anyone can trigger it.
+  contact:
+    name: HeatSync Labs
+    url: https://heatsynclabs.org
+  # No license block. The repository licence is undecided, recorded as an open
+  # question in README.md, and stating one here would decide it by accident.
+
+servers:
+  - url: https://api.heatsynclabs.org/v1
+    description: Production.
+
+security:
+  - memberToken: []
+
+tags:
+  - name: self service
+    description: What a member may read and change about themselves.
+  - name: directory
+    description: >-
+      The member directory. Gated on being a member, and never on orientation.
+      The legacy application gated it on an admin having typed a date into a
+      field, which locked paying members out for a volunteer's inaction.
+  - name: administration
+    description: Member records, cards, and certifications.
+  - name: waivers
+    description: >-
+      Whether a person signed one. Never what is on it. This system records that
+      a waiver exists, when it was signed, and where the document is kept.
+  - name: approvals
+    description: >-
+      The two approver control on admin access changes. A new policy introduced
+      by this project. It is not in the lab bylaws.
+  - name: public
+    description: The unauthenticated endpoints the public site and the wall read.
+
+paths:
+
+  # ------------------------------------------------------------ self service
+
+  /me:
+    get:
+      operationId: getMe
+      tags: [self service]
+      summary: Your own member record.
+      description: >-
+        Everything the lab holds about you, including your live roles, your
+        tier, and your standing. Roles are read from the member record on every
+        request rather than from a claim in the token, so losing the admin role
+        takes effect on your next request instead of your next sign in.
+      responses:
+        '200':
+          description: Your member record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    patch:
+      operationId: updateMe
+      tags: [self service]
+      summary: Change your own profile.
+      description: |
+        Contact details, visibility, pronouns, skills, and your membership tier.
+
+        Setting your own `tier_id` is deliberate and matches how the lab already
+        works: membership is a donation rather than a subscription, so a member
+        declares a level and arranges payment separately. It grants nothing.
+        Card access is decided by a vote of cardholders.
+
+        Changing your `email` clears its verified date, and you cannot set that
+        date yourself. An address that already belongs to another member is
+        refused, because one address identifies one member.
+
+        The database refuses standing, paid through, orientation, the identity
+        your account is joined by, and the legacy columns, by trigger. This
+        endpoint not accepting them is the courtesy layer. The trigger is the
+        rule.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemberSelfUpdate' }
+      responses:
+        '200':
+          description: The updated member record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403':
+          description: A field only an admin may set.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetail' }
+              example:
+                type: https://oro.heatsynclabs.org/errors/admin-only-field
+                title: That field is set by an admin
+                status: 403
+                detail: >-
+                  Membership standing, orientation, and the identity your
+                  account is joined by are set by an admin, not on your own
+                  profile. Ask an admin to change it.
+                instance: /me
+        '409': { $ref: '#/components/responses/EmailAlreadyKnown' }
+        '422': { $ref: '#/components/responses/Invalid' }
+
+  /me/cards:
+    get:
+      operationId: listMyCards
+      tags: [self service]
+      summary: Your own cards.
+      description: >-
+        Tag numbers are masked to the last four characters here. A member does
+        not need the full number of the card in their pocket, and a full number
+        read off a screen is a card somebody can clone.
+      responses:
+        '200':
+          description: Your cards, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Card' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /me/certifications:
+    get:
+      operationId: listMyCertifications
+      tags: [self service]
+      summary: Your own certifications, with who granted each and when it expires.
+      description: >-
+        A certification is per tool. A revoked one stays in this list with its
+        revocation date and reason, because somebody can be certified, revoked,
+        and certified again, and the history is what an instructor needs to see.
+      responses:
+        '200':
+          description: Your certifications.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MemberCertification' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /me/waiver:
+    get:
+      operationId: getMyWaiver
+      tags: [self service, waivers]
+      summary: Your own waiver record.
+      description: >-
+        That a waiver was signed, when, and where the document is kept. Not what
+        is on it: this system holds none of that, on purpose, because the lab
+        already keeps the document somewhere and a second copy is a second thing
+        to protect. A null `expires_at` means the waiver does not expire.
+      responses:
+        '200':
+          description: The most recent waiver recorded for you.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Waiver' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404':
+          description: >-
+            No waiver is recorded for you. This is an answer rather than a
+            fault. It means nobody has recorded one. An admin records a
+            waiver once you have signed it.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetail' }
+
+  /me/door-events:
+    get:
+      operationId: listMyDoorEvents
+      tags: [self service]
+      summary: Your own entries, most recent first.
+      description: >-
+        A door event is an access record for a physical building. You can read
+        your own and an admin can read all of them. Nobody else can, and that is
+        enforced by a policy on the table rather than by this endpoint.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of your door events.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DoorEventPage' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /me/card-eligibility:
+    get:
+      operationId: getMyCardEligibility
+      tags: [self service]
+      summary: Whether you are eligible to be nominated for card access.
+      description: >-
+        Eligible or not, the date it becomes true, and what is still missing.
+        The tenure and tier numbers are read from the governance parameters
+        table, which cites the vote or the bylaws section that set each one, so
+        correcting a number is an admin editing a row rather than a developer
+        writing a migration. Eligibility is not the same as having a card:
+        cardholders nominate and card members vote.
+      responses:
+        '200':
+          description: Your eligibility, and the reasoning behind it.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CardEligibility' }
+              example:
+                eligible: false
+                eligible_on: '2026-10-14'
+                requirements:
+                  - rule: tier
+                    met: true
+                    detail: Basic, card eligible
+                  - rule: tenure
+                    met: false
+                    detail: Two months required. Joined 2026-08-14.
+                  - rule: standing
+                    met: true
+                    detail: Good standing
+                  - rule: waiver
+                    met: true
+                    detail: Signed 2026-08-14
+                process: >-
+                  A current card member nominates you, posts the proposal
+                  publicly at least two weeks before Hack Your Hackerspace, and
+                  a majority of at least five card members present votes.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  # -------------------------------------------------------------- directory
+
+  /members:
+    get:
+      operationId: listDirectory
+      tags: [directory]
+      summary: The member directory.
+      description: |
+        Only members who chose to be listed, and only the fields they chose to
+        show. Column visibility cannot be a row policy, because row level
+        security filters rows and not columns, so the directory is read through
+        a database view that hides an email or a phone number unless the member
+        turned it on. The base table is not reachable from this endpoint.
+
+        `name` here is the member's display name where they set one and their
+        name otherwise, which is what the view returns. The directory does not
+        carry `display_name` as a separate key.
+
+        Not paginated. The directory is a few hundred rows, and section 6 of
+        api-design.md holds bulk endpoints back until something needs one.
+      parameters:
+        - $ref: '#/components/parameters/Fields'
+      responses:
+        '200':
+          description: The listed members.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /members/{id}:
+    parameters:
+      - $ref: '#/components/parameters/MemberId'
+    get:
+      operationId: getDirectoryMember
+      tags: [directory]
+      summary: One member from the directory.
+      description: >-
+        The same object and the same visibility rules as the list. A member who
+        is not listed is not found here, and the refusal does not distinguish
+        the two, because saying which would itself report that the person is a
+        member.
+      parameters:
+        - $ref: '#/components/parameters/Fields'
+      responses:
+        '200':
+          description: The member.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotInDirectory' }
+
+  # --------------------------------------------------------- administration
+
+  /admin/members:
+    get:
+      operationId: listMembers
+      tags: [administration]
+      summary: Every member, including unlisted and lapsed.
+      description: >-
+        The admin view of the same object. Filters are named parameters over
+        real columns rather than a query language, per section 6 of
+        api-design.md.
+      parameters:
+        - $ref: '#/components/parameters/Fields'
+        - name: standing
+          in: query
+          description: Return only members in this standing.
+          schema: { $ref: '#/components/schemas/Standing' }
+        - name: tier_id
+          in: query
+          description: Return only members at this tier.
+          schema: { type: string }
+        - name: listed_in_directory
+          in: query
+          description: Return only members who are listed, or only those who are not.
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: The matching members.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/AdminOnly' }
+    post:
+      operationId: createMember
+      tags: [administration]
+      summary: Create a member who has no account.
+      description: >-
+        A member is not an account. Somebody signs a waiver at the kiosk and
+        they are a person in the system, with no login and nothing granted. If
+        they create an account later it claims this row by email instead of
+        making a duplicate, which is what makes the waiver the front door rather
+        than the signup form. It is also how the paying members who never signed
+        up on the members site get recorded.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemberCreate' }
+      responses:
+        '201':
+          description: The created member.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/AdminOnly' }
+        '409': { $ref: '#/components/responses/EmailAlreadyKnown' }
+        '422': { $ref: '#/components/responses/Invalid' }
+
+  /admin/members/{id}:
+    parameters:
+      - $ref: '#/components/parameters/MemberId'
+    patch:
+      operationId: updateMember
+      tags: [administration]
+      summary: Change a member's tier, standing, or orientation.
+      description: >-
+        An admin may also change anything a member can change on their own
+        profile, which is what makes this the endpoint for correcting a record
+        over the phone. Correcting an email to one another member already holds
+        is refused, so the fix for a duplicated person is to merge the records
+        rather than to retype the address.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemberAdminUpdate' }
+      responses:
+        '200':
+          description: The updated member.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/AdminOnly' }
+        '404': { $ref: '#/components/responses/MemberNotFound' }
+        '409': { $ref: '#/components/responses/EmailAlreadyKnown' }
+        '422': { $ref: '#/components/responses/Invalid' }
+
+  /admin/members/{id}/waivers:
+    parameters:
+      - $ref: '#/components/parameters/MemberId'
+    post:
+      operationId: recordWaiver
+      tags: [administration, waivers]
+      summary: Record that a member signed a waiver, and where the document is.
+      description: >-
+        `storage` names the system that holds the signed document and
+        `reference` says how to find it there. Both are opaque to this system,
+        so moving from one to another later is a data change rather than a
+        schema change. Do not put anything from the document itself in either
+        field.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WaiverCreate' }
+      responses:
+        '201':
+          description: The recorded waiver.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Waiver' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/AdminOnly' }
+        '404': { $ref: '#/components/responses/MemberNotFound' }
+        '422': { $ref: '#/components/responses/Invalid' }
+
+  /admin/cards:
+    post:
+      operationId: issueCard
+      tags: [administration]
+      summary: Issue a card.
+      description: |
+        Deciding who gets a card is the lab's bylaws process and it happens in a
+        room: a cardholder nominates, the proposal is posted publicly two weeks
+        ahead, and card members vote at Hack Your Hackerspace. This system does
+        not run that process. It records the outcome and provisions the card.
+
+        `note` is free text and is where the vote gets referenced.
+
+        The slot is assigned here, as the lowest free value in the addressable
+        range, and a client never supplies one. The range is a physical
+        constraint, described on the `Card` schema.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CardIssue' }
+            example:
+              member_id: 3f6c1d2a-7e58-4f0b-9a41-2c8d5b7e10f3
+              tag_number: 0000C4D9
+              label: front desk spare
+              note: approved at HYH 2026-09-10
+      responses:
+        '201':
+          description: The issued card, with the slot it was assigned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Card' }
+              example:
+                id: 9a1b7c40-2d33-4e6a-8b19-51c0f7ad4e22
+                member_id: 3f6c1d2a-7e58-4f0b-9a41-2c8d5b7e10f3
+                controller_slot: 42
+                active: true
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/AdminOnly' }
+        '409':
+          description: The tag is already in use, or there is no free slot.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetail' }
+              examples:
+                tagAlreadyIssued:
+                  summary: The tag number is on another active card.
+                  value:
+                    type: https://oro.heatsynclabs.org/errors/tag-already-issued
+                    title: That tag number is already on an active card
+                    status: 409
+                    detail: >-
+                      One tag number belongs to one active card, so nothing was
+                      issued. Revoke the card that holds it, or read the tag
+                      again and check the number.
+                    instance: /admin/cards
+                noFreeSlot:
+                  summary: Every addressable slot is taken.
+                  value:
+                    type: https://oro.heatsynclabs.org/errors/no-free-slot
+                    title: The card table is full
+                    status: 409
+                    detail: >-
+                      Slots 10 to 199 are all in use, so no card was issued.
+                      Revoke a card that is no longer needed, which frees its
+                      slot, and issue this one again.
+                    instance: /admin/cards
+        '422': { $ref: '#/components/responses/Invalid' }
+
+  /admin/cards/{id}:
+    parameters:
+      - $ref: '#/components/parameters/CardId'
+    patch:
+      operationId: updateCard
+      tags: [administration]
+      summary: Change a card's label or permission mask.
+      description: >-
+        Who a card belongs to, and which slot it holds, are not editable. A slot
+        is a physical address, so changing it remaps somebody else's door
+        permission, and the database refuses it. To move a card to another
+        member, revoke it and issue a new one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CardUpdate' }
+      responses:
+        '200':
+          description: The updated card.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Card' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/AdminOnly' }
+        '404': { $ref: '#/components/responses/CardNotFound' }
+        '409':
+          description: A field that is a historical record.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetail' }
+              example:
+                type: https://oro.heatsynclabs.org/errors/card-history-is-frozen
+                title: That part of a card is a record
+                status: 409
+                detail: >-
+                  A card belongs to who it was issued to, and its slot is a
+                  physical address, so neither changed. Revoke this card and
+                  issue another.
+                instance: /admin/cards/9a1b7c40-2d33-4e6a-8b19-51c0f7ad4e22
+        '422': { $ref: '#/components/responses/Invalid' }
+
+  /admin/cards/{id}/revoke:
+    parameters:
+      - $ref: '#/components/parameters/CardId'
+    post:
+      operationId: revokeCard
+      tags: [administration]
+      summary: Revoke a card. A reason is required.
+      description: >-
+        Revoking queues a reconcile with the door service straight away rather
+        than waiting for the timer, because a stolen card that keeps working
+        until the next tick is a different thing from a routine revocation, and
+        the admin doing it should not have to know which this is. A revoked card
+        cannot be brought back. Issue a new one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CardRevoke' }
+      responses:
+        '200':
+          description: The revoked card.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Card' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/AdminOnly' }
+        '404': { $ref: '#/components/responses/CardNotFound' }
+        '409':
+          description: The card is already revoked.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetail' }
+              example:
+                type: https://oro.heatsynclabs.org/errors/card-already-revoked
+                title: That card was already revoked
+                status: 409
+                detail: >-
+                  It was revoked on 2026-08-14 and nothing changed. A revocation
+                  cannot be undone, so if this member needs access, issue a new
+                  card.
+                instance: /admin/cards/9a1b7c40-2d33-4e6a-8b19-51c0f7ad4e22/revoke
+        '422':
+          description: No reason was given.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetail' }
+              example:
+                type: https://oro.heatsynclabs.org/errors/reason-required
+                title: A revocation needs a reason
+                status: 422
+                detail: >-
+                  Revoking a card is recorded with who did it and why, so the
+                  card was not revoked. Say what happened, for example that the
+                  card was lost or that the membership lapsed.
+                instance: /admin/cards/9a1b7c40-2d33-4e6a-8b19-51c0f7ad4e22/revoke
+
+  /admin/certifications/{id}/grant:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: >-
+          The certification being granted. Certifications are rows in the
+          certifications table rather than a list fixed by this contract.
+        schema: { type: string }
+    post:
+      operationId: grantCertification
+      tags: [administration]
+      summary: Grant a certification to a member.
+      description: >-
+        Instructors are per tool and never global. Somebody who instructs on the
+        laser is not thereby an instructor on the mill, and only an instructor
+        for this certification may grant it. An admin may grant any of them. The
+        rule is a policy on the table, so no path through this service can skip
+        it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CertificationGrant' }
+      responses:
+        '201':
+          description: The granted certification.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemberCertification' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403':
+          description: The caller does not instruct on this tool.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetail' }
+              example:
+                type: https://oro.heatsynclabs.org/errors/not-an-instructor
+                title: Only an instructor for this certification may grant it
+                status: 403
+                detail: >-
+                  Instructors are per tool, so nothing was granted. Ask somebody
+                  who instructs on this tool, or an admin.
+                instance: /admin/certifications/laser/grant
+        '404': { $ref: '#/components/responses/MemberNotFound' }
+        '409':
+          description: The member already holds a live certification on this tool.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetail' }
+              example:
+                type: https://oro.heatsynclabs.org/errors/certification-already-held
+                title: That member is already certified on this tool
+                status: 409
+                detail: >-
+                  A member holds one live certification per tool, so nothing was
+                  granted. If this is a renewal, revoke the current one first.
+                instance: /admin/certifications/laser/grant
+        '422': { $ref: '#/components/responses/Invalid' }
+
+  # --------------------------------------------------------------- approvals
+
+  /admin/approvals:
+    get:
+      operationId: listApprovals
+      tags: [approvals]
+      summary: The two approver queue for admin access changes.
+      description: |
+        NEW POLICY. The two approver rule is introduced by this project. It is
+        not in the lab bylaws, it is not on the Rules page, and it is not in the
+        legacy application. It needs a vote at Hack Your Hackerspace before it
+        binds anyone. The two signature rule members remember is about monetary
+        expenditure and is unrelated.
+
+        The queue covers granting a role that can itself grant roles, which
+        today means admin, and nothing else.
+      parameters:
+        - name: status
+          in: query
+          description: Return only approvals in this status. Omit it for the pending queue.
+          schema: { $ref: '#/components/schemas/ApprovalStatus' }
+      responses:
+        '200':
+          description: The approvals.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Approval' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/AdminOnly' }
+    post:
+      operationId: proposeApproval
+      tags: [approvals]
+      summary: Propose an admin access change for a second admin to approve.
+      description: |
+        NEW POLICY. The two approver rule is introduced by this project. It is
+        not in the lab bylaws, it is not on the Rules page, and it is not in the
+        legacy application. It needs a vote at Hack Your Hackerspace before it
+        binds anyone. The two signature rule members remember is about monetary
+        expenditure and is unrelated.
+
+        Covers granting a role whose `grants_roles` is true. Nothing else.
+        Revoking is single actor, deliberately: a rule that makes removing a
+        compromised admin need two people is a rule that fails at the worst
+        possible moment. A revocation is recorded with who did it and why, which
+        is the control that matters there.
+
+        You are recorded as the proposer whatever the request says, and you
+        cannot approve your own proposal. An unapproved proposal expires thirty
+        days after it is made.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApprovalCreate' }
+            example:
+              kind: grant_role
+              target_member_id: 3f6c1d2a-7e58-4f0b-9a41-2c8d5b7e10f3
+              role_id: admin
+              reason: Taking over operations from D. Kim
+      responses:
+        '201':
+          description: The proposal, waiting on a second admin.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Approval' }
+              example:
+                id: 88
+                status: pending
+                expires_at: '2026-09-26T18:04:11Z'
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/AdminOnly' }
+        '404': { $ref: '#/components/responses/MemberNotFound' }
+        '422': { $ref: '#/components/responses/Invalid' }
+
+  /admin/approvals/{id}/approve:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: The approval being decided.
+        schema: { type: integer, format: int64 }
+    post:
+      operationId: approveApproval
+      tags: [approvals]
+      summary: Approve somebody else's proposal, which applies it.
+      description: |
+        NEW POLICY. The two approver rule is introduced by this project. It is
+        not in the lab bylaws, it is not on the Rules page, and it is not in the
+        legacy application. It needs a vote at Hack Your Hackerspace before it
+        binds anyone. The two signature rule members remember is about monetary
+        expenditure and is unrelated.
+
+        Approving applies the role grant in the same transaction, which is what
+        `applied` reports. You are recorded as the approver whatever the request
+        says, and a decision is final.
+
+        This endpoint refusing self approval is a courtesy that produces a
+        readable sentence. What makes the rule true is in the database, and it
+        is more than one constraint: a check that the approver is not the
+        proposer, a composite foreign key tying the grant to the exact approval
+        that authorised it, a unique index so one approval cannot authorise two
+        grants, and a trigger requiring the approval to be approved, unexpired,
+        of the right kind, and decided by two people who both hold an admin
+        role. A direct insert into the role table with no approval is refused by
+        the database, which is the 2am script this rule exists to stop.
+      responses:
+        '200':
+          description: The approval, decided, and the grant applied.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Approval' }
+              example:
+                id: 88
+                status: approved
+                applied: true
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/AdminOnly' }
+        '404':
+          description: No such approval.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetail' }
+        '409':
+          description: >-
+            The proposer tried to approve their own proposal, the approval was
+            already decided, or it had expired.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetail' }
+              examples:
+                selfApproval:
+                  summary: The proposer cannot approve their own proposal.
+                  value:
+                    type: https://oro.heatsynclabs.org/errors/self-approval
+                    title: You cannot approve your own proposal
+                    status: 409
+                    detail: Admin access changes need a second admin. You proposed this one.
+                    instance: /admin/approvals/88
+                alreadyDecided:
+                  summary: A decision is final.
+                  value:
+                    type: https://oro.heatsynclabs.org/errors/approval-already-decided
+                    title: That approval was already decided
+                    status: 409
+                    detail: >-
+                      Approval 88 is already approved and a decision is final,
+                      so nothing changed. Propose a new one if the access needs
+                      to change again.
+                    instance: /admin/approvals/88
+                expired:
+                  summary: The proposal ran out before anybody approved it.
+                  value:
+                    type: https://oro.heatsynclabs.org/errors/approval-expired
+                    title: That proposal has expired
+                    status: 409
+                    detail: >-
+                      Approval 88 expired on 2026-09-26, so no role was granted.
+                      Propose it again and ask a second admin to approve it
+                      within thirty days.
+                    instance: /admin/approvals/88
+
+  # ----------------------------------------------------- hosting and waivers
+
+  /waiver-status:
+    get:
+      operationId: getWaiverStatus
+      tags: [waivers]
+      summary: Whether a member has a valid waiver on file.
+      description: |
+        A boolean and the signed date. Nothing else, because the system holds
+        nothing else: the document stays wherever the lab already keeps it. A
+        host checking somebody in does not need, and does not get, that person's
+        address or the reference that would let them go and read the document.
+
+        Callable by an admin, by anybody holding a hosting role, by any
+        instructor, and by a member about themselves. This is what replaces an
+        all or nothing shared spreadsheet.
+
+        There is no lookup by email. A waiver record belongs to a member row, so
+        a guest signing at the kiosk gets a member row created for them first.
+        Somebody with no member row has no waiver here, and the honest answer
+        about them is that we do not know.
+      parameters:
+        - name: member_id
+          in: query
+          required: true
+          description: The member being asked about.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: >-
+            The answer. A member with no waiver recorded comes back with
+            `has_valid_waiver` false and a null date, rather than a 404, because
+            having no record is the answer to the question.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WaiverStatus' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403':
+          description: The caller holds no role that may ask about somebody else.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetail' }
+              example:
+                type: https://oro.heatsynclabs.org/errors/waiver-status-not-permitted
+                title: Checking somebody else's waiver needs a hosting or instructing role
+                status: 403
+                detail: >-
+                  You can always check your own. Checking somebody else needs
+                  the admin, host, operations or board role, or an instructor
+                  record on some tool. Ask whoever is hosting today.
+                instance: /waiver-status
+
+  # ------------------------------------------------------------------ public
+
+  # These two are served from the members hostname rather than the API
+  # hostname, and without the /v1 prefix, because the address is a contract that
+  # predates this project. A public site component and a status display on a
+  # wall both read it.
+  #
+  # ASSUMPTION: the full field list of the live 0.12 document is not in this
+  # repository, so this schema pins only the two fields api-design.md section
+  # 3.7 states, and allows the rest.
+  # CONFIRM BY: curl -s https://members.heatsynclabs.org/space_api.json and
+  # curl -s https://members.heatsynclabs.org/space_api/simple.json, then pin the
+  # keys here before the route flips in phase 6.
+  # BLAST RADIUS: a client that reads a field this schema does not name, and a
+  # mock server generated from this document serving a shape the real one does
+  # not match.
+
+  /space_api.json:
+    servers:
+      - url: https://members.heatsynclabs.org
+        description: The address the public site and the wall display already read.
+    get:
+      operationId: getSpaceApi
+      tags: [public]
+      summary: Whether the lab is open.
+      security: []
+      description: |
+        The one endpoint with no authentication. Served from the status the door
+        service pushes upward, never by reaching into the door network.
+
+        **There is a hard size ceiling on this payload, and it is in firmware on
+        a wall.** A status display parses the response with a 1 KB buffer and
+        does not report an error when a document overflows it. It stops updating
+        silently, so the lab's open sign quietly goes stale and nobody knows
+        why. The live document is roughly 900 bytes. Keep the serialised
+        response under 900 bytes, byte for byte with what the legacy application
+        serves. Anything that grows it, a SpaceAPI v14 upgrade or an added
+        `state` or `sensors` block included, overflows that buffer. Serve a
+        newer version at a new path instead.
+
+        Staleness is bounded and visible rather than hidden. Past the bound this
+        keeps the last known lock state and records the staleness in the members
+        API logs. It does not assert the lab is closed, because a confidently
+        wrong sign sends somebody across town while a stale one is recoverable.
+      responses:
+        '200':
+          description: The SpaceAPI 0.12 document, carried forward unchanged.
+          headers:
+            Cache-Control:
+              description: >-
+                Exactly `no-cache, no-store, max-age=0, must-revalidate`. The
+                legacy application sends this and the wall display depends on
+                not being handed a cached answer.
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SpaceApiDocument' }
+
+  /space_api/simple.json:
+    servers:
+      - url: https://members.heatsynclabs.org
+        description: The address the public site and the wall display already read.
+    get:
+      operationId: getSpaceApiSimple
+      tags: [public]
+      summary: The raw lock booleans.
+      security: []
+      description: >-
+        The smaller variant the legacy application serves alongside the SpaceAPI
+        document. Same ceiling reasoning, same requirement to match byte for
+        byte. The key names are carried forward from the live response rather
+        than named here, for the reason in the comment above this path.
+      responses:
+        '200':
+          description: One boolean per lock.
+          headers:
+            Cache-Control:
+              description: >-
+                Exactly `no-cache, no-store, max-age=0, must-revalidate`.
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: { type: boolean }
+
+components:
+
+  securitySchemes:
+    memberToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        An OIDC access token from the lab's identity provider, validated offline
+        against its published JWKS. This API never sees a password.
+
+        Access tokens last ten minutes and refresh tokens rotate. A token
+        carries `sub`, `email` and `name`, and no role claims. Roles live on the
+        member row and are looked up on every request, so revoking admin takes
+        effect on the next request rather than the next sign in. That costs one
+        lookup per request and buys revocation that actually revokes.
+
+        The token's `sub` is matched against the member's identity subject,
+        never against the email, because emails change and no legacy address was
+        ever proven to belong to anybody.
+
+        There is no `openIdConnect` scheme here with a discovery URL, because
+        the identity provider is not deployed yet and writing its address down
+        before it exists would be documentation for something that is not there.
+
+  parameters:
+
+    Fields:
+      name: fields
+      in: query
+      required: false
+      description: >-
+        Comma separated `Member` field names. Omit it for the endpoint's default
+        set. This is how a response gets smaller without a second shape: the
+        object is the same object, with fewer keys.
+      schema: { type: string }
+      example: id,name,pronouns,current_skills
+
+    MemberId:
+      name: id
+      in: path
+      required: true
+      description: The member.
+      schema: { type: string, format: uuid }
+
+    CardId:
+      name: id
+      in: path
+      required: true
+      description: The card. This is the card's own identity, not its slot.
+      schema: { type: string, format: uuid }
+
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: How many events to return.
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: >-
+        The `next_cursor` from the previous page. Omit it for the first page.
+      schema: { type: string }
+
+  responses:
+
+    Unauthenticated:
+      description: No token, or a token this API could not validate.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetail' }
+          example:
+            type: https://oro.heatsynclabs.org/errors/unauthenticated
+            title: Sign in first
+            status: 401
+            detail: >-
+              This request carried no valid access token, so nothing was read or
+              changed. Sign in again, and if you keep getting sent back, your
+              session has expired.
+
+    AdminOnly:
+      description: The caller does not hold the admin role.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetail' }
+          example:
+            type: https://oro.heatsynclabs.org/errors/admin-only
+            title: This is an admin action
+            status: 403
+            detail: >-
+              Managing members, cards and roles needs the admin role, and your
+              account does not hold it, so nothing changed. Ask an admin.
+
+    MemberNotFound:
+      description: No such member.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetail' }
+          example:
+            type: https://oro.heatsynclabs.org/errors/member-not-found
+            title: No such member
+            status: 404
+            detail: >-
+              Nothing changed. Check the member id, and remember that a person
+              who has signed a waiver but never created an account still has a
+              member record an admin can find.
+
+    CardNotFound:
+      description: No such card.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetail' }
+          example:
+            type: https://oro.heatsynclabs.org/errors/card-not-found
+            title: No such card
+            status: 404
+            detail: >-
+              Nothing changed. A card is identified by its own id here, not by
+              its slot and not by its tag number.
+
+    NotInDirectory:
+      description: >-
+        No member with that id is listed in the directory. Whether the person
+        exists and chose not to be listed, or does not exist at all, is not
+        distinguished, because distinguishing them would report that they are a
+        member.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetail' }
+          example:
+            type: https://oro.heatsynclabs.org/errors/not-in-directory
+            title: Not in the directory
+            status: 404
+            detail: >-
+              Nobody with that id is listed. Members choose whether to appear,
+              so somebody can be a member and still not be here.
+
+    EmailAlreadyKnown:
+      description: >-
+        Another member record already carries that email address. The members
+        table declares `email citext UNIQUE`, so this refusal is the database
+        speaking and not a check a caller can talk past.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetail' }
+          example:
+            type: https://oro.heatsynclabs.org/errors/email-already-known
+            title: That email already belongs to a member
+            status: 409
+            detail: >-
+              An email address identifies one member, and another member record
+              already carries this one, so nothing was saved. An admin can find
+              that record and merge the two.
+
+    Invalid:
+      description: The request was understood and something in it is not usable.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetail' }
+          example:
+            type: https://oro.heatsynclabs.org/errors/invalid-request
+            title: That request could not be applied
+            status: 422
+            detail: >-
+              One field in this request is not usable, so nothing was saved.
+              The errors list says which one and what it expects.
+            errors:
+              - field: website_url
+                detail: A link starts with http:// or https://
+
+  schemas:
+
+    ProblemDetail:
+      type: object
+      description: >-
+        RFC 9457 problem details. One shape for every refusal and every failure,
+        in both APIs. `detail` is required here even though the RFC makes it
+        optional, because a refusal that does not name its rule reads as a bug
+        and generates a support conversation.
+      required: [type, title, status, detail]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: A stable identifier for this kind of problem. Clients may switch on it.
+          examples: ['https://oro.heatsynclabs.org/errors/self-approval']
+        title:
+          type: string
+          description: A short summary of the problem, the same for every occurrence of a type.
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+          description: The HTTP status code, repeated here so a logged body stands alone.
+        detail:
+          type: string
+          description: >-
+            A sentence a person wrote, for this occurrence: what happened, what
+            the system did about it, and what the reader should do next. Never
+            an exception string.
+        instance:
+          type: string
+          description: The path this occurred on.
+        errors:
+          type: array
+          description: Per field problems, on a validation failure only.
+          items:
+            type: object
+            required: [field, detail]
+            properties:
+              field: { type: string }
+              detail: { type: string }
+      additionalProperties: true
+      examples:
+        - type: https://oro.heatsynclabs.org/errors/self-approval
+          title: You cannot approve your own proposal
+          status: 409
+          detail: Admin access changes need a second admin. You proposed this one.
+          instance: /admin/approvals/88
+
+    Standing:
+      type: string
+      description: >-
+        Bylaws term. `good` means current on dues or on a current board approved
+        scholarship. `unknown` is the default, because the legacy data does not
+        support claiming good standing for anybody. Payments are out of scope,
+        so this is set by hand for now.
+      enum: [good, grace, lapsed, unknown]
+
+    Tier:
+      type: object
+      description: >-
+        What a member pays and what that entitles them to. Tiers are rows rather
+        than an integer, so adding one is data and the bylaws rule that card
+        access needs the fifty dollar level is a flag rather than a constant in
+        code.
+      properties:
+        id:
+          type: string
+          description: >-
+            The tier's identifier. Seeded as none, unable, volunteer, associate,
+            basic and plus. They are rows, so this contract does not fix the
+            list.
+        name: { type: string }
+        monthly_cents: { type: integer }
+        sort_order:
+          type: integer
+          description: Rank. The card access minimum is compared on this, not on price.
+        card_eligible:
+          type: boolean
+          description: Whether this tier may be nominated for card access.
+        storage:
+          type: [string, 'null']
+          description: What storage the tier includes, where it includes any.
+        active: { type: boolean }
+
+    Role:
+      type: object
+      description: >-
+        The role vocabulary. Seeded as admin, accountant, board, operations and
+        host. A member may hold several.
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        grants_roles:
+          type: boolean
+          description: >-
+            True for a role that can itself grant roles. This flag is what the
+            two approver rule protects, so changing it is a migration rather
+            than an admin action.
+
+    RoleGrant:
+      type: object
+      description: >-
+        A role held by a member. Roles are rows and not boolean columns, so who
+        granted what and when is recorded. Revoking sets `revoked_at` and is
+        never a delete, because who used to be an admin and who removed them is
+        exactly what an audit asks.
+      properties:
+        id: { type: integer, format: int64, readOnly: true }
+        role_id: { type: string }
+        role:
+          $ref: '#/components/schemas/Role'
+          readOnly: true
+        granted_at: { type: string, format: date-time, readOnly: true }
+        granted_by:
+          $ref: '#/components/schemas/Member'
+          readOnly: true
+          description: The admin who granted it. Only `id` and `name` are populated.
+        approval_id:
+          type: [integer, 'null']
+          format: int64
+          readOnly: true
+          description: >-
+            The approval that authorised this grant, for a role whose
+            `grants_roles` is true. Null on the grants made while the lab had
+            fewer than two admins and the two approver rule could not yet bind.
+        expires_at: { type: [string, 'null'], format: date-time }
+        revoked_at: { type: [string, 'null'], format: date-time, readOnly: true }
+        revoked_by:
+          $ref: '#/components/schemas/Member'
+          readOnly: true
+        revoked_reason:
+          type: [string, 'null']
+          readOnly: true
+          description: Required when a role is revoked. The database refuses a revocation without one.
+
+    Member:
+      type: object
+      description: |
+        A person the lab knows about. Not the same thing as an account: a member
+        may have signed a waiver and never created a login, and there are paying
+        members today who never signed up on the members site.
+
+        This is the only member shape in the API. A directory response, an admin
+        response and `/me` all return this object, with different keys populated
+        according to what the caller may see and what `?fields=` asked for.
+        Everything except `id` is therefore optional in a response.
+
+        The identity subject, the legacy columns and the deletion timestamp are
+        not exposed. They exist for the join to the identity provider and for
+        the migration audit, and no client has a use for them.
+      required: [id]
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        name:
+          type: string
+          description: >-
+            In a directory response this is the display name where the member
+            set one, and their name otherwise. The directory does not carry
+            `display_name` separately.
+        display_name: { type: [string, 'null'] }
+        pronouns: { type: [string, 'null'] }
+        email: { type: [string, 'null'], format: email }
+        email_verified_at:
+          type: [string, 'null']
+          format: date-time
+          readOnly: true
+          description: >-
+            Cleared whenever the member changes their own email. A member cannot
+            set this.
+        phone: { type: [string, 'null'] }
+        postal_code: { type: [string, 'null'] }
+        tier_id:
+          type: [string, 'null']
+          description: The tier the member declared. Writable by the member.
+        tier:
+          $ref: '#/components/schemas/Tier'
+          readOnly: true
+        joined_on: { type: [string, 'null'], format: date }
+        paid_through:
+          type: [string, 'null']
+          format: date
+          readOnly: true
+          description: Set by an admin. Payments are out of scope for this build.
+        standing:
+          $ref: '#/components/schemas/Standing'
+          readOnly: true
+        oriented_at:
+          type: [string, 'null']
+          format: date-time
+          readOnly: true
+          description: >-
+            When the member had their walk through of the lab. It gates nothing
+            here. The legacy application gated the directory and the equipment
+            list on it, which locked paying members out for a volunteer's
+            inaction.
+        oriented_by:
+          $ref: '#/components/schemas/Member'
+          readOnly: true
+          description: Who ran the orientation. Only `id` and `name` are populated.
+        current_skills: { type: [string, 'null'] }
+        desired_skills: { type: [string, 'null'] }
+        marketing_source:
+          type: [string, 'null']
+          description: How the member heard about the lab.
+        emergency_name: { type: [string, 'null'] }
+        emergency_phone: { type: [string, 'null'] }
+        emergency_email: { type: [string, 'null'], format: email }
+        twitter_url: { type: [string, 'null'], pattern: '^https?://' }
+        facebook_url: { type: [string, 'null'], pattern: '^https?://' }
+        github_url: { type: [string, 'null'], pattern: '^https?://' }
+        website_url: { type: [string, 'null'], pattern: '^https?://' }
+        email_visible:
+          type: boolean
+          description: Whether the directory shows this member's email.
+        phone_visible:
+          type: boolean
+          description: Whether the directory shows this member's phone number.
+        listed_in_directory:
+          type: boolean
+          description: Whether the member appears in the directory at all.
+        roles:
+          type: array
+          readOnly: true
+          description: The member's live roles. Read per request, never from a token claim.
+          items: { $ref: '#/components/schemas/RoleGrant' }
+        created_at: { type: string, format: date-time, readOnly: true }
+        updated_at: { type: string, format: date-time, readOnly: true }
+
+    MemberSelfUpdate:
+      type: object
+      description: >-
+        What a member may change on their own profile. The database refuses the
+        rest by trigger and names why, so this list is the courtesy layer rather
+        than the rule.
+      properties:
+        name: { type: string }
+        display_name: { type: [string, 'null'] }
+        pronouns: { type: [string, 'null'] }
+        email:
+          type: [string, 'null']
+          format: email
+          description: Changing this clears the verified date.
+        phone: { type: [string, 'null'] }
+        postal_code: { type: [string, 'null'] }
+        tier_id: { type: [string, 'null'] }
+        current_skills: { type: [string, 'null'] }
+        desired_skills: { type: [string, 'null'] }
+        marketing_source: { type: [string, 'null'] }
+        emergency_name: { type: [string, 'null'] }
+        emergency_phone: { type: [string, 'null'] }
+        emergency_email: { type: [string, 'null'], format: email }
+        twitter_url: { type: [string, 'null'], pattern: '^https?://' }
+        facebook_url: { type: [string, 'null'], pattern: '^https?://' }
+        github_url: { type: [string, 'null'], pattern: '^https?://' }
+        website_url: { type: [string, 'null'], pattern: '^https?://' }
+        email_visible: { type: boolean }
+        phone_visible: { type: boolean }
+        listed_in_directory: { type: boolean }
+      additionalProperties: false
+
+    MemberCreate:
+      type: object
+      description: >-
+        A member created by an admin, typically at the kiosk when somebody signs
+        a waiver. It grants nothing: no roles, no card, standing unknown.
+      required: [name]
+      properties:
+        name: { type: string }
+        email: { type: [string, 'null'], format: email }
+        phone: { type: [string, 'null'] }
+        postal_code: { type: [string, 'null'] }
+        pronouns: { type: [string, 'null'] }
+        tier_id: { type: [string, 'null'] }
+        joined_on: { type: [string, 'null'], format: date }
+        emergency_name: { type: [string, 'null'] }
+        emergency_phone: { type: [string, 'null'] }
+        emergency_email: { type: [string, 'null'], format: email }
+        listed_in_directory: { type: boolean, default: true }
+      additionalProperties: false
+
+    MemberAdminUpdate:
+      type: object
+      description: >-
+        Everything in `MemberSelfUpdate`, plus the membership facts an admin
+        owns.
+      properties:
+        standing: { $ref: '#/components/schemas/Standing' }
+        paid_through: { type: [string, 'null'], format: date }
+        joined_on: { type: [string, 'null'], format: date }
+        oriented_at:
+          type: [string, 'null']
+          format: date-time
+          description: When the orientation happened. Recording it gates nothing.
+        oriented_by: { type: [string, 'null'], format: uuid }
+        name: { type: string }
+        display_name: { type: [string, 'null'] }
+        pronouns: { type: [string, 'null'] }
+        email: { type: [string, 'null'], format: email }
+        phone: { type: [string, 'null'] }
+        postal_code: { type: [string, 'null'] }
+        tier_id: { type: [string, 'null'] }
+        current_skills: { type: [string, 'null'] }
+        desired_skills: { type: [string, 'null'] }
+        marketing_source: { type: [string, 'null'] }
+        emergency_name: { type: [string, 'null'] }
+        emergency_phone: { type: [string, 'null'] }
+        emergency_email: { type: [string, 'null'], format: email }
+        twitter_url: { type: [string, 'null'], pattern: '^https?://' }
+        facebook_url: { type: [string, 'null'], pattern: '^https?://' }
+        github_url: { type: [string, 'null'], pattern: '^https?://' }
+        website_url: { type: [string, 'null'], pattern: '^https?://' }
+        email_visible: { type: boolean }
+        phone_visible: { type: boolean }
+        listed_in_directory: { type: boolean }
+      additionalProperties: false
+
+    Card:
+      type: object
+      description: >-
+        A physical RFID card. Its identity is a uuid with no hardware meaning.
+        The legacy application wrote the card's primary key into the door
+        controller as the slot index, which cemented a 200 slot ceiling into a
+        table that will outlive the hardware.
+      required: [id]
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        member_id:
+          type: [string, 'null']
+          format: uuid
+          readOnly: true
+          description: >-
+            Who the card was issued to. Not editable: a card belongs to who it
+            was issued to. To move access, revoke this card and issue another.
+        tag_number:
+          type: string
+          pattern: '^[0-9A-F]{1,8}$'
+          description: >-
+            The number on the card itself, read over Wiegand-26. Uppercase
+            hexadecimal, at most 8 characters. Case matters: the reconcile loop
+            diffs the desired card table against what the controller holds and
+            writes only the differences, and mixed case would make every entry
+            look different on every pass. On `/me/cards` this is masked to the
+            last four characters.
+          examples: ['0000C4D9']
+        controller_slot:
+          type: [integer, 'null']
+          minimum: 10
+          maximum: 199
+          readOnly: true
+          description: >-
+            The card's position in the door controller's card table, assigned
+            here as the lowest free value. A client never supplies one and it is
+            never reassigned, because a slot is a physical address and
+            renumbering silently maps a member to somebody else's door
+            permission. Slots 0 to 9 are reserved for testing by the Access Card
+            Procedure. Slot 200 is not merely out of range: it passes the
+            firmware's bounds check, writes past the end of the card table onto
+            the stored alarm state, and corrupts it. Hence 10 to 199, enforced
+            in the database rather than in a form.
+        permission_mask:
+          type: integer
+          minimum: 0
+          maximum: 255
+          default: 1
+          description: >-
+            The one byte permission value stored with the slot. Mask 1 is full
+            access and mask 255 is no access.
+        label:
+          type: [string, 'null']
+          description: What this card is, in the member's words. For example, front desk spare.
+        note:
+          type: [string, 'null']
+          description: >-
+            Free text, and where the Hack Your Hackerspace vote that approved
+            this card gets referenced. See the note at the top of this file: the
+            cards table has no such column yet.
+        active: { type: boolean, readOnly: true }
+        issued_at: { type: string, format: date-time, readOnly: true }
+        revoked_at: { type: [string, 'null'], format: date-time, readOnly: true }
+        revoked_by:
+          $ref: '#/components/schemas/Member'
+          readOnly: true
+          description: Who revoked it. Only `id` and `name` are populated.
+        revoked_reason: { type: [string, 'null'], readOnly: true }
+        created_at: { type: string, format: date-time, readOnly: true }
+        updated_at: { type: string, format: date-time, readOnly: true }
+
+    CardIssue:
+      type: object
+      required: [member_id, tag_number]
+      properties:
+        member_id: { type: string, format: uuid }
+        tag_number: { type: string, pattern: '^[0-9A-F]{1,8}$' }
+        label: { type: [string, 'null'] }
+        note: { type: [string, 'null'] }
+        permission_mask: { type: integer, minimum: 0, maximum: 255, default: 1 }
+      additionalProperties: false
+
+    CardUpdate:
+      type: object
+      description: Label and permission mask. Nothing else about a card is editable.
+      properties:
+        label: { type: [string, 'null'] }
+        permission_mask: { type: integer, minimum: 0, maximum: 255 }
+      additionalProperties: false
+
+    CardRevoke:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          description: >-
+            Why the card is being revoked, recorded with who did it. Required by
+            this API. The database records the reason but does not require one,
+            so this endpoint is the only thing enforcing it today.
+      additionalProperties: false
+
+    Certification:
+      type: object
+      description: A tool a member can be certified on.
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        prerequisite_id:
+          type: [string, 'null']
+          description: A certification that must be held before this one is granted.
+        validity_months:
+          type: [integer, 'null']
+          description: How long a grant lasts, where the lab wants an expiry. Null means no expiry.
+        active: { type: boolean }
+
+    MemberCertification:
+      type: object
+      description: >-
+        One live certification per member per tool. Somebody can be certified,
+        revoked, and certified again, so a revoked grant stays as a row.
+      required: [id]
+      properties:
+        id: { type: integer, format: int64, readOnly: true }
+        member_id: { type: string, format: uuid, readOnly: true }
+        certification_id: { type: string }
+        certification:
+          $ref: '#/components/schemas/Certification'
+          readOnly: true
+        granted_by:
+          $ref: '#/components/schemas/Member'
+          readOnly: true
+          description: >-
+            The instructor or admin who granted it. Only `id` and `name` are
+            populated. Recorded from the caller's own identity, whatever the
+            request said.
+        granted_at: { type: string, format: date-time, readOnly: true }
+        expires_at: { type: [string, 'null'], format: date-time }
+        revoked_at: { type: [string, 'null'], format: date-time, readOnly: true }
+        revoked_by:
+          $ref: '#/components/schemas/Member'
+          readOnly: true
+        revoked_reason:
+          type: [string, 'null']
+          readOnly: true
+          description: Required when a certification is revoked. The database refuses one without it.
+        note: { type: [string, 'null'] }
+
+    CertificationGrant:
+      type: object
+      required: [member_id]
+      properties:
+        member_id: { type: string, format: uuid }
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: >-
+            Omit it to use the certification's own validity period, where it has
+            one.
+        note: { type: [string, 'null'] }
+      additionalProperties: false
+
+    Waiver:
+      type: object
+      description: >-
+        That a member has a signed waiver, when, and where the document is kept.
+        The document is deliberately not stored here and neither is anything on
+        it: no name, no address, no emergency contact, no guardian, no
+        signature. The lab already holds waivers somewhere, and a second copy
+        would be a second thing to protect and eventually to leak.
+      required: [id]
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        member_id: { type: string, format: uuid, readOnly: true }
+        signed_at: { type: string, format: date-time }
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: Null means the waiver does not expire.
+        storage:
+          type: string
+          description: >-
+            Which system holds the signed document. For example google-form, or
+            paper-file. Opaque to this system, so moving the documents elsewhere
+            later is a data change rather than a schema change.
+        reference:
+          type: [string, 'null']
+          description: >-
+            How to find it there: a form response id, a file id, a drawer label.
+            Also opaque. Never put anything from the document in here.
+        recorded_by:
+          $ref: '#/components/schemas/Member'
+          readOnly: true
+          description: The admin who recorded it. Only `id` and `name` are populated.
+        note: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time, readOnly: true }
+
+    WaiverCreate:
+      type: object
+      required: [signed_at, storage]
+      properties:
+        signed_at: { type: string, format: date-time }
+        expires_at: { type: [string, 'null'], format: date-time }
+        storage: { type: string, minLength: 1 }
+        reference: { type: [string, 'null'] }
+        note: { type: [string, 'null'] }
+      additionalProperties: false
+
+    WaiverStatus:
+      type: object
+      description: >-
+        A boolean and a date. This is the whole answer, on purpose: a host
+        checking somebody in needs to know a waiver exists and needs nothing
+        else.
+      required: [member_id, has_valid_waiver]
+      properties:
+        member_id: { type: string, format: uuid }
+        has_valid_waiver:
+          type: boolean
+          description: >-
+            True when at least one waiver on file has no expiry or has not
+            expired yet. False when there is no record at all.
+        latest_signed_at:
+          type: [string, 'null']
+          format: date-time
+          description: When the most recent waiver was signed. Null when there is none.
+
+    DoorEvent:
+      type: object
+      description: >-
+        A record of somebody entering a building. Readable by the member it
+        concerns and by admins, and by nobody else.
+      required: [id, occurred_at, source, event_key]
+      properties:
+        id: { type: integer, format: int64 }
+        occurred_at:
+          type: string
+          format: date-time
+          description: When it happened at the door.
+        recorded_at:
+          type: string
+          format: date-time
+          description: >-
+            When the members API stored it. Separate from `occurred_at` because
+            the door service buffers events while the link is down and flushes
+            them on reconnect. Collapsing the two would make every buffered
+            event look like it happened at flush time.
+        source:
+          type: string
+          enum: [controller, service, portal]
+          description: What reported the event.
+        event_key:
+          type: string
+          description: What happened, in the door service's vocabulary.
+        door:
+          type: [string, 'null']
+          description: Which door, where the event names one.
+        card_id:
+          type: [string, 'null']
+          format: uuid
+          description: The card that was presented, where a card was involved.
+        raw_data:
+          type: [integer, 'null']
+          description: The raw value the controller sent with the event, where it sent one.
+        detail:
+          type: object
+          description: Anything else the source reported, unchanged.
+          additionalProperties: true
+
+    DoorEventPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/DoorEvent' }
+        next_cursor:
+          type: [string, 'null']
+          description: >-
+            Pass this back as `cursor` for the next page. Null when there is
+            nothing older.
+
+    CardEligibility:
+      type: object
+      description: >-
+        Whether a member may be nominated for card access, the date it becomes
+        true, and what is still missing. Eligibility is not a card. A cardholder
+        nominates, the proposal is posted publicly, and card members vote.
+      required: [eligible, requirements, process]
+      properties:
+        eligible: { type: boolean }
+        eligible_on:
+          type: [string, 'null']
+          format: date
+          description: >-
+            The date every time based requirement is met. Null when something
+            that is not about time is missing, or when the rules are not
+            configured.
+        requirements:
+          type: array
+          items:
+            type: object
+            required: [rule, met, detail]
+            properties:
+              rule:
+                type: string
+                enum: [tier, tenure, standing, waiver]
+              met: { type: boolean }
+              detail:
+                type: string
+                description: >-
+                  A sentence saying where this member stands against the rule,
+                  with the number the rule uses.
+        process:
+          type: string
+          description: >-
+            What actually happens next, in words. This endpoint exists to end a
+            recurring support conversation, and the process is most of the
+            answer.
+
+    ApprovalStatus:
+      type: string
+      enum: [pending, approved, rejected, withdrawn]
+
+    Approval:
+      type: object
+      description: |
+        A proposed admin access change, waiting on a second admin.
+
+        NEW POLICY. This rule is introduced by this project and is not in the
+        lab bylaws.
+      required: [id]
+      properties:
+        id: { type: integer, format: int64, readOnly: true }
+        kind:
+          type: string
+          enum: [grant_role, revoke_role]
+          description: >-
+            `revoke_role` exists so the table can record one if the lab later
+            wants that. Nothing requires it and nothing consumes it today,
+            because revoking is single actor, so this API does not accept it on
+            a proposal.
+        target_member_id: { type: string, format: uuid }
+        target_member:
+          $ref: '#/components/schemas/Member'
+          readOnly: true
+          description: Only `id` and `name` are populated.
+        role_id: { type: string }
+        reason:
+          type: [string, 'null']
+          description: Why this change is being proposed. The second admin reads it.
+        proposed_by:
+          type: string
+          format: uuid
+          readOnly: true
+          description: >-
+            The caller who created it. Recorded from their own identity,
+            whatever the request said.
+        proposed_at: { type: string, format: date-time, readOnly: true }
+        decided_by:
+          type: [string, 'null']
+          format: uuid
+          readOnly: true
+          description: >-
+            The second admin. Also recorded from their own identity, and frozen
+            once set.
+        decided_at: { type: [string, 'null'], format: date-time, readOnly: true }
+        status:
+          $ref: '#/components/schemas/ApprovalStatus'
+          readOnly: true
+        expires_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Thirty days after the proposal was made, unless an admin set otherwise.
+        applied:
+          type: boolean
+          readOnly: true
+          description: >-
+            Whether the role grant was written as a result of this decision.
+            Present once the approval has been decided.
+
+    ApprovalCreate:
+      type: object
+      required: [kind, target_member_id, role_id]
+      properties:
+        kind:
+          type: string
+          enum: [grant_role]
+          description: >-
+            Only `grant_role`. Revoking an admin is single actor by design, so
+            proposing a revocation here would create a row nothing acts on.
+        target_member_id: { type: string, format: uuid }
+        role_id:
+          type: string
+          description: >-
+            A role whose `grants_roles` is true, which today means admin.
+            Ordinary roles do not go through this queue.
+        reason: { type: [string, 'null'] }
+      additionalProperties: false
+
+    SpaceApiDocument:
+      type: object
+      description: >-
+        The SpaceAPI 0.12 document the legacy application serves, carried
+        forward unchanged. Two fields are pinned here because api-design.md
+        section 3.7 states them. The rest are carried across from the live
+        response and are not re-derived, so this schema allows them rather than
+        naming them. The serialised document must stay under 900 bytes.
+      required: [open, status]
+      properties:
+        open:
+          type: boolean
+          description: True when either door is unlocked.
+        status:
+          type: string
+          description: Which doors are open.
+          enum:
+            - doors_open=both
+            - doors_open=door1
+            - doors_open=door2
+            - doors_open=none
+      additionalProperties: true

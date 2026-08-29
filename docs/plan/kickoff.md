@@ -5,6 +5,10 @@
 Paste this to start implementation. It assumes a fresh session with no memory of
 how any of this got here.
 
+This one takes the next step carefully, one at a time. For a session with multi
+agent orchestration, meant to carry several phases at once, use
+`docs/plan/kickoff-ultra.md` instead.
+
 ---
 
 You are implementing Project ORO, the members and door access system for HeatSync

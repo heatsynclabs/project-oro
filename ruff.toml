@@ -1,0 +1,40 @@
+# Rule 6 of CLAUDE.md, the three ceilings a linter can measure.
+#
+# Chosen in docs/decisions/0005-file-and-function-ceilings.md. Ruff covers three
+# of the five: cyclomatic complexity, function parameters, and nesting depth.
+# The other two, a 300 line source file and a 50 line function, are counted by
+# tools/ceilings/check_ceilings.py, because no candidate priced in that ADR
+# counts either of them.
+#
+# Nothing here is a style opinion. Every number below is one of rule 6's, and
+# adding a rule that is not in rule 6 makes this file an argument rather than a
+# gate.
+
+# Every Python file in the repository, whatever tree it sits in.
+include = ["**/*.py"]
+
+# Migrations, generated files and vendored code are exempt by rule 6, and the
+# rule says they are listed with a reason rather than covered by a blanket glob.
+# There are none today: db/migrations holds SQL, which ruff does not read, and
+# nothing here is vendored or generated.
+extend-exclude = []
+
+[lint]
+select = [
+  "C901",     # cyclomatic complexity, rule 6 ceiling of 10
+  "PLR0913",  # too many arguments, rule 6 ceiling of 4
+  "PLR1702",  # too many nested blocks, rule 6 ceiling of 4
+]
+
+# PLR1702 is a preview rule in 0.16.5, so nesting depth is only enforced with
+# this on. Read from `ruff rule PLR1702`. If it stabilises, this line goes and
+# nothing else changes. If it is withdrawn, rule 6's depth ceiling goes back to
+# being enforced by review and this file says so.
+preview = true
+
+[lint.mccabe]
+max-complexity = 10
+
+[lint.pylint]
+max-args = 4
+max-nested-blocks = 4

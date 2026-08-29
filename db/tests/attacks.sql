@@ -7,10 +7,15 @@ INSERT INTO members (id,identity_subject,name,email,tier_id,standing,joined_on,
                      phone,email_visible,phone_visible,listed_in_directory) VALUES
  ('dead0000-0000-0000-0000-00000000000d','sub-alice','Alice','alice@example.test','basic','good','2020-01-01','480 555 1111',false,false,true),
  ('dead0000-0000-0000-0000-00000000000e','sub-bob','Bob','bob@example.test','basic','good','2020-01-01','480 555 2222',false,false,true),
- ('dead0000-0000-0000-0000-00000000000c','sub-mallory','Mallory','mal@example.test','basic','good','2020-01-01','480 555 3333',false,false,true);
+ ('dead0000-0000-0000-0000-00000000000c','sub-mallory','Mallory','mal@example.test','basic','good','2020-01-01','480 555 3333',false,false,true),
+ ('dead0000-0000-0000-0000-00000000000f','sub-carol','Carol','carol@example.test','basic','good','2020-01-01','480 555 4444',false,false,true);
+-- Three admins, because that is what spends the bootstrap quota. Seat only two
+-- and the escape is still open, so every refusal below would pass for the wrong
+-- reason: the grant would succeed and the reader would never know.
 INSERT INTO member_roles (member_id,role_id) VALUES
  ('dead0000-0000-0000-0000-00000000000d','admin'),
- ('dead0000-0000-0000-0000-00000000000e','admin');
+ ('dead0000-0000-0000-0000-00000000000e','admin'),
+ ('dead0000-0000-0000-0000-00000000000f','admin');
 INSERT INTO cards (member_id,tag_number,controller_slot) VALUES
  ('dead0000-0000-0000-0000-00000000000d','0000AAAA',101);
 INSERT INTO payments (member_id,amount_cents,paid_on,method) VALUES
@@ -48,9 +53,12 @@ CALL t.must_query('and the time was stamped rather than left null',
   $$SELECT (decided_at IS NOT NULL)::text FROM approvals WHERE id=500$$, 'true');
 
 CALL t.note('the bootstrap escape does not reopen by revoking admins');
-CALL t.must_change('revoking Alice, leaving one admin',
+CALL t.must_change('revoking Alice',
   $$UPDATE member_roles SET revoked_at=now(), revoked_reason='test'
      WHERE member_id='dead0000-0000-0000-0000-00000000000d' AND role_id='admin'$$);
+CALL t.must_change('revoking Carol as well, leaving one admin',
+  $$UPDATE member_roles SET revoked_at=now(), revoked_reason='test'
+     WHERE member_id='dead0000-0000-0000-0000-00000000000f' AND role_id='admin'$$);
 CALL t.must_query('only one admin remains', $$SELECT admin_count()::text$$, '1');
 CALL t.must_fail('granting admin with no approval anyway',
   $$INSERT INTO member_roles (member_id,role_id)

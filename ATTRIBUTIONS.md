@@ -59,6 +59,41 @@ Tracked in `docs/decisions/` and raised with the board before cutover.
 
 ---
 
+## Pinned tooling
+
+Hand maintained, because none of this is in a lockfile and the generator below
+reads lockfiles. Everything here is pinned to a commit or a digest rather than a
+moving tag, so a tag repointed at different code cannot change what runs.
+
+| Tool | Pinned to | Licence | Used for |
+|---|---|---|---|
+| [actions/checkout](https://github.com/actions/checkout) v7.0.1 | commit `3d3c42e5aac5ba805825da76410c181273ba90b1` | MIT, GitHub | Checking out the repository in every job in `.github/workflows/ci.yml`. Version, tag commit and licence read from the GitHub API on 2026-08-27 |
+| [Redocly CLI](https://github.com/Redocly/redocly-cli) 2.49.0 | the npm version, in the workflow and in `HANDOFF.md` | MIT, Redocly Inc. | Validating `docs/api/members-v1.yaml`, in CI and by hand. Chosen in [ADR 0001](./docs/decisions/0001-openapi-toolchain.md), which records how the version and licence were read |
+| [Prism](https://github.com/stoplightio/prism) 5.15.10 | image digest `sha256:586d1f0f94f8d0eaf20b26b8b41f985f2a2d494bea297bd3988c3de3eb87094e`, in `compose.development.yaml` | Apache 2.0, Stoplight | Serving the contract as a mock, for the members portal and for CI. Chosen in [ADR 0002](./docs/decisions/0002-mock-server.md) |
+| [Zitadel](https://github.com/zitadel/zitadel) 4.17.1 | image digest `sha256:3ac6910685d48f32481f01f45e3e6215efe5a9df2c069591b481e9a101712db5`, in `compose.yaml` | **AGPL-3.0**, Zitadel. Read from the GitHub API on 2026-08-28, and see the note below | The identity service. Chosen in [ADR 0004](./docs/decisions/0004-identity-service.md) |
+| [Ruff](https://github.com/astral-sh/ruff) 0.16.5 | image digest `sha256:8355b79edf35788aef97ac9b1ff3b758604a5d67963ead617c45c72e1d92871f`, in `tools/ceilings/run.sh` | MIT, Astral. Read from the repository `LICENSE` on 2026-08-28 | Three of the five ceilings in rule 6. Chosen in [ADR 0005](./docs/decisions/0005-file-and-function-ceilings.md) |
+| [bcrypt-ruby](https://github.com/bcrypt-ruby/bcrypt-ruby) 3.1.20 | the gem version, in `tools/identity/tests/generate_hashes.sh`, installed into a throwaway `ruby:3.3-alpine` | MIT, Coda Hale and Jeremy Kemper | Writing the fixture hashes the phase 2 password proof runs on. It is the library the legacy Rails application hashes with, which is the whole reason it is this one and not another |
+
+Every other image the stack runs is named by tag: `postgres:18` and
+`caddy:2-alpine`. Neither is vendored and neither is modified. `ruby:3.3-alpine`
+is not one of them: nothing deploys it, and it is run by hand only when somebody
+regenerates the identity fixtures.
+
+**On the AGPL.** Zitadel is run as a published container, unmodified, as a
+separate process the stack talks to over HTTP. Nothing in this repository links
+against it or embeds it, and no source of ours is derived from it, so the
+licence's copyleft reaches nothing here. If somebody ever patches that image,
+that changes, and the obligation to offer the modified source starts at the same
+moment. Rule 9 says copyleft is checked before the dependency lands rather than
+after, and this is that check.
+
+The jobs otherwise run scripts that live in this repository, on the runner's own
+Docker, Python and Node, so the CI configuration stays portable enough to be
+re-implemented on Woodpecker without rewriting the checks themselves. That is the
+exit named in `docs/plan/architecture.md` section 2.
+
+---
+
 ## How to add an entry
 
 When you take a design, an algorithm, a schema, or more than a few lines of code

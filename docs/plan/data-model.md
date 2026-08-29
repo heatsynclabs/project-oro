@@ -14,7 +14,7 @@ copy in the prose always loses. Column comments live in the migrations too, via
 | `db/migrations/003_rules.sql` | The triggers that enforce the rules |
 | `db/migrations/004_security.sql` | Row level security, roles, the door path |
 | `db/seed/001_reference.sql` | Tiers, roles, governance parameters |
-| `db/tests/` | 164 assertions. `db/tests/run.sh` rebuilds from nothing and runs them |
+| `db/tests/` | 171 assertions. `db/tests/run.sh` rebuilds from nothing and runs them |
 
 Three independent rewrites over eight years converged on most of this model.
 Where they agreed, that agreement is the strongest available signal. Where they
@@ -231,7 +231,9 @@ decided approval cannot be repointed at a different member afterwards and a gran
 cannot be quietly moved. Without those, the composite key faithfully follows a
 target that was edited after the fact.
 
-Verified in `db/tests/two_approver.sql`, 164 assertions, including every refusal.
+Verified in `db/tests/two_approver.sql`, 24 assertions covering every refusal,
+inside a suite of 171. The count used to read 171 here, which quietly credited
+one file with the whole suite's work.
 
 ### 3.1 The bootstrap hole, which only running it revealed
 
@@ -243,14 +245,31 @@ The second version allowed a grant when zero admins existed. That fixed the empt
 case and left a worse one: at exactly one admin, no approval by two admins is
 possible, so **you could never get from one admin to two.**
 
-The rule now binds only when two or more live admins exist, expressed as
-`two_approver_rule_can_bind()`. That is not a workaround, it is a true statement
-about the policy: a two approver rule cannot bind until two approvers exist. It
-also covers disaster recovery, because if the lab ever drops to one admin, that
-admin can appoint another instead of the system being permanently unadministrable.
-It grants no power that is not already held, since a lone admin already controls
-everything the rule protects, and every bootstrap grant raises a warning that
-records it.
+The rule now binds once the bootstrap is spent, expressed as
+`two_approver_rule_can_bind()`. The bootstrap is three grants of a role that can
+itself grant roles, made with no approval behind them, over the whole life of the
+database. That is not a workaround, it is a true statement about the policy: a
+two approver rule cannot bind until two approvers exist, and the lab wants a
+third seat so that losing one does not leave a rule nobody can satisfy. It grants
+no power that is not already held, since a lone admin already controls everything
+the rule protects, and every bootstrap grant raises a warning naming which of the
+three seats it took.
+
+It is a quota rather than a threshold on the live admin count, and that
+difference is where the security of it sits. A threshold of three would hold the
+escape open for as long as the lab had only two admins, which is exactly the
+point at which two people could have satisfied the rule and should have been made
+to. A quota is spent by use. Nothing separate records it: a bootstrap grant is
+already a `member_roles` row with a null `approval_id`, revoked rows still count,
+and no application role holds `DELETE` on that table, so the count only rises.
+
+Once spent, `two_approver_armed` latches and the escape never reopens. That latch
+exists because an earlier version read the live admin count alone, so an admin
+could revoke their way back under the threshold and grant freely. Its cost is
+worth stating rather than discovering later: if the lab ever drops to one admin,
+that admin cannot appoint another and an operator has to intervene at the
+database. That is the deliberate trade. The alternative hands the escape back to
+anybody who can revoke.
 
 ---
 
@@ -339,12 +358,33 @@ make that safe.
 Lookups, then `members`, then the identity import writing subjects back, then
 roles, cards, certifications, waivers, door events. Foreign keys force most of it.
 
-Legacy `admin`, `instructor`, and `accountant` booleans have no approval behind
-them, and inventing one would be a lie in the audit trail. So the import script,
-when it is written in phase 3, will run with the role trigger disabled inside one
-transaction, writing `granted_by = NULL` and recording that these predate the
-policy. A deliberate, logged exception
-rather than a nullable column quietly permitting it forever.
+Legacy `admin` and `accountant` booleans have no approval behind them, and
+inventing one would be a lie in the audit trail. So `tools/migration/022_roles.sql`
+runs with `role_grant_rules` disabled by name inside one transaction, writes
+`granted_by = NULL` and `approval_id = NULL`, and then names every member it
+granted to. A deliberate, logged exception rather than a nullable column quietly
+permitting it forever. `arm_the_rule` is a separate trigger and is left on, so an
+import that takes the lab past three admins arms the two approver rule on the way
+through.
+
+This paragraph named `instructor` as a third boolean until 2026-08-28, and that
+was wrong. An instructor here is an instructor on one tool, per `docs/glossary.md`
+and `certification_instructors`, and `db/seed/001_reference.sql` seeds no
+instructor role and no certifications at all, so a global boolean has nothing to
+become. The import refuses to start while any legacy user still carries it, and
+6.3 lists it with the other decisions a person owns.
+
+Two measured constraints on the order above, both from a real Postgres:
+
+- **Turning the trigger off is required, not defensive.** Four admin grants in a
+  single `INSERT` are refused inside that one statement at the fourth row, with
+  `Granting admin needs an approval from a second admin`, because the bootstrap
+  quota is three. Any lab with four or more admins cannot import them otherwise.
+- **Roles have to come after the identity import, and that is not a preference.**
+  `link_or_create_member` refuses a member row that already holds a live role,
+  saying it must be linked by an admin. That refusal is deliberate and protects
+  an admin's row from whoever turns up with their address. It also means every
+  migrated role holder needs linking by hand if roles land first.
 
 ### 6.2 The assertions that abort the migration
 
@@ -375,5 +415,8 @@ gives each one an owner.
 - Cards at slot 200 or below 10.
 - Members with a `payee`, somebody paying on another member's behalf. There is
   archive precedent and it needs a home if any rows exist.
+- Members carrying the legacy `instructor` flag. It is global and an instructor
+  here is per tool, so somebody has to say which certifications each of them may
+  sign off, or that the flag is dropped and the grants are made again by hand.
 - Where waiver documents live, and what reference identifies one. The import
   needs a `storage` and a `reference` per row, not the documents themselves.

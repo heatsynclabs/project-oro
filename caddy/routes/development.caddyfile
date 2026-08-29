@@ -1,0 +1,37 @@
+# What a laptop serves: the members portal at the root, the theme under /theme,
+# and the contract mock under /v1, on one origin. The portal then calls the same
+# paths it will call against the real service.
+#
+# Plain HTTP, no tls directive, because an http site has none. Under
+# "tls internal" this page could not be opened at all: Chrome shows its
+# certificate interstitial for Caddy's local authority, and getting past it
+# means installing a root certificate as an administrator. ADR 0003 has the
+# reasoning and what it trades away.
+http://{$ORO_HOSTNAME} {
+	# Repeated from deployment.caddyfile rather than shared. Two uses is a
+	# coincidence, and the development suite calls this under both, so a drift
+	# fails a check.
+	handle /health {
+		respond "ok" 200
+	}
+
+	# handle_path strips the prefix, and that is the point of this block rather
+	# than a detail of it. The contract declares its server as
+	# https://api.heatsynclabs.org/v1 and Prism ignores that prefix, so the mock
+	# answers /me and refuses /v1/me. Both were called to confirm it.
+	handle_path /v1/* {
+		reverse_proxy mock:4010
+	}
+
+	# The theme, served straight out of packages/gantry-tokens. The portal used
+	# to ship its own byte identical copy and a check to catch them drifting.
+	handle_path /theme/* {
+		root * /srv/theme
+		file_server
+	}
+
+	handle {
+		root * /srv/members
+		file_server
+	}
+}

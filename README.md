@@ -10,35 +10,62 @@ software around the Arduino that unlocks the building. The Arduino itself stays.
 
 ## Status
 
-Planning and database. The schema, the rules it enforces, and their tests exist
-and run. No services, no apps, no deployment.
+There is something to open in a browser now. `make development` brings up the
+members portal on a laptop, and it reads a mock of the API contract rather than a
+service, because the service is not built. Nothing is deployed.
 
 | | |
 |---|---|
-| Built | Schema, row level security, 164 database assertions, a prose gate with 74 tests, a commit hook |
-| Not built | The API service, the door service, the three portals, the theme packages, CI |
+| Built | The schema and its row level security, 171 database assertions. The members API contract as OpenAPI, and a mock that serves it. The door controller port with its fake and 104 conformance tests. The GANTRY token layer with a contrast validator. A stack of Postgres, Caddy and the identity service, with its four clients, its branding, the proof that it can hold the passwords members already have, and one whole sign in through its screens. A members portal, read only, against the mock. CI on twelve jobs, a prose gate with 77 tests, a commit hook |
+| Not built | The API service, so nothing yet reaches the members database over HTTP. The migration carries members and cards and not yet certifications, waivers, payments or door events. The door service itself. The admin and door apps, though their identity clients are registered. `gantry-css` and `gantry-vue` |
 
 `HANDOFF.md` tracks this in detail and is the file to update when something
 lands.
 
 ## Run it
 
-Needs Docker and Python 3.8 or newer. Nothing else.
+Needs Docker and Python 3.8 or newer. The API contract check also needs Node,
+and nothing else does.
 
 ```sh
-./db/tests/run.sh          # schema from nothing, 164 assertions, about 6 seconds
-./db/tests/run.sh --update # regenerate expected output, deliberately
+./db/tests/run.sh                     # schema from nothing, 171 assertions
+./db/tests/run.sh --update            # regenerate expected output, deliberately
+
+./services/door/tests/run.sh          # the door port, its fake, 104 tests
+./packages/gantry-tokens/tests/run.sh # the theme, every ink on every ground
 
 python3 tools/voice-check/test_voice_check.py
 python3 tools/voice-check/test_regressions.py
 python3 tools/voice-check/test_behaviour.py
 
-python3 tools/voice-check/voice_check.py docs/ CLAUDE.md db/ tools/
+./tools/ci/voice-gate.sh              # the prose gate over every tracked file
+
+make mock-test                        # the contract mock, started, called, removed
+make development-test                 # both stack shapes, in a throwaway project
+make portal-test                      # the members portal through Caddy
 ```
 
-`run.sh` creates a throwaway `postgres:18` container, applies every migration
-and seed in order, runs each test file in a transaction that rolls back, and
-removes the container.
+`db/tests/run.sh` creates a throwaway `postgres:18` container, applies every
+migration and seed in order, runs each test file in a transaction that rolls
+back, and removes the container. Expect about ten seconds once that image is
+local. The door suite and the theme suite need nothing installed at all.
+
+The three `make` targets need Docker Compose, and each one builds and tears down
+its own project, so none of them touches a stack you have up.
+
+To bring the stack up, copy `.env.example` to `.env`, set every value in it, and
+run `make up`. Nothing the deployment needs has a default, and the stack refuses
+to start on a value nobody chose. The two ports only a laptop reads do have one,
+and `.env.example` says which. `make help` lists the rest.
+
+`make development` starts the same stack with additions for a browser to open:
+the members portal at the root, the API contract served as a mock under `/v1`,
+both behind Caddy on one origin, and the identity service on its own port. They
+come from an override file, `compose.development.yaml`, so `make up` starts what
+it always started. A laptop serves plain HTTP on `ORO_HTTP_PORT`, so a browser
+opens it with no certificate to accept, and
+`docs/decisions/0003-plain-http-for-development.md` says what that trades away.
+A deployment is unchanged and still serves TLS.
 
 Enable the commit hook once per clone:
 
@@ -55,14 +82,33 @@ ATTRIBUTIONS.md      what was borrowed, from where, under what licence
 
 db/migrations/       the schema. This is the authority
 db/seed/             tiers, roles, governance parameters
-db/tests/            164 assertions, run by db/tests/run.sh
+db/tests/            171 assertions, run by db/tests/run.sh
 
-docs/plan/           architecture, API contract, data model, build order
+services/door/       the controller port, the fake, the conformance suite
+packages/            gantry-tokens: the theme, and the contrast validator
+apps/members/        the members portal, read only, against the contract mock
+
+docs/api/            the members API contract, as OpenAPI
+docs/plan/           architecture, API design, data model, build order
 docs/conventions/    voice
 docs/decisions/      architecture decision records
 docs/glossary.md     domain words. Code uses these exactly
 
 tools/voice-check/   prose gate, run in CI and on every commit message
+tools/ci/            the two checks CI runs that need a git range
+tools/mock/          the pinned mock server, and what proves it serves the contract
+tools/development/   checks over both stack shapes
+tools/members-portal/ checks over the portal, through Caddy
+tools/identity/      the phase 2 password proof, and the hashes it runs on
+tools/ceilings/      rule 6, in a pinned ruff and a line counter
+tools/migration/     the legacy import, and a fixture a replica of the old app wrote
+
+caddy/               TLS, the health route, and the routes each shape serves
+compose.yaml         Postgres, Caddy and the identity service. Makefile wraps it
+compose.development.yaml  what a laptop adds: the mock, the routes for it, and a
+                     port on the identity service
+db/init/             the identity role and its database, made once
+.github/workflows/   CI. Twelve jobs, and a dormant deploy
 ```
 
 ## Reading order

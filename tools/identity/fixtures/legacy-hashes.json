@@ -1,0 +1,70 @@
+{
+  "generated_by": "tools/identity/tests/generate_hashes.sh",
+  "hasher": "bcrypt-ruby 3.1.20, cost 10, no pepper, which is what config/initializers/devise.rb sets in the legacy application",
+  "cases": [
+    {
+      "name": "ordinary",
+      "password": "correct horse battery staple",
+      "bytes": 28,
+      "characters": 28,
+      "hash": "$2a$10$KltC0vmQBqoAjvykEFwI.elTbQcHJjtnof0ma4WmATGl.gQn5umIy",
+      "note": "The common case. Nothing awkward about it"
+    },
+    {
+      "name": "minimum",
+      "password": "Passw0rd",
+      "bytes": 8,
+      "characters": 8,
+      "hash": "$2a$10$GxPoUYXxQPlVoIoNDnKmS.kAEpIDjkh1tC7o63JXBkWbYT5cjgece",
+      "note": "Eight bytes, the shortest Zitadel accepts by default"
+    },
+    {
+      "name": "non_ascii",
+      "password": "paßwort-日本語-éè",
+      "bytes": 23,
+      "characters": 14,
+      "hash": "$2a$10$FhY4fP.z2/HzV4knLPH1VevDwEtGk0aW4GQQsCylvi8Ikxm3FxFsC",
+      "note": "Sharp s, Japanese and accented Latin, 23 bytes in 14 characters"
+    },
+    {
+      "name": "trailing_space",
+      "password": "trailing space ",
+      "bytes": 15,
+      "characters": 15,
+      "hash": "$2a$10$Q0jy8Fe0tMdBP.bmNRlZH.kN/AmwH4.ZgVzPeq4CMDRzxLqNdLVo6",
+      "note": "A space at the end is part of the password and must stay part of it"
+    },
+    {
+      "name": "bytes_71",
+      "password": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "bytes": 71,
+      "characters": 71,
+      "hash": "$2a$10$uWhDr2AGcykaK67EGRdE3OTg.m16ejNGFHf96KFTTJk3i8HCYE./6",
+      "note": "One under the bcrypt input limit"
+    },
+    {
+      "name": "bytes_72",
+      "password": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "bytes": 72,
+      "characters": 72,
+      "hash": "$2a$10$OwDkcMYw8H7gIxe2oMndI.O45RTDID9HaqE4QVgGZ8w60cP7D/59u",
+      "note": "Exactly the bcrypt input limit. The last length that works"
+    },
+    {
+      "name": "bytes_73",
+      "password": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "bytes": 73,
+      "characters": 73,
+      "hash": "$2a$10$CTC6Jzw5fnh3axUINfAM7OIJO60wMoxUHBKoNNpdvh4/XMcNv/vdS",
+      "note": "One over. Ruby truncates and accepts it. Go refuses"
+    },
+    {
+      "name": "japanese_27",
+      "password": "日本語日本語日本語日本語日本語日本語日本語日本語日本語",
+      "bytes": 81,
+      "characters": 27,
+      "hash": "$2a$10$vL4QkkpJO3lRtukIfzW41Oj31mdguQHVkIlETHMXcZZ/or8r/vBum",
+      "note": "27 characters and 81 bytes. Nothing about it looks long"
+    }
+  ]
+}

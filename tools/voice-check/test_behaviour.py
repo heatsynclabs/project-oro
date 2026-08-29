@@ -23,6 +23,7 @@ MD = Path("sample.md")
 TS = Path("sample.ts")
 PY = Path("sample.py")
 COMMIT = Path("COMMIT_EDITMSG")
+SH = Path("script.sh")
 
 
 def rules(text: str, path: Path = MD, commit: bool = False) -> set[str]:
@@ -155,6 +156,21 @@ def test_expand_passes_a_named_file_through_whatever_its_suffix():
 def test_expand_reports_a_missing_path():
     from voice_check import expand
     assert expand(Path("/nonexistent/path/xyz")) == []
+
+
+# ------------------------------------------------------------------ shell
+
+def test_lints_a_comment_in_a_shell_script():
+    assert "banned-word" in errors("#!/bin/sh\n# a seamless way to do it\n", SH)
+
+
+def test_leaves_shell_code_alone():
+    assert "banned-word" not in errors('#!/bin/sh\ngrep -c "seamless" "$f"\n', SH)
+
+
+def test_shell_scripts_are_reached_by_a_directory_walk():
+    from voice_check import CHECKED_SUFFIXES
+    assert ".sh" in CHECKED_SUFFIXES
 
 
 def _run() -> int:

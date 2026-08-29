@@ -42,7 +42,7 @@ and the archive, and defects found by running the design rather than reading it.
 | Card grants through the two admin queue | Card issue is an ordinary admin action; the vote happens at HYH and the system records the outcome | The two approver rule covers admin access, which is what was asked for. Modelling the bylaws vote as a workflow would be building a governance platform |
 | Six months to card eligibility | Two months, read from `governance_parameters` | The membership voted the change. The public site is stale |
 | Door service as one Python module | Door API, a controller port, an adapter, and a conformance suite | Directed. The Arduino is expected to be replaced; the API should not change when it is |
-| Secrets in GitHub Environments | SOPS with age in git, GitHub holds no deploy credentials | The system must not need GitHub to run or to be rebuilt |
+| Secrets in GitHub Environments | SOPS with age in git for everything the stack reads. GitHub holds four deploy secrets and nothing else, per [ADR 0008](../decisions/0008-deploying-from-actions.md) | The system must not need GitHub to run or to be rebuilt. The deploy is `make up` over SSH, so losing GitHub costs a convenience rather than the ability to deploy |
 | "Rewrites the controller card table every 15 minutes" | Read, diff, write only differences | The firmware calls `EEPROM.write` and never `EEPROM.update`. A blind rewrite every 15 minutes exhausts the rated 100,000 cycles in under three years |
 | Two Postgres instances | One server, two databases | Halves what has to be backed up, upgraded, and monitored, for a threat model where reaching the host already lost the argument |
 | Door at phase 4 | Door at phase 5, but its port, fake, and conformance suite built in phase 1 | Three rewrites stalled at the door. The riskiest unknown gets retired first even though it ships last |
@@ -176,4 +176,4 @@ scope by direction.
 - A driver's seat drill. Once per phase, somebody who did not build it performs
   the core operation from the runbook while the author watches and says nothing.
 - A stopping condition. Written now, while it is cheap.
-- Working code. The schema, its rules, and 164 database assertions exist and run.
+- Working code. The schema, its rules, and 171 database assertions exist and run.

@@ -1,0 +1,274 @@
+# The Project ORO stack, as it exists today: Postgres, Caddy and the identity
+# service.
+#
+# The API service, the door service and the three portals are not built, so they
+# have no service block here and no route in caddy/routes/deployment.caddyfile.
+# Each one arrives with the phase that builds it.
+#
+# This file is the deployment and it is the whole of it. What a laptop adds is
+# in compose.development.yaml, an override rather than a profile, so there is
+# one way to ask for each shape:
+#
+#   docker compose up                                      the deployment
+#   docker compose -f compose.yaml -f compose.development.yaml up   a laptop
+#
+# Both run as typed, with nothing sourced and nothing exported first. make up
+# and make development are those two commands with a healthcheck wait around
+# them. There was a profile here until 2026-08-28 and it could be asked for two
+# ways that disagreed. ADR 0002 carries what that cost.
+#
+# Nothing in this file names a hosting provider. The test that keeps it that way
+# is in docs/plan/architecture.md section 3: a member clones this repository onto
+# a machine they own, provides an .env, runs make up, and has the stack.
+
+name: oro
+
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: oro
+      POSTGRES_PASSWORD: "${ORO_DB_PASSWORD:?set ORO_DB_PASSWORD in .env. Generate one with: openssl rand -base64 24}"
+      # Read by db/init/001_identity_role.sql, which creates the login the
+      # identity service uses. It is here rather than in that file because a
+      # password in a tracked file is a password everybody has.
+      ORO_IDENTITY_DB_PASSWORD: "${ORO_IDENTITY_DB_PASSWORD:?set ORO_IDENTITY_DB_PASSWORD in .env. Generate one with: openssl rand -base64 24}"
+    volumes:
+      # postgres:18 sets PGDATA to /var/lib/postgresql/18/docker and declares its
+      # volume one level up, at /var/lib/postgresql. Read from the image with
+      # docker image inspect postgres:18. Mounting the /var/lib/postgresql/data
+      # path that earlier majors used gives a container that starts, writes the
+      # cluster into the image layer, and loses every row on the next recreate.
+      - db_data:/var/lib/postgresql
+      # The postgres image runs everything in here once, against an empty data
+      # directory, and never again. A directory rather than a file, and it holds
+      # a tracked .sql, so the bind source cannot be missing. A bind whose source
+      # is missing does not fail: Docker creates a directory in its place and the
+      # stack comes up healthy having run nothing.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # A real query rather than pg_isready. The image runs a temporary server
+      # during first initialisation and then restarts it, so pg_isready reports
+      # ready before the database a caller wants exists. HANDOFF.md section 7.
+      # The identity database rather than oro, because it is the stricter of the
+      # two: it is created by db/init/001_identity_role.sql, which runs after
+      # oro exists, so a connection to it proves the server is real and the init
+      # ran. Answering on oro alone would let the identity service start against
+      # a database that is not there.
+      test: ["CMD", "psql", "-U", "postgres", "-d", "identity", "-c", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    # No published port on purpose. Nothing outside this stack has any business
+    # reaching the database, and make psql opens a shell inside the container.
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      ORO_HOSTNAME: "${ORO_HOSTNAME:?copy .env.example to .env and set it}"
+      ORO_TLS: "${ORO_TLS:?copy .env.example to .env and set it}"
+      # Which file caddy/Caddyfile imports its routes from. This file is the
+      # deployment, so it says so plainly. compose.development.yaml overrides it.
+      ORO_ROUTES: deployment
+    ports:
+      - "${ORO_HTTP_PORT:?copy .env.example to .env and set it}:80"
+      - "${ORO_HTTPS_PORT:?copy .env.example to .env and set it}:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/routes:/etc/caddy/routes:ro
+      # The members portal, theme and all: static files, no build step.
+      # Bound in both shapes, because a volume cannot be moved into an override
+      # without repeating the whole caddy block, and read by nothing unless the
+      # development routes are the ones imported. Nothing outside this directory
+      # is bound in for it. A bind
+      # whose source is missing does not fail: Docker creates a directory at
+      # that path in the working tree, and the stack then comes up healthy
+      # serving nothing where a file was.
+      - ./apps/members:/srv/members:ro
+      # The theme, from the package that owns it. Bound here rather than copied
+      # into the portal, because the copy was byte identical and needed a check
+      # to catch the two drifting apart. The deployment carries this bind and
+      # routes nothing to it, which is cheaper than two copies of 398 lines.
+      - ./packages/gantry-tokens:/srv/theme:ro
+      # Certificates and the ACME account key. Without a volume Caddy issues a
+      # fresh certificate on every recreate, which on a public hostname walks
+      # into the certificate authority's rate limit and leaves the stack with no
+      # certificate at all.
+      - caddy_data:/data
+    healthcheck:
+      # Caddy exits when it cannot parse the Caddyfile, and restart:
+      # unless-stopped then puts it in a loop that compose still counts as
+      # started. Without a healthcheck here, make up reports success while the
+      # only thing serving the hostname is a container dying every second. The
+      # admin endpoint answers only once a config has loaded, so it is the
+      # cheapest proof that the Caddyfile parsed. Caddy binds it to
+      # localhost:2019 by default, so it is not reachable from outside.
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:2019/config/"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  identity_bootstrap:
+    # One command, run once before the identity service starts: make the volume
+    # that service writes its bootstrap token into belong to it.
+    #
+    # A named volume is created owned by root, and this image runs as uid 1000,
+    # read from the image with docker export ... | tar -xO etc/passwd, which
+    # ends "zitadel:x:1000:1000". Without this the setup writes half of the
+    # first instance and then dies on "open /bootstrap/pat: permission denied",
+    # and the retry cannot get past the half it already wrote. HANDOFF.md
+    # section 7 has what that looks like and how to recover from it.
+    #
+    # postgres:18 because it is already in this file, already pinned, and
+    # already on the machine. Nothing about Postgres is used here. Adding an
+    # image to the stack to run one chown would be a dependency to review, patch
+    # and attribute for the rest of the project.
+    image: postgres:18
+    entrypoint: ["chown", "1000:1000", "/bootstrap"]
+    volumes:
+      - identity_bootstrap:/bootstrap
+    # It exits, and it is meant to. No restart policy, so compose can wait for
+    # it to have finished rather than for it to be healthy.
+
+  identity:
+    # The identity service. Zitadel today, chosen in
+    # docs/decisions/0004-identity-service.md, and named for the role rather
+    # than the product so that replacing it is an image line and an ADR rather
+    # than a rename across every file that mentions it.
+    #
+    # Pinned by digest as well as by tag, because a tag can be moved onto a
+    # different build by whoever publishes it. zitadel 4.17.1, released
+    # 2026-08-14, digest read from ghcr.io on 2026-08-28. That digest is the
+    # image index and it carries linux/amd64 and linux/arm64, so a laptop and a
+    # runner both get a native image and no platform line is needed.
+    image: ghcr.io/zitadel/zitadel:v4.17.1@sha256:3ac6910685d48f32481f01f45e3e6215efe5a9df2c069591b481e9a101712db5
+    restart: unless-stopped
+    # start-from-init is init, setup and start in one container: it creates its
+    # own schema, seeds the first instance, and then serves. Running it every
+    # time is safe because each step records that it ran.
+    #
+    # tlsMode disabled means this process speaks plain HTTP and Caddy terminates
+    # TLS in front of it, which is how every other hostname in this stack works.
+    command: start-from-init --masterkeyFromEnv --tlsMode disabled
+    environment:
+      # Exactly 32 bytes, and it encrypts every secret this service stores. Lose
+      # it and the identity database is unreadable, which is why rule 13 of
+      # CLAUDE.md counts it as one of the three secrets that matter.
+      ZITADEL_MASTERKEY: "${ORO_IDENTITY_MASTERKEY:?set ORO_IDENTITY_MASTERKEY in .env. Exactly 32 bytes. Generate one with: openssl rand -hex 16}"
+
+      # The origin this service believes it is reached at. It signs its issuer
+      # and its redirects with these, and it resolves which instance a request
+      # is for by comparing the Host header against them, so a call that arrives
+      # by any other name is refused with "Instance not found" even when the
+      # port is right. compose.development.yaml sets its own values.
+      ZITADEL_EXTERNALDOMAIN: "id.${ORO_HOSTNAME:?copy .env.example to .env and set it}"
+      ZITADEL_EXTERNALPORT: "${ORO_HTTPS_PORT:?copy .env.example to .env and set it}"
+      ZITADEL_EXTERNALSECURE: "true"
+      ZITADEL_TLS_ENABLED: "false"
+
+      # Ten minutes, per docs/plan/api-design.md section 2. The default is 12
+      # hours. Roles are read from the member row per request rather than from a
+      # claim, so a short token costs one lookup and buys revocation that takes
+      # effect on the next request rather than the next login.
+      #
+      # DEFAULTINSTANCE_OIDCSETTINGS and not OIDC_DEFAULTACCESSTOKENLIFETIME.
+      # The second one reads as though it does this and does not: it is the
+      # fallback for an instance that has no setting of its own, and setup gives
+      # this instance one. Setting only that variable and measuring a real token
+      # gave 43200 seconds, which is the 12 hour default. These values seed the
+      # instance at setup, so changing them later needs the instance updated
+      # through the API rather than a restart.
+      # The hosted login screens. Without this the service answers 404 where its
+      # own authorize endpoint sends a member: version 4.17.1 defaults
+      # Features.LoginV2.Required to true and redirects to /ui/v2/login, which
+      # this image does not serve. That UI is a second container,
+      # ghcr.io/zitadel/zitadel-login, with a machine account and a token of its
+      # own. Measured on 2026-08-28: the redirect lands on a 404 and the login
+      # screen a member is sent to does not exist.
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
+
+      ZITADEL_DEFAULTINSTANCE_OIDCSETTINGS_ACCESSTOKENLIFETIME: 10m
+      ZITADEL_DEFAULTINSTANCE_OIDCSETTINGS_IDTOKENLIFETIME: 10m
+
+      # Its own database on the same server, and its own login. It is never
+      # given the Postgres superuser password: db/init/001_identity_role.sql
+      # creates the role and the database ahead of it, so the admin connection
+      # below is this service connecting as itself and finding both already
+      # there. Rule 13, one holder process per secret.
+      ZITADEL_DATABASE_POSTGRES_HOST: db
+      ZITADEL_DATABASE_POSTGRES_PORT: 5432
+      ZITADEL_DATABASE_POSTGRES_DATABASE: identity
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: identity
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: "${ORO_IDENTITY_DB_PASSWORD:?set ORO_IDENTITY_DB_PASSWORD in .env}"
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: identity
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: "${ORO_IDENTITY_DB_PASSWORD:?set ORO_IDENTITY_DB_PASSWORD in .env}"
+      ZITADEL_DATABASE_POSTGRES_ADMIN_EXISTINGDATABASE: identity
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+
+      # The first instance, created once, from configuration rather than from a
+      # console click. Phase 2 of docs/plan/order-of-operations.md asks for a
+      # deployment reproducible from the compose file and a database dump with
+      # no click that is not also in configuration, and this is that.
+      ZITADEL_FIRSTINSTANCE_ORG_NAME: HeatSync Labs
+      ZITADEL_FIRSTINSTANCE_INSTANCENAME: HeatSync Labs
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: "${ORO_IDENTITY_ADMIN_USERNAME:?set ORO_IDENTITY_ADMIN_USERNAME in .env}"
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: "${ORO_IDENTITY_ADMIN_PASSWORD:?set ORO_IDENTITY_ADMIN_PASSWORD in .env}"
+      # The first human is asked to change that password at first sign in, so
+      # the value above is a handover rather than a credential.
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: "true"
+      # A machine account holding the rights to configure the instance, and its
+      # token written to a file inside the container. Nothing reads it but the
+      # identity suite, which takes a copy with docker compose cp. The image is
+      # distroless and has no shell, so there is no way to read it in place.
+      #
+      # Read this before deploying: that token administers everything, it is
+      # written once by the first setup, it survives every restart and recreate
+      # because the volume does, and nothing here revokes it. It should be
+      # revoked once the four OIDC clients are registered, and that step does
+      # not exist yet. HANDOFF.md section 6 carries it, and ADR 0004 leaves the
+      # question of whether it should persist at all deliberately open.
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: oro-bootstrap
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: oro-bootstrap
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: "2027-08-28T00:00:00Z"
+      ZITADEL_FIRSTINSTANCE_PATPATH: /bootstrap/pat
+    volumes:
+      # A named volume rather than a bind, because the file in it is a token
+      # that administers the whole instance and nothing like that belongs in the
+      # working tree where a later git add can reach it. The volume is owned by
+      # this service's user before it starts, which is what identity_bootstrap
+      # below is for.
+      #
+      # It cannot be a tmpfs. That was tried, and it is a trap worth knowing
+      # about: the file is written correctly and docker cp then reports it as
+      # missing, because docker cp reads the container filesystem and a tmpfs is
+      # not part of it. Measured both ways on 2026-08-28, with docker exec
+      # printing the file in a container where docker cp found nothing. This
+      # image is distroless and has no shell, so docker cp is the only way in.
+      - identity_bootstrap:/bootstrap
+    depends_on:
+      db:
+        condition: service_healthy
+      identity_bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      # The service's own readiness command, which is the only thing in this
+      # image that can ask: it is distroless, so there is no shell, no wget and
+      # no curl to run a request with.
+      test: ["CMD", "/app/zitadel", "ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    # No published port. Caddy is the only way in, which is the same shape every
+    # other hostname here has. compose.development.yaml publishes one on
+    # loopback, and says why.
+
+volumes:
+  db_data:
+  caddy_data:
+  identity_bootstrap:
