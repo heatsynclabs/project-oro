@@ -6,6 +6,7 @@ services/ has, runs the gate over it, and reports what the gate said.
 """
 from __future__ import annotations
 
+import os
 import pathlib
 import shutil
 import subprocess
@@ -39,7 +40,24 @@ class Tree:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text)
 
+    def readable_to_the_container(self) -> None:
+        """Let uid 1000 inside the image read a tree this process just made.
+
+        tempfile creates its directory 0700 and the image runs as uid 1000, so
+        on a Linux runner the container cannot traverse into it at all. Measured
+        on 2026-08-30: every docker backed check here failed with "Could not
+        find tools/import-boundaries/contracts.ini" on the runner while the same
+        fourteen passed on a laptop, because Docker Desktop presents a shared
+        directory to the container as readable whatever its real mode. The
+        working tree run.sh mounts is world readable in an ordinary checkout, so
+        this is the harness's problem and not the gate's.
+        """
+        os.chmod(self.root, 0o755)
+        for path in self.root.rglob("*"):
+            os.chmod(path, 0o755 if path.is_dir() else 0o644)
+
     def check(self) -> tuple[int, str]:
+        self.readable_to_the_container()
         done = subprocess.run(
             ["docker", "run", "--rm", "-v", f"{self.root}:/io:ro", "-w", "/io",
              "-e", "PYTHONPATH=/io/services:/io/services/api", self.image,

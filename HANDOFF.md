@@ -868,6 +868,26 @@ errors. `tools/migration/tests/check_the_guard.sh` runs the file alone, with no
 `ON_ERROR_STOP`, and asserts the trigger reads `O` and no row was written. Run
 against the old two statement shape that check reports `role_grant_rules is 'D'`.
 
+**Docker on a Mac ignores the mode on a bind mount and Docker on Linux does
+not.** The import boundary gate's own suite builds a throwaway tree with
+`tempfile`, which creates its directory 0700, and mounts it into an image that
+runs as uid 1000. On a laptop all fourteen checks passed. On the runner eleven
+of them failed with `Could not find tools/import-boundaries/contracts.ini`,
+which reads as a missing file and is a permission denied wearing its coat.
+
+Measured on 2026-08-30, each part separately. The image reports
+`uid=1000(oro)`. `tempfile.TemporaryDirectory()` reports mode 0700. Inside a
+Linux container, uid 1000 reading a 0700 directory owned by another user gets
+`Permission denied`, and the same read at 0755 and 0644 succeeds. Docker Desktop
+presents a shared directory to the container as readable whatever its real mode,
+which is why the laptop could not see any of this.
+
+`harness.py` chmods the tree before it mounts it, and says why where it does.
+The gate itself was never affected: the working tree `run.sh` mounts is world
+readable in an ordinary checkout. What this cost was one red build on main and
+the reminder that a suite green on a laptop has been run on one operating
+system.
+
 **A SQL comment built from quoted chunks can name a file that does not exist.**
 `db/migrations/014_column_comments.sql` writes each comment as a run of single
 quoted strings that Postgres concatenates, which is the house style and is fine.
