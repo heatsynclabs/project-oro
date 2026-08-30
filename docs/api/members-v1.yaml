@@ -55,6 +55,28 @@ info:
     **Errors are RFC 9457 problem details**, served as
     `application/problem+json`, in one shape everywhere.
 
+    Two of those refusals belong to no operation. A request to a path this API
+    does not serve is answered `no-such-path`, and a request to a path that is
+    served but does not take the method is answered `wrong-method`. Both are
+    declared under `components.responses`, as `NoSuchPath` and `WrongMethod`,
+    and referenced from nothing.
+
+    That is deliberate, and it is the honest shape. OpenAPI declares the paths a
+    document has and gives no way to declare the absence of one, so an unknown
+    path has no operation to attach a response to. The 405 has the same problem
+    one step in: it is answered by the path, not by any operation under it.
+    Hanging it on `GET /me` would say that operation can answer 405, and it
+    cannot. The 405 on `/me` comes from `POST /me`, which is not an operation in
+    this document.
+
+    Leaving them undeclared was the alternative, and it was rejected because the
+    sentence at the top of this section would then be false for the two refusals
+    a client is most likely to meet while it is being written. The cost of
+    declaring them is two `no-unused-components` warnings from
+    `npx @redocly/cli lint`, which takes this document from three expected
+    warnings to five. `docs/decisions/0001-openapi-toolchain.md` names all five
+    and says why each one is expected.
+
     **Nothing here names the hardware.** That is what keeps the door controller
     replaceable.
 
@@ -1163,6 +1185,45 @@ components:
               already carries this one, so nothing was saved. An admin can find
               that record and merge the two.
 
+    NoSuchPath:
+      description: >-
+        Nothing is served at that path. Referenced by no operation, because a
+        path this document does not declare has no operation to attach it to.
+        The reasoning is in `info.description` at the top of this file.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetail' }
+          example:
+            type: https://oro.heatsynclabs.org/errors/no-such-path
+            title: Nothing is served at that path
+            status: 404
+            detail: >-
+              This API has no operation at that path, so nothing was read or
+              changed. Check the path against docs/api/members-v1.yaml, which
+              lists every one there is.
+
+    WrongMethod:
+      description: >-
+        The path is served and does not take this method. Referenced by no
+        operation for the reason given on `NoSuchPath`: the refusal belongs to
+        the path rather than to any operation under it.
+      headers:
+        Allow:
+          description: >-
+            The methods this path does take, which RFC 9110 requires on a 405.
+          schema: { type: string }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetail' }
+          example:
+            type: https://oro.heatsynclabs.org/errors/wrong-method
+            title: That path does not take this method
+            status: 405
+            detail: >-
+              This path exists and answers a different HTTP method, so nothing
+              was read or changed. The Allow header on this response names the
+              methods it does take.
+
     Invalid:
       description: The request was understood and something in it is not usable.
       content:
@@ -1298,7 +1359,19 @@ components:
         granted_by:
           $ref: '#/components/schemas/Member'
           readOnly: true
-          description: The admin who granted it. Only `id` and `name` are populated.
+          description: >-
+            The admin who granted it.
+
+            Expect it absent unless the reader holds admin. The only SELECT
+            policies left on `members` are `member_reads_self` and
+            `admin_reads_all` in `db/migrations/004_security.sql`, because
+            `db/migrations/011_close_read_holes.sql` dropped the one that let a
+            member read anybody else. `admin_reads_all` turns on who is asking
+            and not on which path answers, so the grantor's row stays unreadable
+            to a plain member wherever they read this object, and an admin gets
+            it wherever they read it. Filling it for a member needs a name
+            lookup that reads past the policy, and that is finding 3 of
+            `docs/api/contract-review-notes.md`.
         approval_id:
           type: [integer, 'null']
           format: int64
@@ -1312,6 +1385,20 @@ components:
         revoked_by:
           $ref: '#/components/schemas/Member'
           readOnly: true
+          description: >-
+            The admin who revoked it. Recorded for the reason the schema keeps
+            revoked grants as rows: who used to hold a role and who took it away
+            is what an audit asks for.
+
+            Expect it absent unless the reader holds admin, on the same
+            reasoning as `granted_by` above. `member_reads_self` and
+            `admin_reads_all` in `db/migrations/004_security.sql` are the only
+            SELECT policies left on `members` once
+            `db/migrations/011_close_read_holes.sql` has run, and the second of
+            them answers to the reader and not to the path, so a plain member
+            never reads the revoker's row. Finding 3 of
+            `docs/api/contract-review-notes.md` is where filling it gets
+            decided.
         revoked_reason:
           type: [string, 'null']
           readOnly: true
@@ -1409,7 +1496,19 @@ components:
         oriented_by:
           $ref: '#/components/schemas/Member'
           readOnly: true
-          description: Who ran the orientation. Only `id` and `name` are populated.
+          description: >-
+            Who ran the orientation.
+
+            Expect it absent unless the reader holds admin. After
+            `db/migrations/011_close_read_holes.sql` the only SELECT policies on
+            `members` are `member_reads_self` and `admin_reads_all`, both in
+            `db/migrations/004_security.sql`, and the second turns on who is
+            asking and not on which path answers. So a plain member never reads
+            the row of whoever walked them round the lab, and an admin does. The
+            two directory endpoints never carry this field at all, because
+            `member_directory` has eight columns and this is not one of them.
+            Finding 3 of `docs/api/contract-review-notes.md` is where filling it
+            for a member gets decided.
         current_skills: { type: [string, 'null'] }
         desired_skills: { type: [string, 'null'] }
         marketing_source:
@@ -1584,16 +1683,19 @@ components:
             Who revoked it. A member is told who took their card back: it is an
             action taken on them and the person who took it is not a secret.
 
-            Expect it absent until something can fill it. The only SELECT
+            Expect it absent unless the reader holds admin. The only SELECT
             policies left on `members` are `member_reads_self` and
             `admin_reads_all` in `db/migrations/004_security.sql`, because
             `db/migrations/011_close_read_holes.sql` dropped the one that let a
-            member read anybody else. A member holding a revoked card can
-            therefore resolve this id to a row only in the case where they
-            revoked it themselves. Filling it needs a name lookup that reads
-            past the policy, and that is finding 3 of
-            `docs/api/contract-review-notes.md`, which lists five more
-            properties with the same problem. One decision covers all six.
+            member read anybody else, and `admin_reads_all` turns on who is
+            asking and not on which path answers. Filling it for a plain member
+            needs a name lookup that reads past the policy, and that is finding
+            3 of `docs/api/contract-review-notes.md`. Six other properties in
+            this document have the same problem and now say so:
+            `Member.oriented_by`,
+            `RoleGrant.granted_by`, `RoleGrant.revoked_by`,
+            `MemberCertification.granted_by`, `MemberCertification.revoked_by`
+            and `Waiver.recorded_by`. One decision covers all seven.
         revoked_reason: { type: [string, 'null'], readOnly: true }
 
     Card:
@@ -1731,15 +1833,40 @@ components:
           $ref: '#/components/schemas/Member'
           readOnly: true
           description: >-
-            The instructor or admin who granted it. Only `id` and `name` are
-            populated. Recorded from the caller's own identity, whatever the
-            request said.
+            The instructor or admin who granted it. Recorded from the caller's
+            own identity, whatever the request said.
+
+            Expect it absent unless the reader holds admin. The only SELECT
+            policies left on `members` are `member_reads_self` and
+            `admin_reads_all` in `db/migrations/004_security.sql`, because
+            `db/migrations/011_close_read_holes.sql` dropped the one that let a
+            member read anybody else, so a plain member cannot resolve this id
+            to the instructor who signed them off. On
+            `POST /admin/certifications/{id}/grant` it is the caller's own row,
+            which `member_reads_self` covers, so that response can carry it
+            whether or not the instructor holds admin. Finding 3 of
+            `docs/api/contract-review-notes.md` is where the member side gets
+            decided.
         granted_at: { type: string, format: date-time, readOnly: true }
         expires_at: { type: [string, 'null'], format: date-time }
         revoked_at: { type: [string, 'null'], format: date-time, readOnly: true }
         revoked_by:
           $ref: '#/components/schemas/Member'
           readOnly: true
+          description: >-
+            The instructor or admin who revoked it.
+
+            Expect it absent unless the reader holds admin, on the same
+            reasoning as `granted_by` above. `member_reads_self` and
+            `admin_reads_all` in `db/migrations/004_security.sql` are all that
+            is left on `members` after
+            `db/migrations/011_close_read_holes.sql`, and the second answers to
+            the reader and not to the path. The revoker is usually somebody
+            else, though `instructor_revokes_certification` in
+            `db/migrations/007_write_policies.sql` lets any instructor for that
+            certification revoke it and stops none of them revoking their own.
+            Finding 3 of `docs/api/contract-review-notes.md` holds the
+            decision.
         revoked_reason:
           type: [string, 'null']
           readOnly: true
@@ -1791,7 +1918,23 @@ components:
         recorded_by:
           $ref: '#/components/schemas/Member'
           readOnly: true
-          description: The admin who recorded it. Only `id` and `name` are populated.
+          description: >-
+            The admin who recorded it.
+
+            Expect it absent unless the reader holds admin. A member reads
+            their own waiver row under `member_reads_own_waiver` in
+            `db/migrations/004_security.sql`, and that policy says nothing about
+            `members`, where the only SELECT policies left are
+            `member_reads_self` and `admin_reads_all` in the same file, once
+            `db/migrations/011_close_read_holes.sql` has dropped the one that
+            let a member read anybody else. `admin_reads_all` answers to the
+            reader and not to the path, so a plain member gets the waiver back
+            without the admin behind this field.
+            `POST /admin/members/{id}/waivers` returns the same object to the
+            admin who just recorded it, and `member_reads_self` covers that
+            row, so that response can carry it. Finding 3 of
+            `docs/api/contract-review-notes.md` is where filling it for a member
+            gets decided.
         note: { type: [string, 'null'] }
         created_at: { type: string, format: date-time, readOnly: true }
 

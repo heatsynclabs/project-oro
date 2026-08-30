@@ -125,12 +125,19 @@ bundler becomes correct. Somebody can check that in a year by running
 - `npx @redocly/cli lint docs/api/members-v1.yaml` is the check. It is pinned to
   a version in CI rather than floating, because a linter that changes its rules
   on its own schedule turns an unrelated pull request red.
-- Three warnings are expected and are not defects. `info-license` fires because
+- Five warnings are expected and are not defects. `info-license` fires because
   the repository licence is undecided, which README.md already records as an open
   question. `operation-4xx-response` fires twice on the public status endpoints,
   which take no parameters and no token and have no meaningful client error.
-  When a Redocly configuration file is added, turn those two rules off there with
-  this reasoning beside them rather than editing the document to satisfy them.
+  `no-unused-components` fires twice more, on the `NoSuchPath` and `WrongMethod`
+  entries under `components.responses`. Those two are declared and referenced by
+  no operation deliberately. OpenAPI gives no way to attach a response to a path
+  the document does not serve, or to a method that no operation under a served
+  path takes, so the alternative was to leave the two refusals a client meets
+  earliest undeclared. The `info.description` of `docs/api/members-v1.yaml` makes
+  that argument and is the place to reopen it. When a Redocly configuration file
+  is added, turn these three rules off there with this reasoning beside them
+  rather than editing the document to satisfy them.
 - Reversing this costs an afternoon: the document is plain OpenAPI 3.1 and every
   candidate above reads it unchanged.
 
