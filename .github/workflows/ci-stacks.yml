@@ -1,0 +1,237 @@
+name: CI stacks
+
+# The half of CI that starts a container. The other half is ci.yml, which holds
+# the jobs needing nothing but the runner: the door conformance suite, the theme
+# contrast checker, the contract lint, the prose gate and the commit message
+# check. That file carries why the two are apart.
+#
+# Every job here brings up its own compose project or its own containers, named
+# after the process that started them and published on the loopback where they
+# are published at all, and removes them when it exits. So two of these running
+# at once on one runner do not meet, and neither does a stack a person has up on
+# a laptop.
+#
+# Starting a container does not make a job slow. The ceilings job came in at 4
+# seconds on run 33236264196. The slow ones are slow for their own reasons: the
+# identity service applies its own schema and seeds an instance before it
+# answers anything, and the legacy import builds eleven databases.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# The same read access ci.yml asks for, and for the same reason. Nothing here
+# writes anywhere.
+permissions:
+  contents: read
+
+jobs:
+  database:
+    name: Database
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to the commit rather than the moving v7 tag, so a compromised tag
+      # cannot change what runs here. actions/checkout v7.0.1, MIT, maintained
+      # by GitHub. Read from the GitHub API on 2026-08-27.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Docker is the only thing run.sh needs and the runner image already has
+      # it (Docker Client 28.0.4 on ubuntu-24.04, read from actions/runner-images
+      # on 2026-08-27). The script creates a throwaway postgres:18 container,
+      # applies every migration and seed from nothing, runs each test file in a
+      # transaction that rolls back, and removes the container.
+      - name: Schema, rules, and policies
+        run: ./db/tests/run.sh
+
+  mock:
+    name: Mock server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # The mock is the only thing that proves the contract is servable rather
+      # than merely legal, so a change to the document that breaks it should be
+      # red here. The image is pinned by digest in compose.development.yaml, and the
+      # runner is x86_64, so the platform pin there is native rather than
+      # emulated and this is faster here than on an arm64 laptop.
+      - name: Prism serves the contract
+        run: ./tools/mock/tests/run.sh
+
+  # The two suites nothing gated until now. Both need docker, which the runner
+  # image already has, and both bring up their own compose project on their own
+  # ports, so they neither read nor disturb anything else. Without these jobs a
+  # change to caddy/, compose.yaml, compose.development.yaml or apps/members/
+  # was checked only by whoever remembered to run them by hand, which is the one
+  # kind of gate that always eventually stops running.
+  development:
+    name: Development stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Both shapes: compose.yaml alone, which is the deployment and answers
+      # over TLS from Caddy's own authority, and compose.yaml plus the override,
+      # which serves plain HTTP and opens no TLS listener at all. The checks
+      # that matter are the ones that would have caught the profile defect ADR
+      # 0002 records, where one variable chose both the mock and the routes.
+      - name: Both stack shapes, on their own ports
+        run: ./tools/development/tests/run.sh
+
+  portal:
+    name: Members portal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # No browser, so this never sees the rendered document. What it does see
+      # is that every field the portal binds is a field the contract serves at
+      # the endpoint that view reads, which is the check the portal exists to
+      # make.
+      - name: The portal through Caddy, against the contract mock
+        run: ./tools/members-portal/tests/run.sh
+
+  identity:
+    name: Identity password proof
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Part (a) of the phase 2 password proof, which is the whole of the part a
+      # script can do. It starts the identity service against a throwaway
+      # Postgres, imports hashes written by the library the legacy application
+      # hashes with, and signs in as each. Part (b) is ten real members signing
+      # in to staging, and no job can stand in for it.
+      #
+      # The slowest job here: the identity service applies its own schema and
+      # seeds an instance before it answers.
+      - name: Hashes the lab already holds, imported and signed in with
+        run: ./tools/identity/tests/run.sh
+
+  ceilings:
+    name: File and function ceilings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Rule 6 of CLAUDE.md. Two tools, because no candidate priced in
+      # docs/decisions/0005-file-and-function-ceilings.md measures all five
+      # ceilings: ruff carries complexity, parameter count and nesting depth,
+      # and the script beside it counts the two kinds of line nothing else
+      # counts. Ruff arrives as a pinned container, so this job installs
+      # nothing.
+      - name: Every ceiling in rule 6
+        run: ./tools/ceilings/run.sh
+
+  boundaries:
+    name: Import boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Rule 5 of CLAUDE.md, over the Python that exists. import-linter reads a
+      # real import graph, so the module that crosses a line does not have to
+      # be the one anybody opened: two of the gate's own eighteen checks plant
+      # a violation one import deep and require it named, and a third plants a
+      # legal chain and requires silence. Ten more hold the width of that graph
+      # and the names written as strings, the holes contracts.ini warns about.
+      # Nobody publishes an import-linter image, so this builds one, the one
+      # thing here reaching PyPI. ADR 0011 priced what it was chosen over.
+      - name: The layers only import downward
+        run: ./tools/import-boundaries/run.sh
+
+  migration:
+    name: Legacy import
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Both directions. The fixture as it comes has to be refused, naming every
+      # row a person must rule on, and the same fixture with those decisions
+      # made has to carry every card to the slot it had. The fixture was written
+      # by a replica of the legacy application through that application's own
+      # models, so these are the rows it writes and the hashes it stores.
+      # tools/migration/README.md says how the replica is built.
+      - name: Refused while undecided, and correct once decided
+        run: ./tools/migration/tests/run.sh
+
+  bootstrap:
+    name: First three admins
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # The command that spends the bootstrap escape, which is the only way a
+      # database with no members gets its first admin. The suite seats three
+      # against a throwaway stack, proves each can sign in, runs it again and
+      # requires that nothing changed, and then asks for a fourth and requires
+      # the database to refuse it. db/migrations/013_bootstrap_three_admins.sql
+      # is the rule being exercised, and tools/bootstrap/README.md says why the
+      # quota is three rather than two.
+      - name: Three seated, the fourth refused
+        run: ./tools/bootstrap/tests/run.sh
+
+  backup:
+    name: Restore drill
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Gate 1 of the three rules above every phase in
+      # docs/plan/order-of-operations.md: a backup that has been restored. The
+      # drill builds a database by running the legacy import into a throwaway
+      # container, backs it up with the command make backup runs, removes the
+      # container so the cluster is gone, restores into a new one, and then
+      # requires every card to be at the slot it had. It also requires the
+      # restore to refuse a damaged archive and to refuse a database that still
+      # holds members, and it checks after each refusal that nothing moved.
+      #
+      # What this proves is the mechanism. The lab's own data is phase 0 item 5,
+      # it needs a shell on the server, and no job here can stand in for it.
+      - name: Backed up, destroyed, restored, and every card still at its slot
+        run: ./tools/backup/tests/run.sh
+
+  api:
+    name: Members API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # The first slice of the members API, three of the contract's twenty
+      # three operations, against a real Postgres carrying the real migrations
+      # rather than a stubbed query builder. The suite builds its own database,
+      # its own RSA key, its own JWKS server and the service image, all named
+      # after its own process id, and removes every one of them.
+      #
+      # The check worth being red is the last one in
+      # check_identity_isolation.py. It runs three requests down a pool held to
+      # one connection and requires the anonymous one in the middle to be
+      # refused, which is what a plain SET in place of SET LOCAL would break.
+      # Measured on 2026-08-28: with that one argument flipped, the anonymous
+      # request came back 200 carrying the previous caller's phone number,
+      # postal code and emergency contact.
+      #
+      # Docker, python3, openssl and curl are all on the runner image, so this
+      # job installs nothing. The build pulls from PyPI, which is the one thing
+      # here that reaches the network for something other than an image.
+      - name: Three operations, against the real policies
+        run: ./services/api/tests/run.sh
+
+  api_identity:
+    name: Members API against the identity service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # The first thing here to hand the members API a token the identity
+      # service really issued. Every check before it verified a token the suite
+      # had minted with a key of its own, which asks the narrower question of
+      # whether the service can check its own signature.
+      #
+      # It found that services/api/README.md documented ORO_API_TOKEN_AUDIENCE
+      # as oro-members-api and that nothing issues that. A real access token
+      # carries the project identifier and the client id of every application
+      # registered under it. One check holds the value the api container is
+      # given to the one tools/identity/configure.py registers, so moving one
+      # and not the other goes red here rather than at a member's first sign in.
+      - name: A real sign in, and the four refusals
+        run: ./tools/api-against-identity/run.sh
