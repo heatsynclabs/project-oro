@@ -3,11 +3,21 @@ ok   every table and view carries a comment
 ok   every column of every table and view carries a comment
 --   and rule 11 holds inside them, because they are prose too
 ok   no comment carries a dash rule 11 bans
---   the same detector, against a table nobody documented
+--   and every comment still reads as the sentence somebody wrote
+ok   no comment carries quoting that leaked out of the migration
+ok   no comment says the same sentence twice
+ok   no comment splices a full stop onto a comma
+--   the same detectors, against a table nobody documented
 ok   a table with nothing said about it is named
-ok   an empty comment and a missing one are both named
+ok   spaces, a tab, and no comment at all are all named
 --   and writing the comments clears it, so the check is not stuck red
 ok   the table list is clean once the table is described
-ok   the column list is clean once both columns are described
---   the dash detector, against a comment written to break the rule
-ok   an em dash and a wrapped path are both named
+ok   the column list is clean once every column is described
+--   the dash detector, against comments written to break the rule
+ok   an emoji in a table comment is named, and so are an em dash and a wrapped path
+--   and the two substitutes rule 11 names, which used to walk through
+ok   a spaced hyphen and a double hyphen are both named
+--   and the three shapes of garble that reached the database once already
+ok   a leaked quote is named, and the two other garbled columns are not
+ok   a sentence written twice is named on its own
+ok   a full stop spliced onto a comma is named on its own
