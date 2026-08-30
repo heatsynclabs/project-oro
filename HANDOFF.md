@@ -42,7 +42,8 @@ This table is the single place this is tracked. Update it as things land.
 | `tools/identity/` password proof | **Built.** 16 checks, part of `make identity-test`, in CI. A further 6 checks in `check_api_refusals.py` need nothing running and go first: they hold `api.search` to reporting a refused search as a refusal, which it did not do until 2026-08-28, and to raising something a check suite can catch. Part (a) of the phase 2 proof: hashes written by bcrypt-ruby at cost 10 with no pepper, imported and signed in with. It found a real defect, in `tools/identity/README.md` |
 | `tools/backup/` backup and the restore drill | **Built.** `make backup`, `make restore`, `make backup-test`, in CI. Gate one of rule 12, which is the first thing above every phase. A backup is two files: the database archive and a roles file, because `oro_api` and `door_reader` are cluster roles that a database archive does not carry, and the archive is full of `GRANT ... TO oro_api`, so a restore without them dies on the first grant. An earlier version of this row, and the commit message that introduced it, said every policy names one of those roles. That is false and was measured: no policy in `db/migrations` names a role at all, every one of them defaults to PUBLIC. The grants are the reason, not the policies. The drill backs up a migrated database, destroys the cluster, restores, and compares 95 things including every card's slot, then makes eight further attempts that have to be refused or to change exactly what they claim. A restore over a database holding members is refused until the caller names how many they are destroying, on the command line: an exported variable is refused outright, because make imports the environment and that would arm every later restore in the shell.
 
-Stopping a restore stops it. `docker exec` does not forward a signal, so an earlier version went on and committed while the operator's terminal had stopped printing; the connection is named and terminated now, and a test kills a restore part way and requires the database not to have moved. **It proves the mechanism, not the lab's data**: phase 0 still needs a shell on hsl-web. No timer and no offsite copy, so a fire in the lab takes the backups with the server |
+Stopping a restore stops it. `docker exec` does not forward a signal, so an earlier version went on and committed while the operator's terminal had stopped printing; the connection is named and terminated now, and a test kills a restore part way and requires the database not to have moved. `kill -9` is still a limit and is written down in three places rather than fixed, because nothing catches it. The archive is streamed onto the container's `/dev/shm` so no copy of the members database lands on a disk, which is why `compose.yaml` now sets `shm_size: 256mb`: the Docker default is 64MB and a restore refuses an archive that does not fit. That 256 carries an assumption about the size of the real dump, stated where it is set. Also here: `roles_the_archive_needs.sh`, `tests/checks.sh` and `tests/what_a_restore_changes.sh` **It proves the mechanism, not the lab's data**: phase 0 still needs a shell on hsl-web. No timer and no offsite copy, so a fire in the lab takes the backups with the server |
+| `COMMENT ON` for every column | **Not done, and it is a rule rather than a nicety.** Rule 10 says every table and every column carries one so the schema documents itself. Measured on 2026-08-29 by parsing `db/migrations`: all 16 tables are commented, and 12 of 150 columns are. The 138 without are listed by table in the audit that found it, and `members`, `approvals`, `member_roles`, `payments` and `member_certifications` are entirely uncommented. The gate rule 10 names, CI failing when a table exists without a comment, does not exist either, and would not have caught this because it only names tables |
 | `docs/runbooks/` | **Started.** One file, the restore runbook, which is what created the directory. Eight numbered steps with the output each one prints |
 | `tools/bootstrap/` seat the first three admins | **Built.** `make bootstrap-admins`, in CI. The only path from an empty database to somebody who can administer it, and it spends the escape `013_bootstrap_three_admins.sql` opens. Per person: an identity account, then `link_or_create_member`, then the role, in that order because a member row holding a role is not claimable afterwards. The handover password goes to the terminal and to no file. Safe to run twice, and the fourth admin is refused by the database rather than by the script |
 | `tools/migration/` the legacy import | **Built.** `make migration-test`, in CI. Members, cards, the `admin` and `accountant` booleans as roles, and the waiver date as a pointer to where the document is kept. A preflight refuses to start while anything needs a person and names the rows. Eleven cases: ten imports of the same fixture, three that carry and seven that must be refused, plus one that runs the role step alone. Every refusal is checked by its text and not only its exit code. The fixture was written by a replica of the legacy application through its own models |
@@ -299,6 +300,41 @@ phases at once.
     legacy `member` integer have no home and are not carried, and the Devise
     session columns are dropped on purpose. Certifications, payments and door
     events are still not migrated.
+
+13. Write the 138 missing `COMMENT ON COLUMN` statements. Rule 10 asks for one
+    per column and there are 12. This is the largest single piece of rule
+    compliance debt in the repository and it is the kind that gets worse: every
+    table added from here adds more. Do it per table, and make each comment say
+    something the column name does not already say, per rule 7. `members`,
+    `approvals`, `member_roles`, `payments` and `member_certifications` have
+    none at all. Consider writing the gate rule 10 names in the same change, and
+    note that the gate as rule 10 words it only covers tables, which are all
+    already commented, so it would have caught none of this.
+
+14. Declare in the contract the two refusals the API service now makes and the
+    document does not describe: an unknown path and a wrong method. Both answer
+    as RFC 9457 problem details now, and `docs/api/members-v1.yaml` says errors
+    take one shape everywhere. It currently declares neither.
+
+15. Fix the five remaining copies of "Only `id` and `name` are populated" in the
+    contract, at `Member.oriented_by`, `RoleGrant.granted_by`,
+    `RoleGrant.revoked_by`, `MemberCertification.granted_by` and
+    `MemberCertification.revoked_by`. The same sentence was corrected on
+    `MyCard.revoked_by` and the reasoning that corrected it applies to all five:
+    no policy lets one member read another member's row, so the claim describes
+    something the database will not produce.
+
+16. Two ADRs are owed and neither is written. The key set clock in
+    `services/api/app/identity.py`, which is a re-read window with a default
+    that nothing requires, and the `/dev/shm` choice plus the signal handling in
+    `tools/backup/restore.sh`. Both are design decisions inside one file with
+    their reasoning recorded there, so this is a judgement about where the
+    record belongs rather than a gap in the reasoning.
+
+17. The import boundary gate is overdue, and section 2 says why. ADR 0006 names
+    its own flip condition and that condition fired in 432fd1e. What is
+    unsettled is how `import-linter` arrives, given every other tool here runs
+    as a pinned image and grimp is the part that ADR expected to bite.
 
 ### The build that is actually left
 

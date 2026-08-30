@@ -27,6 +27,20 @@ services:
   db:
     image: postgres:18
     restart: unless-stopped
+    # Docker gives a container 64MB of /dev/shm and Postgres uses that space for
+    # parallel query workers, so 64MB is small for a database container on its
+    # own terms. It is also where tools/backup/restore.sh puts its copy of the
+    # archive, deliberately, because rule 13 says a copy of the members database
+    # must not sit on a disk nobody is watching. A restore refuses when the
+    # archive does not fit, and with the default it would refuse any real one.
+    #
+    # ASSUMPTION: a custom format dump of the production members database is
+    # under 256MB. It is roughly two thousand members and their cards, and the
+    # bulky columns are free text, but nobody here has seen the real thing.
+    # CONFIRM BY: pg_dump -Fc on hsl-web and read the size of the file.
+    # BLAST RADIUS: restore.sh refuses before it touches the database and names
+    # this line as the one to raise, so the failure is loud and the fix is here.
+    shm_size: 256mb
     environment:
       POSTGRES_DB: oro
       POSTGRES_PASSWORD: "${ORO_DB_PASSWORD:?set ORO_DB_PASSWORD in .env. Generate one with: openssl rand -base64 24}"
