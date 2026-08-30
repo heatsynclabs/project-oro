@@ -12,6 +12,12 @@
 -- columns turned out to be read by nothing at all, and they say so, because a
 -- reader deserves to know that before building on one.
 --
+-- One rule worth knowing before adding a comment here: no standalone quote
+-- character. An apostrophe inside a word is fine and a quoted SQL literal is
+-- not, so this file says at time zone UTC rather than quoting it. The gate
+-- refuses the second shape, because that is what leaked SQL string syntax looks
+-- like and no rule that has to tell the two apart survives contact with 2am.
+--
 -- db/tests/comments.sql is the gate. It asks a database built from nothing for
 -- any table or column carrying no comment, and then asks the same question
 -- about a table it makes with nothing said about it, because a check that has
@@ -30,10 +36,13 @@ COMMENT ON COLUMN members.id IS
   'usually refused rather than cascaded: approvals.target_member_id, '
   'payments.member_id and members.oriented_by all reference this column '
   'with no ON DELETE action. Where nothing blocks it, waivers, '
-  'certifications and role grants go by cascade, and the card and the door '
-  'log keep their rows with member_id set to null, which leaves an active '
-  'slot on the controller belonging to nobody. Removing somebody is a '
-  'deleted_at timestamp instead.';
+  'certifications, instructor rows and role grants go by cascade. A member '
+  'who holds a card, or who is named on a door event, cannot be deleted at '
+  'all: both references are ON DELETE SET NULL, the SET NULL is an UPDATE, '
+  'and freeze_card_history in db/migrations/012_close_remaining.sql and '
+  'door_events_are_append_only in db/migrations/005_immutability.sql each '
+  'raise on it, so the delete is refused rather than leaving a card behind '
+  'with nobody on it. Removing somebody is a deleted_at timestamp instead.';
 
 COMMENT ON COLUMN members.email IS
   'citext and unique, so two addresses differing only in case collide. That '
@@ -142,7 +151,7 @@ COMMENT ON COLUMN members.paid_through IS
 
 COMMENT ON COLUMN members.oriented_at IS
   'When the member had their walk through of the lab. From '
-  'users.orientation, read AT TIME ZONE ''UTC'' by '
+  'users.orientation, read at time zone UTC by '
   'tools/migration/020_migrate.sql, because Rails 3.2 stores UTC and '
   'reading it in the lab''s own zone would move every row seven hours. It '
   'gates nothing here, on purpose. The legacy application gated the member '
@@ -252,11 +261,11 @@ COMMENT ON COLUMN members.listed_in_directory IS
   'unreachable through the directory even by a member who is listed.';
 
 COMMENT ON COLUMN members.created_at IS
-  'Carried from the legacy users.created_at, read AT TIME ZONE ''UTC'' '
-  'rather than in the session zone, because the lab''s own zone is '
-  'America/Phoenix and reading it there moves every row seven hours. It is '
-  'also what card_eligibility in db/migrations/012_close_remaining.sql '
-  'starts the tenure clock from when joined_on is null.';
+  'Carried from the legacy users.created_at, read at time zone UTC rather '
+  'than in the session zone, because the lab''s own zone is America/Phoenix '
+  'and reading it there moves every row seven hours. It is also what '
+  'card_eligibility in db/migrations/012_close_remaining.sql starts the '
+  'tenure clock from when joined_on is null.';
 
 COMMENT ON COLUMN members.updated_at IS
   'Maintained by the members_updated_at trigger, which runs set_updated_at '
@@ -351,12 +360,11 @@ COMMENT ON COLUMN member_directory.joined_on IS
   'came to the lab. That cast involves no time zone, so this column needs '
   'no zone decision at all. The seven timestamp columns the import carries '
   'do need one, and 020_migrate.sql and 024_waivers.sql read every one of '
-  'them AT TIME ZONE ''UTC'' so the seven hour shift into America/Phoenix '
-  'never lands. HANDOFF.md section 7 lists them. HANDOFF.md section 7 lists '
-  'them. The value is load bearing outside the directory too: '
-  'card_eligibility() adds the card_access.tenure_months parameter to it to '
-  'work out the date a member becomes eligible, falling back to created_at '
-  'where it is null.';
+  'them at time zone UTC so the seven hour shift into America/Phoenix never '
+  'lands. HANDOFF.md section 7 lists them. The value is load bearing '
+  'outside the directory too: card_eligibility() adds the '
+  'card_access.tenure_months parameter to it to work out the date a member '
+  'becomes eligible, falling back to created_at where it is null.';
 
 -- ---------------------------------------------------- Cards and the door log
 
@@ -405,7 +413,7 @@ COMMENT ON COLUMN cards.label IS
   'table and CardUpdate in docs/api/members-v1.yaml lets nothing but this '
   'and permission_mask change on a card that already exists. A superuser at '
   'the database bypasses that policy like any other. The holder reads it '
-  'and cannot edit it. The holder reads it and cannot edit it.';
+  'and cannot edit it.';
 
 COMMENT ON COLUMN cards.active IS
   'What the door is actually given. door.active_card_table() in '
@@ -447,13 +455,12 @@ COMMENT ON COLUMN cards.revoked_by IS
   'db/migrations/011_close_read_holes.sql dropped the policy that let one '
   'member read another, so a member resolves this id only when they revoked '
   'the card themselves. Nothing in the database fills the column in. '
-  'Nothing in the database fills the column in. stamp_actor in '
-  'db/migrations/012_close_remaining.sql is a BEFORE INSERT trigger that '
-  'sets granted_by and recorded_by, never a revoked_by, so no revocation '
-  'column on any table is stamped from the caller and this one is no '
-  'exception. Whatever the caller sends is what lands here, and the foreign '
-  'key checks that it is a member rather than that it is the member who did '
-  'it.';
+  'stamp_actor in db/migrations/012_close_remaining.sql is a BEFORE INSERT '
+  'trigger that sets granted_by and recorded_by, never a revoked_by, so no '
+  'revocation column on any table is stamped from the caller and this one '
+  'is no exception. Whatever the caller sends is what lands here, and the '
+  'foreign key checks that it is a member rather than that it is the member '
+  'who did it.';
 
 COMMENT ON COLUMN cards.revoked_reason IS
   'Why the card was taken back. There is no constraint here requiring one, '
@@ -498,10 +505,12 @@ COMMENT ON COLUMN door_events.id IS
   'db/migrations/005_immutability.sql raises on either. A gap in the '
   'sequence is therefore an insert that rolled back or a duplicate that the '
   'dedupe key refused. Nothing the application role can do removes an '
-  'entry: db/migrations/004_security.sql grants it SELECT, INSERT and '
-  'UPDATE and no TRUNCATE, and the append only trigger is a row level '
-  'trigger, which TRUNCATE does not fire, so an operator with the owner''s '
-  'rights is the one hole and it takes the whole table.';
+  'entry. On this table it holds SELECT and INSERT only: the blanket grant '
+  'in 004_security.sql covers SELECT, INSERT and UPDATE on every table, and '
+  'the same file then revokes UPDATE and DELETE on door_events. It holds no '
+  'TRUNCATE anywhere. The append only trigger is the second layer, and it '
+  'is a row level trigger, which TRUNCATE does not fire, so an operator '
+  'with the owner''s rights is the one hole and it takes the whole table.';
 
 COMMENT ON COLUMN door_events.occurred_at IS
   'When it happened at the door, as the source reported it. That is not '
@@ -509,11 +518,11 @@ COMMENT ON COLUMN door_events.occurred_at IS
   'buffered flush: the door service is meant to hold events while the link '
   'is down and send them on reconnect, so a row can carry a time hours '
   'older than the moment it was stored. That buffer is phase 5 work and is '
-  'not built, per services/door/domain/reconcile.py. Both indexes over this '
-  'table that a page would use, door_events_time and door_events_member, '
-  'lead on this column, so it is what a page of entries should be ordered '
-  'by. Nothing pages it yet: no endpoint in services/api/app reads this '
-  'table.';
+  'not built, per services/door/domain/reconcile.py. door_events_time leads '
+  'on this column, and door_events_member reaches it second, after '
+  'member_id, so a whole table page of entries is served by the first index '
+  'and one member''s own page by the second. Nothing pages it yet: no '
+  'endpoint in services/api/app reads this table.';
 
 COMMENT ON COLUMN door_events.source IS
   'Which of the three things reported the event, rather than what happened, '
@@ -547,19 +556,13 @@ COMMENT ON COLUMN door_events.card_id IS
   'The card that was presented, where a card was involved. It is recorded '
   'at the time of the event rather than worked out by joining later, so an '
   'entry still names a card whatever happens to the card row afterwards. '
-  'The card that was presented, where a card was involved. It is recorded '
-  'at the time of the event rather than worked out by joining later, so an '
-  'entry still names a card whatever happens to the card row afterwards. '
   'The reference is declared ON DELETE SET NULL, and that clause can never '
   'fire: the SET NULL is an UPDATE on this table, and '
   'door_events_are_append_only in db/migrations/005_immutability.sql raises '
   'on it, so deleting a card any entry names is refused rather than quietly '
-  'editing the record of who came into a building. Nothing deletes a card '
-  'in practice either. Revoking is an update, and the application role '
-  'holds no DELETE on any table in db/migrations/004_security.sql. In '
-  'practice nothing deletes a card: revoking is an update, and the '
-  'application role holds no DELETE on any table in '
-  'db/migrations/004_security.sql.';
+  'editing the record of who came into a building. In practice nothing '
+  'deletes a card: revoking is an update, and the application role holds no '
+  'DELETE on any table in db/migrations/004_security.sql.';
 
 COMMENT ON COLUMN door_events.member_id IS
   'Who the entry belongs to, and the column the access record turns on. '
@@ -669,30 +672,22 @@ COMMENT ON COLUMN certifications.name IS
   'The word the lab actually uses for the tool, per rule 7 of CLAUDE.md and '
   'docs/glossary.md. Safe to change whenever the lab renames something, '
   'because the foreign keys hold id and nothing keys on this. '
-  'db/seed/001_reference.sql seeds no certifications at all. ''The word the '
-  'lab actually uses for the tool, per rule 7 of CLAUDE.md and '
-  'docs/glossary.md. Safe to change whenever the lab renames something, '
-  'because the foreign keys hold id and nothing keys on this. '
   'db/seed/001_reference.sql seeds no certifications at all, and '
-  'docs/api/members-v1.yaml declares no operation that adds one, so every '
-  'row today is written at the database. admin_writes_certifications in '
-  '007_write_policies.sql is what holds when one arrives: under oro_api '
-  'only an admin may insert, and a superuser bypasses that policy like any '
-  'other.''';
+  'docs/api/members-v1.yaml declares no operation that adds a row to this '
+  'table, so every row today is written at the database. '
+  'admin_writes_certifications in 007_write_policies.sql is what holds when '
+  'one arrives: under oro_api only an admin may insert, and a superuser '
+  'bypasses that policy like any other.';
 
 COMMENT ON COLUMN certifications.description IS
-  'Copy a member reads, so docs/conventions/voice.md governs it. Where '
-  'certification is required before somebody may use a tool, this says '
-  'required and never recommended, which voice.md bans under No safety '
-  'softening. ''Copy a member is meant to read, so '
-  'docs/conventions/voice.md governs it. Where certification is required '
-  'before somebody may use a tool, this says required and never '
-  'recommended, which voice.md bans under No safety softening. Nothing '
-  'checks that: tools/voice-check reads files rather than rows, and '
-  'docs/api/members-v1.yaml declares no operation that writes a '
-  'certification, so a row here is written at the database and read by '
-  'nobody with a gate. Null where the name says everything.'' Null where '
-  'the name says everything.';
+  'Copy a member is meant to read, so docs/conventions/voice.md governs it. '
+  'Where certification is required before somebody may use a tool, this '
+  'says required and never recommended, which voice.md bans under No safety '
+  'softening. Nothing checks that: tools/voice-check reads files rather '
+  'than rows, and docs/api/members-v1.yaml declares no operation that '
+  'writes a row in this table, so a description here is typed at the '
+  'database and read by nobody with a gate. Null where the name says '
+  'everything.';
 
 COMMENT ON COLUMN certifications.prerequisite_id IS
   'Another row on this table, the one docs/api/members-v1.yaml describes as '
@@ -710,18 +705,13 @@ COMMENT ON COLUMN certifications.validity_months IS
   'null where an hour of instruction holds forever.';
 
 COMMENT ON COLUMN certifications.active IS
-  '''The intended way to retire a tool, and nothing acts on it yet. oro_api '
+  'The intended way to retire a tool, and nothing acts on it yet. oro_api '
   'holds no DELETE on any table, and a delete by an operator is refused by '
   'the foreign keys while any member_certifications row, '
   'certification_instructors row, or prerequisite_id on this table points '
   'at it, so clear this rather than deleting. Nothing in db/migrations '
   'reads the column and no endpoint filters on it, so a false value neither '
-  'refuses a grant nor hides the row.'' oro_api holds no DELETE on any '
-  'table, and a delete by an operator is refused by the foreign keys while '
-  'any member_certifications row, certification_instructors row, or '
-  'prerequisite_id on this table points at it, so clear this instead. '
-  'Nothing in db/migrations reads the column, which means a false value '
-  'does not by itself refuse a grant.';
+  'refuses a grant nor hides the row.';
 
 COMMENT ON COLUMN certifications.legacy_id IS
   'Reserved, and empty in every database this repository builds. Nothing '
@@ -741,19 +731,15 @@ COMMENT ON COLUMN member_certifications.id IS
   'held, because every revoked grant stays.';
 
 COMMENT ON COLUMN member_certifications.member_id IS
-  'Who was certified. ''Who was certified. member_reads_own_certs in '
-  '004_security.sql compares it against current_member_id(), which is the '
-  'only route an ordinary member has to their own row. It is not the only '
-  'route to the row: admin_reads_all_certs in the same file, and '
-  'instructor_reads_their_certifications added in 012_close_remaining.sql, '
-  'both ignore this column. The cascade on delete means a hard DELETE of a '
-  'member takes their certification history with it. Nothing in '
-  'db/migrations issues one: is_admin(), current_member_id() and '
-  'member_directory all read members.deleted_at instead.'' The cascade on '
-  'delete means a hard DELETE of a member takes their certification history '
-  'with it. Nothing in db/migrations issues one: is_admin(), '
-  'current_member_id() and member_directory all read members.deleted_at '
-  'instead.';
+  'Who was certified. member_reads_own_certs in 004_security.sql compares '
+  'it against current_member_id(), which is how an ordinary member reaches '
+  'their own row. Two other SELECT policies ignore this column: '
+  'admin_reads_all_certs in the same file, and '
+  'instructor_reads_their_certifications added in 012_close_remaining.sql. '
+  'The cascade on delete means a hard DELETE of a member takes their '
+  'certification history with it. Nothing in db/migrations issues one: '
+  'is_admin(), current_member_id() and member_directory all read '
+  'members.deleted_at instead.';
 
 COMMENT ON COLUMN member_certifications.certification_id IS
   'Which tool, and also the value the instructor policies match on. '
@@ -774,31 +760,22 @@ COMMENT ON COLUMN member_certifications.granted_by IS
 
 COMMENT ON COLUMN member_certifications.granted_at IS
   'When the row was written, which is not necessarily when the person was '
-  'taught. Nothing freezes it. ''When the row was written, which is not '
-  'necessarily when the person was taught. Nothing freezes it. member_roles '
-  'has freeze_role_grant in 005_immutability.sql and this table has no '
-  'equivalent, so the instructor who may revoke a grant under '
-  'instructor_revokes_certification in 007_write_policies.sql may also '
-  'rewrite the date it was made: that policy tests who is asking and never '
-  'what the row becomes. Read that as a gap somebody should close, not as '
-  'permission.'' Read that as a gap somebody should close, not as '
-  'permission.';
+  'taught. Nothing freezes it. member_roles has freeze_role_grant in '
+  '005_immutability.sql and this table has no equivalent, so the instructor '
+  'who may revoke a grant under instructor_revokes_certification in '
+  '007_write_policies.sql may also rewrite the date it was made: that '
+  'policy tests who is asking and never what the row becomes. Read that as '
+  'a gap somebody should close, not as permission.';
 
 COMMENT ON COLUMN member_certifications.expires_at IS
-  '''Meant to be the date this grant lapses, with null meaning it does not. '
+  'Meant to be the date this grant lapses, with null meaning it does not. '
   'Nothing in db/migrations reads the column, so a date here changes '
   'nothing on its own. member_certifications_one_live is partial on '
   'revoked_at alone, so a grant that expired years ago still holds the one '
   'live slot for that member and tool, and a fresh grant is refused until '
   'the old row is revoked. docs/api/members-v1.yaml describes a grant with '
   'no expiry taking one from certifications.validity_months, and no code '
-  'does that yet.'' Nothing in db/migrations reads the column. '
-  'member_certifications_one_live is partial on revoked_at alone, so a '
-  'grant that expired years ago still holds the one live slot for that '
-  'member and tool, and a fresh grant is refused until the old row is '
-  'revoked. docs/api/members-v1.yaml describes a grant with no expiry '
-  'taking one from certifications.validity_months, and no code does that '
-  'yet.';
+  'does that yet.';
 
 COMMENT ON COLUMN member_certifications.revoked_at IS
   'Set rather than deleting the row, because who was certified and who took '
@@ -834,14 +811,10 @@ COMMENT ON COLUMN certification_instructors.member_id IS
   'second power that is easy to miss: waiver_status in '
   '011_close_read_holes.sql lets any instructor ask whether any member has '
   'a valid waiver, because somebody running a class has to check before it '
-  'starts. ''The person who may sign others off on this tool. A row here '
-  'carries a second power that is easy to miss: waiver_status in '
-  '011_close_read_holes.sql lets any instructor ask whether any member has '
-  'a valid waiver, because somebody running a class has to check before it '
   'starts. Only an admin may add one: admin_sets_instructors in '
   '007_write_policies.sql is the sole INSERT policy. No endpoint does it, '
   'since docs/api/members-v1.yaml declares no operation that appoints an '
-  'instructor, so today it is an admin at the database.''';
+  'instructor, so today it is an admin at the database.';
 
 COMMENT ON COLUMN certification_instructors.certification_id IS
   'The tool, which is the whole scope of the appointment. An instructor '
@@ -874,20 +847,18 @@ COMMENT ON COLUMN approvals.id IS
   'why this table also carries UNIQUE (id, target_member_id, role_id) even '
   'though the primary key already makes id unique. A foreign key needs a '
   'unique constraint over exactly the columns it references, and '
-  'member_roles references all three together. ''Dropping that second '
-  'unique constraint as redundant is refused while '' ''member_roles '
-  'carries the composite foreign key, and dropping it with '' ''CASCADE '
-  'takes that key away, and that key is what ties one approval to '' ''one '
-  'specific grant.''';
+  'member_roles references all three together. Dropping that second unique '
+  'constraint as redundant is refused while member_roles carries the '
+  'composite foreign key, and dropping it with CASCADE takes that key away, '
+  'and that key is what ties one approval to one specific grant.';
 
 COMMENT ON COLUMN approvals.kind IS
   'grant_role or revoke_role, and only grant_role does anything today. '
-  '''grant_role or revoke_role, and only grant_role does anything today. '' '
-  '''enforce_role_grant_rules, written in db/migrations/003_rules.sql and '
-  ''' ''replaced in 012_close_remaining.sql, refuses a grant whose approval '
-  'is '' ''not a grant_role, and nothing acts on a revoke_role row, because '
-  ''' ''revoking is single actor by design: a rule that needs two people to '
-  ''' ''remove a compromised admin fails at the worst moment.'' The value '
+  'enforce_role_grant_rules, written in db/migrations/003_rules.sql and '
+  'replaced in 013_bootstrap_three_admins.sql, refuses a grant whose '
+  'approval is not a grant_role, and nothing acts on a revoke_role row, '
+  'because revoking is single actor by design: a rule that needs two people '
+  'to remove a compromised admin fails at the worst moment. The value '
   'exists so the table can record a revocation proposal if the lab later '
   'decides it wants one. ApprovalCreate in docs/api/members-v1.yaml accepts '
   'grant_role and nothing else.';
@@ -897,11 +868,10 @@ COMMENT ON COLUMN approvals.target_member_id IS
   'one grant instead of any grant. member_roles references (approval_id, '
   'member_id, role_id) against (id, target_member_id, role_id) here, so an '
   'approval naming Dan cannot be spent granting admin to Erin. '
-  '''freeze_approval_proposal, written in '
-  'db/migrations/005_immutability.sql '' ''and rewritten in '
-  '010_close_approval_holes.sql, refuses any change to it, '' ''because '
-  'otherwise a single admin could repoint an already approved row '' ''at '
-  'somebody else and the foreign key would faithfully follow.''';
+  'freeze_approval_proposal, written in db/migrations/005_immutability.sql '
+  'and rewritten in 010_close_approval_holes.sql, refuses any change to it, '
+  'because otherwise a single admin could repoint an already approved row '
+  'at somebody else and the foreign key would faithfully follow.';
 
 COMMENT ON COLUMN approvals.role_id IS
   'The role being proposed, which in practice is a role whose grants_roles '
@@ -963,12 +933,12 @@ COMMENT ON COLUMN approvals.status IS
   'pending, approved, rejected, or withdrawn, and that vocabulary is the '
   'CHECK on this column. Only approved authorises anything, since '
   'enforce_role_grant_rules refuses a grant against any other value. '
-  '''approved and rejected are final: freeze_approval_proposal refuses a '' '
-  '''change out of either, so withdrawn is the only way to retire a '
-  'proposal '' ''without deciding it, and it applies while the row is still '
-  'pending.'' Two checks tie this column to the decision, '
-  'decided_rows_have_a_decider and decided_rows_have_a_time, so pending and '
-  'withdrawn are exactly the rows with no decider and no decision time.';
+  'approved and rejected are final: freeze_approval_proposal refuses a '
+  'change out of either, so withdrawn is the only way to retire a proposal '
+  'without deciding it, and it applies while the row is still pending. Two '
+  'checks tie this column to the decision, decided_rows_have_a_decider and '
+  'decided_rows_have_a_time, so pending and withdrawn are exactly the rows '
+  'with no decider and no decision time.';
 
 COMMENT ON COLUMN approvals.expires_at IS
   'Thirty days from insert by default. It is a deadline on the decision, '
@@ -983,10 +953,9 @@ COMMENT ON COLUMN member_roles.id IS
   'the key here. Revocation is a recorded row rather than a DELETE, so a '
   'natural key would make it impossible to grant a role back to somebody it '
   'was revoked from, which happens whenever a person rotates off operations '
-  'and later returns. ''No foreign key points at this column: the composite '
-  'foreign key to '' ''approvals runs the other way, out of approval_id. '
-  'The API does return '' ''it, as RoleGrant.id in '
-  'docs/api/members-v1.yaml.''';
+  'and later returns. No foreign key points at this column: the composite '
+  'foreign key to approvals runs the other way, out of approval_id. The API '
+  'does return it, as RoleGrant.id in docs/api/members-v1.yaml.';
 
 COMMENT ON COLUMN member_roles.member_id IS
   'Who holds the role, read far more widely than by this table. is_admin '
@@ -1047,11 +1016,11 @@ COMMENT ON COLUMN member_roles.approval_id IS
   'could have satisfied the rule. Revoking admins does not hand it back '
   'either: two_approver_armed latches once the bootstrap runs out. Nothing '
   'separate records the quota, which makes this column the record of it, '
-  'and no application role holds DELETE here so the count only rises. '
-  '''Also frozen by freeze_role_grant, unique across its non-null values so '
-  ''' ''one approval cannot authorise two grants, and one of the three '
-  'columns '' ''of the composite foreign key tying this grant to an '
-  'approval naming '' ''this exact member and role.''';
+  'and no application role holds DELETE here so the count only rises. Also '
+  'frozen by freeze_role_grant, unique across its non-null values so one '
+  'approval cannot authorise two grants, and one of the three columns of '
+  'the composite foreign key tying this grant to an approval naming this '
+  'exact member and role.';
 
 COMMENT ON COLUMN member_roles.expires_at IS
   'Null means the grant does not expire. Since '
@@ -1107,22 +1076,18 @@ COMMENT ON COLUMN roles.name IS
   'interchangeable.';
 
 COMMENT ON COLUMN roles.description IS
-  '''What the role is for, in the words the lab uses. It carries no '' '
-  '''authority of its own. What a role can actually do lives in '' '
-  '''grants_roles and in the policies that name the id, so a description '' '
-  '''that drifts from those misleads a reader rather than misconfiguring '' '
-  '''the system.'' It carries no authority of its own. What a role can '
-  'actually do lives in grants_roles and in the policies that name the id, '
-  'so a description that drifts from those misleads a reader rather than '
-  'misconfiguring the system.';
+  'What the role is for, in the words the lab uses. It carries no authority '
+  'of its own. What a role can actually do lives in grants_roles and in the '
+  'policies that name the id, so a description that drifts from those '
+  'misleads a reader rather than misconfiguring the system.';
 
 COMMENT ON COLUMN two_approver_armed.armed_at IS
-  '''When a write to member_roles first found the bootstrap spent, which is '
-  ''' ''three live admins or three unapproved admin grants, whichever came '
-  ''' ''first. arm_two_approver_rule is a statement trigger on member_roles '
-  ''' ''alone, so a lab that reaches three live admins by another route, '' '
-  '''restoring a soft deleted admin for instance, arms on its next role '' '
-  '''write rather than at that moment.'' Nothing reads the value: '
+  'When a write to member_roles first found the bootstrap spent, which is '
+  'three live admins or three unapproved admin grants, whichever came '
+  'first. arm_two_approver_rule is a statement trigger on member_roles '
+  'alone, so a lab that reaches three live admins by another route, '
+  'restoring a soft deleted admin for instance, arms on its next role write '
+  'rather than at that moment. Nothing reads the value: '
   'two_approver_rule_can_bind only tests whether the row is present, so '
   'this is a record for whoever asks later why the escape closed rather '
   'than an input to any decision. arm_two_approver_rule writes it and is '
@@ -1194,8 +1159,7 @@ COMMENT ON COLUMN tiers.active IS
   'with the rest of the tier and returns it for display, but nothing '
   'decides anything from it, card_eligibility never reads it, and nothing '
   'stops a member choosing a tier that is false. It is a fact for a person '
-  'to act on rather than a rule the database enforces. It is a fact for a '
-  'person to act on rather than a rule the database enforces.';
+  'to act on rather than a rule the database enforces.';
 
 COMMENT ON COLUMN tiers.notes IS
   'Unused, and measured so on 2026-08-29. No row in '
@@ -1230,16 +1194,14 @@ COMMENT ON COLUMN payments.amount_cents IS
   'with an amount.';
 
 COMMENT ON COLUMN payments.paid_on IS
-  'The day the money arrived. Nothing writes it: no import reads the legacy '
-  'payments table, and docs/plan/data-model.md section 5 is the only record '
-  'this repository holds of one. A date rather than a timestamp, so the '
-  'naive timestamp trap in HANDOFF.md section 7 does not reach it. A date '
-  'rather than a timestamp, so the naive timestamp trap in HANDOFF.md '
-  'section 7 does not reach it. Deliberately not unique with member_id: the '
-  'legacy schema carried a unique constraint on (user_id, date), which '
-  'docs/plan/data-model.md section 5 lists as the reason a second payment '
-  'on the same day could not be recorded. Today members.paid_through and '
-  'members.standing are set by hand.';
+  'The day the money arrived. Nothing writes it: no import reads a legacy '
+  'payments table, and the payments row in docs/plan/data-model.md section '
+  '5 is the only record this repository holds of one. A date rather than a '
+  'timestamp, so the naive timestamp trap in HANDOFF.md section 7 does not '
+  'reach it. Deliberately not unique with member_id: that same row records '
+  'that the legacy unique constraint on (user_id, date) made a second '
+  'payment on the same day impossible to record. Today members.paid_through '
+  'and members.standing are set by hand.';
 
 COMMENT ON COLUMN payments.method IS
   'How the money arrived. Free text with no CHECK and no vocabulary defined '
@@ -1416,9 +1378,9 @@ COMMENT ON COLUMN schema_migrations.filename IS
   'elsewhere in the tree. Two absences to know about. 000_migrations.sql is '
   'skipped on purpose: it is the file that creates this table, and '
   'db/tests/run.sh chooses not to have the ledger record itself even though '
-  'the table exists by the time it could., and tools/migration/run.sh '
-  'applies every migration for the import test while writing no rows here '
-  'at all.';
+  'the table exists by the time it could. The second absence is the whole '
+  'import path, since tools/migration/run.sh applies every migration for '
+  'the import test while writing no rows here at all.';
 
 COMMENT ON COLUMN schema_migrations.sha256 IS
   'The digest of the file at the moment it was applied, so a migration '
