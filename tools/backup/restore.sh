@@ -210,11 +210,16 @@ if ! "$ROOT/tools/backup/roles_the_archive_needs.sh" "$ARCHIVE" "$CONTAINER"; th
   exit 1
 fi
 
-# pg_restore has to seek within the archive, so it cannot read one on a pipe.
-# Measured on 2026-08-28: pg_restore 18.6 reading /dev/stdin answers "could not
-# read from input file: end of file". So a copy goes in, onto the tmpfs, and the
-# shell that runs pg_restore removes it whatever pg_restore made of it. That
-# removal does not depend on this script living long enough to do it.
+# A copy goes in, onto the tmpfs, and the shell that runs pg_restore removes it
+# whatever pg_restore made of it, so that removal does not depend on this script
+# living long enough to do it.
+#
+# The copy is not what makes the restore work. pg_restore reads an archive on a
+# pipe: measured on 2026-08-29 with pg_restore 18.6, the flags below with the
+# archive arriving only on stdin exit 0 and every row came back. What fails is
+# /dev/stdin named as a file argument, and -j from stdin, which costs nothing
+# here because --single-transaction refuses -j too. ADR 0014 prices the copy
+# against streaming and says what taking it out involves.
 BYTES="$(wc -c < "$ARCHIVE" | tr -d ' ')"
 FREE="$(docker exec "$CONTAINER" df -Pk /dev/shm | awk 'NR == 2 { printf "%d\n", $4 * 1024 }')"
 if [ "$BYTES" -ge "$FREE" ]; then

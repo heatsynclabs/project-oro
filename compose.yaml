@@ -38,8 +38,11 @@ services:
     # under 256MB. It is roughly two thousand members and their cards, and the
     # bulky columns are free text, but nobody here has seen the real thing.
     # CONFIRM BY: pg_dump -Fc on hsl-web and read the size of the file.
-    # BLAST RADIUS: restore.sh refuses before it touches the database and names
-    # this line as the one to raise, so the failure is loud and the fix is here.
+    # BLAST RADIUS: restore.sh refuses before it restores a row and names this
+    # line as the one to raise, so the failure is loud and the fix is here. Not
+    # before it touches the database at all: the check sits after the createdb
+    # that replaces --create and after the roles file is applied, so a refusal
+    # can leave an empty database and the archive's roles behind it.
     shm_size: 256mb
     environment:
       POSTGRES_DB: oro

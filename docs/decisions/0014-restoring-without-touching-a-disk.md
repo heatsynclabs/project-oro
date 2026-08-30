@@ -14,11 +14,31 @@ is the whole reason this file has the shape it has: member data belongs to the
 member, it does not get copied onto laptops, and it does not get left on a disk
 nobody is watching.
 
-A copy has to exist, because `pg_restore` seeks inside an archive and cannot
-read one on a pipe. Measured on 2026-08-29 in `postgres:18`, `pg_restore` 18.6:
-reading `/dev/stdin` answers `pg_restore: error: could not read from input file:
-end of file`, and the same bytes written to a file and read back list their
-table of contents.
+An earlier version of this record opened by saying a copy has to exist, because
+`pg_restore` seeks inside an archive and cannot read one on a pipe. That is
+false. Re-measured on 2026-08-29 in `postgres:18`, `pg_restore` 18.6, with
+`restore.sh`'s own flags and the archive arriving only over `docker exec -i`:
+
+```
+pg_restore -U postgres -d "dbname=dst user=postgres application_name=..." \
+  --clean --if-exists --single-transaction < b.dump
+```
+
+Exit 0, and all 5000 rows came back. Inside the container `/proc/self/fd/0` was
+a pipe, so the archive was never on a filesystem there.
+
+Two narrower things are true, and something near them is what the first
+measurement caught. Naming `/dev/stdin` as a file argument fails with
+`pg_restore: error: did not find magic string in file header`, because a file
+argument is opened and seeked rather than read forward. Asking for `-j` fails
+with `pg_restore: error: parallel restore from standard input is not
+supported`. The message the earlier version quoted, `could not read from input
+file: end of file`, came back from neither, nor from an empty stdin, which
+answers `input file is too short (read 0, expected 5)`. What produced it cannot
+be recovered from what was written down, because the record kept the output and
+not the command. `tools/backup/tests/run.sh` prints that same message on every
+run, from an archive with its tail cut off. Neither limit stops the command
+above.
 
 The second half of this record is what happens when somebody stops a restore.
 `docker exec` does not forward a signal to the process it started. Measured on
@@ -67,10 +87,18 @@ removes it.
 ### Option C: stream it on stdin and keep no copy
 
 - **At rest:** nothing at all, which is why this was the first thing tried.
-- **Cost:** `pg_restore` refuses, per the measurement above. It survives in one
-  place, the read back that both scripts do before anything else: the archive
-  goes in on a pipe to a throwaway `postgres:18` container, which writes it to
-  its own `/tmp` and dies with `--rm` a second later.
+- **Cost:** `-j`, and nothing else this script can use. Parallel restore from
+  standard input is refused, and `-j` is refused alongside
+  `--single-transaction` in any case: `pg_restore: error: cannot specify both
+  --single-transaction and multiple jobs`, measured on 2026-08-29 from a file,
+  so the pipe is not what costs it. That single transaction is the whole of how
+  a stopped restore rolls back, so parallelism was never on offer here.
+- This option is already how both scripts read an archive back: it goes in on a
+  pipe to a throwaway `postgres:18` container, which writes it to its own `/tmp`
+  and dies with `--rm` a second later. Even that `/tmp` write is habit rather
+  than need. `pg_restore --list` reading straight off the pipe exits 0. So does
+  the `--schema-only --file=-` read that `roles_the_archive_needs.sh` makes.
+  Both measured the same day.
 
 ### Option D: a tmpfs mount of its own on the `db` service
 
@@ -152,10 +180,34 @@ shell inside the container removes it after `pg_restore` returns whatever
 `pg_restore` made of it. A catchable signal terminates the named backend, which
 rolls the single transaction back.
 
-Rule 13 eliminated the others first. Options B and E leave or hand over
-something they should not: a file on a disk in one case, the superuser password
-in the other. Between the two answers that keep the copy in memory, `/dev/shm`
-is the one that adds no mount to a service that serves the lab.
+Rule 13 eliminated Options B and E first, and that part still holds. One leaves
+a file on a disk, the other hands the superuser password to a second process.
+Between the two answers that keep the copy in memory, `/dev/shm` is the one that
+adds no mount to a service that serves the lab.
+
+**That argument only ever ran because Option C of the first list had been ruled
+out, and it should not have been.** It is an argument about where a copy goes,
+reached from a premise that a copy is needed. On the corrected measurement that
+option wins on this record's own test: nothing at rest at all beats something in
+memory. The
+re-pricing found nothing in `tools/backup/` that the copy buys.
+`roles_the_archive_needs.sh` opens the host file itself, in a throwaway
+container of its own, and never sees the copy. Nothing reads the archive twice
+inside the database container, asks its size there, or wants a file argument.
+The free space check measures the archive against `/dev/shm` because that is
+where the copy goes, so what it guards is the copy rather than the restore, and
+with no copy there is nothing left for it to guard. The `kill -9` residue below
+exists only to serve the copy. So does the part of the `shm_size` line in
+`compose.yaml` that the restore drove, which is the 256 rather than the line: a
+database container wants more than the Docker default of 64MB on its own terms,
+and the comment beside it says so.
+
+Option F is what `tools/backup/restore.sh` does today, and this record says so
+because rule 10 asks a document to describe the code that exists. It is not what
+this record would choose now. Changing the mechanism changes the restore path,
+which `HANDOFF.md` section 2 puts under the first gate of rule 12, so it wants
+its own diff, its own run of `tools/backup/tests/run.sh` and its own reader,
+rather than riding in on a correction to prose.
 
 Two things remove the copy and neither one covers the other's case. The shell
 inside the container runs `rm -f` on the copy once `pg_restore` returns,
@@ -196,12 +248,57 @@ wrong.
 
 ## The condition that would flip this
 
-If a custom format dump of the production database turns out to need enough of
-`/dev/shm` that Postgres cannot get the shared memory it wants alongside it,
-this is wrong and Option D becomes correct: a tmpfs mount of its own, sized for
-the restore, so the two are not competing for one number. Check it by running
-`pg_dump -Fc` on hsl-web, reading the size, and comparing it against what the
-host running the stack can give a container.
+**It is met.** The condition was always whether `pg_restore` reads an archive on
+a pipe, because that is the only thing the streaming option was rejected for,
+and it does. The measurement is in the Context. What follows is what the flip is
+worth,
+measured on 2026-08-29 in `postgres:18` against an 8,238,131 byte archive of
+300,000 rows fed over `docker exec -i`:
+
+- Nothing killed: exit 0, 300,000 rows, three seconds end to end.
+- The host client killed with `kill -9` a second and a half in: the stream is
+  cut where the client died, `pg_restore` never reaches the end of the archive,
+  and the single transaction rolls back. The database was left holding the five
+  rows it held before, and no backend carrying the restore's `application_name`
+  was left behind.
+
+The second line is what makes this worth doing rather than merely tidy. Under
+Option F a `kill -9` leaves a whole copy sitting on `/dev/shm`, and `pg_restore`
+reads it to the end and commits, which is the limit the section above records
+and does not fix. Streaming does not catch the signal either. It does not need
+to: the operator's kill takes the restore with it, because the process that died
+is the one feeding it.
+
+That property has a floor and the floor should be stated. An archive small
+enough to sit whole in the kernel's pipe buffers is handed over before it is
+read, so killing the client afterwards changes nothing. The same test with a
+21,296 byte archive, and `pg_restore` held back four seconds so the client would
+certainly be dead first, committed all 5000 rows. A custom format dump of the
+members database is far above that floor.
+
+What the flip costs, priced before somebody takes it. `--clean` holds an
+exclusive lock on every object it drops, and streaming holds those locks across
+the transfer as well as the restore, where the copy finishes the transfer first.
+Over a local `docker exec` both are the same few seconds. A host read that fails
+part way would also fail inside the transaction rather than before it opens,
+which rolls back either way and reads worse in the output.
+
+Taking it means `restore.sh` passes no file argument and feeds `pg_restore` on
+stdin. The `/dev/shm` path and the container shell's own `rm` go. The free space
+refusal goes with them, and so does the `shm_size: 512m` line it prints, leaving
+`compose.yaml` to keep `shm_size` for Postgres's own sake at whatever number
+Postgres wants. The check that the copy is really gone belongs in the drill,
+which already holds a restore part way by taking a lock the first statement
+needs: while that lock is held, `ls /dev/shm` in the container has to show no
+archive. Today it shows one, because `cat > "$1"` finishes before `pg_restore`
+opens.
+
+If the copy stays, the older condition stands underneath it. A custom format
+dump of the production database that needs enough of `/dev/shm` that Postgres
+cannot get the shared memory it wants alongside it makes Option D correct: a
+tmpfs mount of its own, sized for the restore, so the two are not competing for
+one number. Check that by running `pg_dump -Fc` on hsl-web, reading the size,
+and comparing it against what the host running the stack can give a container.
 
 ## Consequences
 
@@ -224,7 +321,7 @@ host running the stack can give a container.
   ends up with a stack that does not match the decision written here, and the
   next person to read `compose.yaml` finds a number nobody chose. The line that
   prints it is the `echo "  shm_size: 512m"` in the space refusal in
-  `tools/backup/restore.sh`, line 226 as this record is written.
+  `tools/backup/restore.sh`, line 231 as this record is written.
 - The refusal happens before `pg_restore` runs, so no row is replaced and no
   table is dropped. It does not happen before the database is touched. By the
   time the space is checked, `restore.sh` has created the `oro` database if it
@@ -242,6 +339,13 @@ host running the stack can give a container.
   `restore.sh` and the size line in `compose.yaml`. The signal handling is one
   trap and the background `wait`, and the test that would catch a reversal
   already exists.
+- The `shm_size: 512m` the refusal prints is downstream of a rejection that
+  should not have happened. So are the 256MB assumption block and the free space
+  check that runs only after the database has already been created. Whoever
+  takes the flip above deletes them rather than repairing them, so repairing
+  them first is work with a short life. What is worth doing either way is the
+  correction to the comment beside `shm_size` in `compose.yaml`, which tells a
+  reader that `restore.sh` refuses before it touches the database. It does not.
 
 ## What was borrowed
 
