@@ -73,9 +73,10 @@ moving tag, so a tag repointed at different code cannot change what runs.
 | [Prism](https://github.com/stoplightio/prism) 5.15.10 | image digest `sha256:586d1f0f94f8d0eaf20b26b8b41f985f2a2d494bea297bd3988c3de3eb87094e`, in `compose.development.yaml` | Apache 2.0, Stoplight | Serving the contract as a mock, for the members portal and for CI. Chosen in [ADR 0002](./docs/decisions/0002-mock-server.md) |
 | [Zitadel](https://github.com/zitadel/zitadel) 4.17.1 | image digest `sha256:3ac6910685d48f32481f01f45e3e6215efe5a9df2c069591b481e9a101712db5`, in `compose.yaml` | **AGPL-3.0**, Zitadel. Read from the GitHub API on 2026-08-28, and see the note below | The identity service. Chosen in [ADR 0004](./docs/decisions/0004-identity-service.md) |
 | [Ruff](https://github.com/astral-sh/ruff) 0.16.5 | image digest `sha256:8355b79edf35788aef97ac9b1ff3b758604a5d67963ead617c45c72e1d92871f`, in `tools/ceilings/run.sh` | MIT, Astral. Read from the repository `LICENSE` on 2026-08-28 | Three of the five ceilings in rule 6. Chosen in [ADR 0005](./docs/decisions/0005-file-and-function-ceilings.md) |
+| [import-linter](https://github.com/seddonym/import-linter) 2.14 and [grimp](https://github.com/seddonym/grimp) 3.16 | the PyPI versions, pinned with hashes in `tools/import-boundaries/requirements.txt` and installed into an image built from `tools/import-boundaries/Dockerfile` | BSD-2-Clause for both, David Seddon, with 44 and 15 contributors behind him. Read from the GitHub API on 2026-08-29 | The layer arrows in rule 5, over the Python in `services/`. Chosen in [ADR 0006](./docs/decisions/0006-import-boundaries.md) and delivered by [ADR 0011](./docs/decisions/0011-import-linter-arrives.md). Nobody publishes an image for it, checked on 2026-08-29 against ghcr.io and Docker Hub, so this repository builds one |
 | [bcrypt-ruby](https://github.com/bcrypt-ruby/bcrypt-ruby) 3.1.20 | the gem version, in `tools/identity/tests/generate_hashes.sh`, installed into a throwaway `ruby:3.3-alpine` | MIT, Coda Hale and Jeremy Kemper | Writing the fixture hashes the phase 2 password proof runs on. It is the library the legacy Rails application hashes with, which is the whole reason it is this one and not another |
-| [uv](https://github.com/astral-sh/uv) 0.12.7 | the PyPI version, named in the header of `services/api/requirements.txt` | `MIT OR Apache-2.0` on PyPI, Apache-2.0 on the GitHub repository record, Astral. Both read on 2026-08-28 | Compiling `services/api/requirements.in` into a lock carrying a hash for every wheel on every platform. It runs when a dependency changes and is not in any image. Chosen in [ADR 0012](./docs/decisions/0012-python-dependencies.md) |
-| [python](https://hub.docker.com/_/python) 3.13.15 slim | image digest `sha256:7ce4b6dfe35e55397b7cda544f8a13f191b7ae28dc5aad71fe664dbc9bc2623f`, in `services/api/Dockerfile` | Python Software Foundation licence for Python itself, on a Debian trixie base. Digest read from `docker buildx imagetools inspect` on 2026-08-28 | The base of the members API image, and the JWKS server its suite runs |
+| [uv](https://github.com/astral-sh/uv) 0.12.7 | the PyPI version, named in the header of `services/api/requirements.txt` | `MIT OR Apache-2.0` on PyPI, Apache-2.0 on the GitHub repository record, Astral. Both read on 2026-08-28 | Compiling `services/api/requirements.in` and `tools/import-boundaries/requirements.in` into locks carrying a hash for every wheel on every platform. It runs when a dependency changes and is not in any image. Chosen in [ADR 0012](./docs/decisions/0012-python-dependencies.md) |
+| [python](https://hub.docker.com/_/python) 3.13.15 slim | image digest `sha256:7ce4b6dfe35e55397b7cda544f8a13f191b7ae28dc5aad71fe664dbc9bc2623f`, in `services/api/Dockerfile` and in `tools/import-boundaries/Dockerfile` | Python Software Foundation licence for Python itself, on a Debian trixie base. Digest read from `docker buildx imagetools inspect` on 2026-08-28 and read again unchanged on 2026-08-29 | The base of the members API image, the JWKS server its suite runs, and the image the import boundary gate runs in |
 
 Every other image the stack runs is named by tag: `postgres:18` and
 `caddy:2-alpine`. Neither is vendored and neither is modified. `ruby:3.3-alpine`
@@ -164,5 +165,27 @@ also carries the copyleft check on psycopg.
 | typing-inspection | 0.4.4 | MIT | pydantic |
 | tzdata | 2026.3 | Apache-2.0 | psycopg, on Windows only. Never installed here |
 | uvicorn | 0.52.4 | BSD-3-Clause | asked for |
+
+### `tools/import-boundaries`, from `tools/import-boundaries/requirements.txt`
+
+Two were asked for and the rest came with them. Every version below was read
+from that lock, and every licence from the installed package's own metadata
+inside the built image on 2026-08-29, with `importlib.metadata`, the same way
+the table above was read. Where a package records no licence field, the licence
+below is its own `License :: OSI Approved` classifier.
+
+Nothing here is copyleft and nothing here reaches a deployment. This image is
+built to read the source tree and is never shipped.
+
+| Package | Version | Licence | Asked for, or brought in by |
+|---|---|---|---|
+| click | 8.5.0 | BSD-3-Clause | import-linter |
+| grimp | 3.16 | BSD-2-Clause | asked for |
+| import-linter | 2.14 | BSD-2-Clause | asked for |
+| markdown-it-py | 4.2.0 | MIT | rich |
+| mdurl | 0.1.2 | MIT | markdown-it-py |
+| Pygments | 2.21.0 | BSD-2-Clause | rich |
+| rich | 15.0.0 | MIT | import-linter |
+| typing-extensions | 4.16.0 | PSF-2.0 | import-linter |
 
 <!-- END GENERATED DEPENDENCIES -->

@@ -10,7 +10,7 @@
 DEV = docker compose -f compose.yaml -f compose.development.yaml
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure bootstrap-admins migration-test ceilings backup restore backup-test api-test
+.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure bootstrap-admins migration-test ceilings backup restore backup-test api-test import-boundaries
 
 help:
 	@echo "make up                start the stack in the background"
@@ -29,6 +29,7 @@ help:
 	@echo "make bootstrap-admins  seat the first three admins, who can then administer everything"
 	@echo "make migration-test    prove the legacy import, and prove it refuses dirty data"
 	@echo "make ceilings          check every file and function against the ceilings in rule 6"
+	@echo "make import-boundaries check that the layers in rule 5 only import downward"
 	@echo "make backup            write a backup of the members database outside this repository"
 	@echo "make restore FILE=...  restore one. It refuses over a database that holds members"
 	@echo "make backup-test       run the restore drill: back up, destroy, restore, check"
@@ -82,6 +83,7 @@ check:
 	python3 tools/voice-check/test_behaviour.py
 	./tools/ci/voice-gate.sh
 	./tools/ceilings/run.sh
+	./tools/import-boundaries/run.sh
 	./tools/mock/tests/run.sh
 	./tools/development/tests/run.sh
 	./tools/members-portal/tests/run.sh
@@ -184,6 +186,13 @@ migration-test:
 # ADR 0005 records which does what and what was priced against it.
 ceilings:
 	./tools/ceilings/run.sh
+
+# Rule 5, over the Python in services/. import-linter reads a real import
+# graph, so a violation one import deep is caught the same way a direct one is.
+# ADR 0006 chose the tool. ADR 0011 records how it arrives, which is an image
+# this repository builds, because nobody publishes one.
+import-boundaries:
+	./tools/import-boundaries/run.sh
 
 # Gate 1 of rule 12: a verified, restorable backup of the members database.
 # Two files land in $ORO_BACKUP_DIR, which defaults to $HOME/oro-backups and is

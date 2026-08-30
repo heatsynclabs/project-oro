@@ -80,7 +80,7 @@ jobs:
       # Pinned rather than floating, per docs/decisions/0001-openapi-toolchain.md:
       # a linter that changes its rules on somebody else's schedule turns an
       # unrelated pull request red. Node 22 and npm are already on the runner
-      # image, read from actions/runner-images on 2026-08-27. The three warnings
+      # image, read from actions/runner-images on 2026-08-27. The five warnings
       # this reports are expected and the ADR says why; warnings do not fail it.
       - name: The members API document
         run: npx --yes @redocly/cli@2.49.0 lint docs/api/members-v1.yaml
@@ -203,6 +203,23 @@ jobs:
       # nothing.
       - name: Every ceiling in rule 6
         run: ./tools/ceilings/run.sh
+
+  boundaries:
+    name: Import boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Rule 5 of CLAUDE.md, over the Python that exists. import-linter reads a
+      # real import graph, so the module that crosses a line does not have to be
+      # the one anybody opened: two of the gate's own fourteen checks plant a
+      # violation one import deep and require it named, and a third plants a
+      # legal chain and requires silence. Six more hold the width of that graph,
+      # which is the part contracts.ini warns about. Nobody publishes an
+      # import-linter image, so this builds one, the one thing here reaching
+      # PyPI. ADR 0011 priced what it was chosen over.
+      - name: The layers only import downward
+        run: ./tools/import-boundaries/run.sh
 
   migration:
     name: Legacy import

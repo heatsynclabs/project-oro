@@ -1,0 +1,15 @@
+# What the import boundary gate installs into its own image. Two lines, and
+# everything else in requirements.txt is something one of these two brought.
+#
+#   import-linter   the gate itself, named by rule 5 of CLAUDE.md and chosen in
+#                   docs/decisions/0006-import-boundaries.md
+#   grimp           the engine that builds the import graph. import-linter
+#                   depends on it anyway, and it is pinned here by name because
+#                   it is the compiled part and the one that decides whether an
+#                   install is two seconds or forty
+#
+# requirements.txt beside this file is the lock, and its first two lines are the
+# command that regenerates it. docs/decisions/0011-import-linter-arrives.md says
+# why this gate builds an image rather than pulling one.
+import-linter==2.14
+grimp==3.16

@@ -48,10 +48,18 @@ Versions, dates and licences read from each project on 2026-08-28.
 - **Fit:** `TID251` bans a named module, and a `.ruff.toml` in a subdirectory
   applies to the files under it, so a directional ban is expressible with a
   message of our own wording.
-- **Cost:** it matches module names rather than reading a graph, so a violation
-  one import deep is invisible to it. It cannot express no cycles, and it cannot
-  express rule 5's "a package exports through its index". The policy ends up
-  scattered across one config file per directory rather than written down once.
+- **Cost:** it matches module names in the files its config covers rather than
+  reading a graph. Corrected on 2026-08-29, because this bullet first said a
+  violation one import deep is invisible to it and that is false: given
+  `app.main` importing `app.gateway` and `app.gateway` importing
+  `door.adapters`, ruff 0.16.5 reported `TID251 door is banned` on
+  `app/gateway.py`. What it misses is an import that crosses in a file no config
+  covers. With a `ruff.toml` under `services/api` and the crossing import
+  written in `services/shared_wire.py`, which `app` imports, ruff reported "All
+  checks passed" over `services/api`. It cannot express no cycles either, and it
+  cannot express rule 5's "a package exports through its index". The policy ends
+  up scattered across one config file per directory rather than written down
+  once.
 
 ### Option C: eslint-plugin-boundaries, which rule 5 also names
 
@@ -82,10 +90,15 @@ sit under a layer arrow with something above it. Pin grimp explicitly when it
 lands, because its install is the part that will bite somebody.
 
 Ruff's `TID` rules were the tempting middle. They are rejected because a boundary
-check that misses an indirect import is a gate that reports green on a violated
-rule, and `docs/plan/architecture.md` section 2 already rejected PostgREST for
-exactly that: "A gate that reports green on a violated rule is worse than no
-gate."
+check that only reads the files one config covers reports green on a violated
+rule as soon as the module that crosses the line sits outside it, and
+`docs/plan/architecture.md` section 2 already rejected PostgREST for exactly
+that: "A gate that reports green on a violated rule is worse than no gate."
+
+That case is not free with a graph either. [ADR 0011](./0011-import-linter-arrives.md)
+records what import-linter does with it, which is nothing until the module in
+the middle is a declared root package, and what
+`tools/import-boundaries/check_root_packages.py` does about that.
 
 ## The condition that would flip this
 
@@ -107,7 +120,20 @@ land in the same pull request.
 
 ## What was borrowed
 
-Nothing yet. Both tools are named and neither is installed.
+Nothing was copied. When this was written neither tool was installed. Since
+2026-08-29 `import-linter` and `grimp` are installed, into an image this
+repository builds and never ships, and `ATTRIBUTIONS.md` lists both with their
+licence and every package that came with them.
+`eslint-plugin-boundaries` is still only a name here.
+
+## What completed this
+
+[ADR 0011](./0011-import-linter-arrives.md), on 2026-08-29. The flip condition
+above fired in 432fd1e, and 0011 settles the part this record left open: how
+`import-linter` arrives, which is an image this repository builds because
+nobody publishes one. It does not supersede anything here. The tool this
+record chose is the tool that landed, and `tools/import-boundaries/contracts.ini`
+holds the contracts.
 
 ## Open questions
 
@@ -116,3 +142,12 @@ Whether `services/door` should get an `import-linter` contract of its own before
 `domain` over `adapters` layering is the rule most worth holding. The argument
 against is that a gate installed for one package teaches nobody the shape of the
 whole, and phase 3 is not far. Decide it when `services/api` starts.
+
+**Answered on 2026-08-29, and the answer is yes.** It landed in the same file
+as the `services/api` contract, so the argument against it expired rather than
+being overruled: both packages are in one config and the shape of the whole is
+the two contracts read together. The reason for the layering itself is the
+decision in `HANDOFF.md` section 4, that the door service is an API plus a
+controller adapter so the Arduino can be replaced without the contract
+changing. That only stays true while the domain knows nothing about any
+adapter.
