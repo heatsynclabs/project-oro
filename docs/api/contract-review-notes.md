@@ -9,7 +9,7 @@ person so their hour goes on judgement rather than on finding typos. Nothing
 here is merged, agreed, or a decision.
 
 Read in this session: `docs/api/members-v1.yaml` in full, `docs/plan/api-design.md`,
-`docs/plan/data-model.md`, all fourteen files in `db/migrations/`,
+`docs/plan/data-model.md`, all fifteen files in `db/migrations/`,
 `db/seed/001_reference.sql`, `db/tests/directory.sql`, `docs/glossary.md`,
 HANDOFF.md sections 2, 5, 6 and 7, ADR 0001 and ADR 0002. Every claim below
 names the file and line range it came from.
@@ -68,7 +68,7 @@ replaceable." Those two cannot both hold on this endpoint.
 The lab already decided this, in the wrong layer.
 `tools/members-portal/tests/check_appearance.py` line 130 is a test named
 `test_no_door_controller_slot_reaches_a_member`, and `apps/members/README.md`
-line 144 records dropping "Slot 041" from the mockups for exactly this reason.
+line 178 records dropping "Slot 041" from the mockups for exactly this reason.
 So the rule exists and is enforced on one of three portals, by a client side
 test, while the contract all three are built against still declares the field. Rule 5 says a rule lives in one place and the authoritative place is
 named. Here the authoritative document disagrees with the courtesy layer.
@@ -121,9 +121,9 @@ send arbitrary values breaks them.
 
 **Defect. Every property with this problem now says so in the contract, and
 the shape decision underneath is untouched. There are seven of them, not six:
-the list below missed one and included two that were never the problem.** What
-follows the note describes the state before that edit and is kept as the record
-of it, line numbers included.
+the list below missed one, and two of the six it names carried no description
+rather than the wrong one.** What follows the note describes the state before
+that edit and is kept as the record of it, line numbers included.
 
 The count came from reading the document rather than from this finding. Six
 copies of "Only `id` and `name` are populated" were in it, one of them wrapped
@@ -363,8 +363,9 @@ than two admins and the two approver rule could not yet bind."
 `db/migrations/013_bootstrap_three_admins.sql` replaced that. The escape is now a
 quota of three grants over the life of the database, spent by use rather than
 measured against the live admin count, and `bootstrap_admin_quota()` at line 25
-returns 3. HANDOFF.md line 336 states the distinction and says why it matters:
-"A threshold of three would hold the escape open for as long as the lab had only
+returns 3. HANDOFF.md section 7, in the entry that begins "The bootstrap escape
+is not a security hole", states the distinction and says why it matters: "A
+threshold of three would hold the escape open for as long as the lab had only
 two admins". The contract still describes the superseded threshold.
 
 ## 12. `has_valid_waiver` names one of its two false cases
@@ -466,7 +467,8 @@ Recorded so the reviewer knows these were looked at rather than skipped.
   and it is argued in place.
 - The 900 byte ceiling on `space_api.json`, its `Cache-Control` header and the
   refusal to carry `/space_api/alert_if_not/{status}` forward all match
-  `api-design.md` section 3.7 and HANDOFF.md line 569.
+  `api-design.md` section 3.7 and HANDOFF.md section 7, in the entry that begins
+  "`space_api.json` cannot grow past about 900 bytes".
 - Payments are absent as promised. `paid_through` is present, admin written, and
   labelled as such; the reserved `payments` table has no path.
 - The two approver material is scoped to admin access, carries the NEW POLICY
@@ -479,7 +481,7 @@ Recorded so the reviewer knows these were looked at rather than skipped.
 - Slot range 10 to 199, the tag number pattern `^[0-9A-F]{1,8}$`, the standing
   enum, the tier list and the role list all match the schema and the seed exactly.
 - Every example in the document validates against its own schema. Redocly does
-  not check that by default, so I read all twenty six example payloads and the
+  not check that by default, so I read all twenty eight example payloads and the
   three scalar examples against the schemas they sit under.
 
 The examples that are missing matter more than the ones that are there, and that

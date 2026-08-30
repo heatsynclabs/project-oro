@@ -21,8 +21,10 @@ The API service exists as a first slice, and the portal does not read it yet: wi
 
 ## Run it locally
 
-You need **Docker** (with the Compose plugin) and **python3**. Nothing else.
-There is no package manager, no lockfile, no build step and nothing to install.
+You need **Docker** (with the Compose plugin) and **python3**. Nothing else
+installs on your machine. The two Python locks in this repository, under
+`services/api/` and `tools/import-boundaries/`, are installed inside images the
+test suites build.
 
 ```sh
 git clone https://github.com/heatsynclabs/project-oro.git
@@ -30,6 +32,10 @@ cd project-oro
 cp .env.example .env          # then fill in every empty value, see Environment below
 make development
 ```
+
+`.env.example` ships `ORO_HTTP_PORT=80`, which is the deployment value. Set it
+to 8080 before `make development`, or open the port you chose instead of the one
+below.
 
 Open `http://localhost:8080`. That is the members portal.
 
@@ -134,7 +140,7 @@ nobody chose.
 |---|---|---|
 | `ORO_HOSTNAME` | the name Caddy serves. `localhost` on a laptop | |
 | `ORO_TLS` | `internal` for a local authority, or an email address for a public certificate | |
-| `ORO_HTTP_PORT`, `ORO_HTTPS_PORT` | ports Caddy binds. `80` and `443` on a deployment | |
+| `ORO_HTTP_PORT`, `ORO_HTTPS_PORT` | ports Caddy binds. `.env.example` ships `80` and `443`, which are the deployment values. Set the first to `8080` on a laptop | |
 | `ORO_DB_PASSWORD` | the Postgres superuser password | `openssl rand -base64 24` |
 | `ORO_IDENTITY_DB_PASSWORD` | the identity service's own database login | `openssl rand -base64 24` |
 | `ORO_IDENTITY_MASTERKEY` | exactly 32 bytes. Encrypts every secret the identity service stores | `openssl rand -hex 16` |
@@ -234,6 +240,9 @@ make help               # every target, with a line each
 | `make import-boundaries` | the layers only import downward, over the Python in `services/` | no |
 | `make api-test` | the first three operations of the members API, against a real Postgres and the real policies | no, own project |
 | `./tools/ci/voice-gate.sh` | the writing rules, over every tracked file | no |
+| `python3 tools/voice-check/test_voice_check.py` | every ban in rules 1 and 11, on copy that must fail and copy that must pass | no, python only |
+| `python3 tools/voice-check/test_regressions.py` | that the defects the prose gate has already had stay fixed | no, python only |
+| `python3 tools/voice-check/test_behaviour.py` | the rhythm warnings, the accessibility checks, the pragmas, and which files the walk reaches | no, python only |
 | `./services/door/tests/run.sh` | the door port, its fake, and the conformance suite | no, python only |
 | `./packages/gantry-tokens/tests/run.sh` | the theme, every ink on every ground | no, python only |
 | `make up` / `make down` / `make ps` / `make psql` / `make logs` | operating the stack | **yes** |
@@ -242,8 +251,10 @@ make help               # every target, with a line each
 | `make backup` | writes a backup outside this repository | **yes**, reads it |
 | `make restore FILE=...` | restores one. Refuses over a database that holds members unless you name how many you are destroying | **yes** |
 
-Every suite builds and removes its own containers and leaves nothing behind. Each
-one prints its own counts, so run it rather than trusting a number written down
+Every suite builds and removes its own containers and leaves nothing in the
+working tree. `make import-boundaries` keeps the image it builds, on purpose, so
+every run after the first reads the graph rather than building again. Each one
+prints its own counts, so run it rather than trusting a number written down
 somewhere.
 
 Enable the commit hook once per clone:
