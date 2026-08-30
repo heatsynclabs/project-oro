@@ -1,0 +1,13 @@
+--   rule 10: the schema documents itself
+ok   every table and view carries a comment
+ok   every column of every table and view carries a comment
+--   and rule 11 holds inside them, because they are prose too
+ok   no comment carries a dash rule 11 bans
+--   the same detector, against a table nobody documented
+ok   a table with nothing said about it is named
+ok   an empty comment and a missing one are both named
+--   and writing the comments clears it, so the check is not stuck red
+ok   the table list is clean once the table is described
+ok   the column list is clean once both columns are described
+--   the dash detector, against a comment written to break the rule
+ok   an em dash and a wrapped path are both named
