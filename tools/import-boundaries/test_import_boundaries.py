@@ -1,34 +1,22 @@
 #!/usr/bin/env python3
 """Prove the import boundary gate can go red.
 
-A gate that has only ever been green proves nothing, which is the finding
-behind most of the checks in this repository. Each test here builds a throwaway
-tree shaped like services/, plants one import in it, and asserts the gate either
-reports that import or stays quiet about it.
+A gate that has only ever been green proves nothing. Each check below builds a
+throwaway tree shaped like services/, plants one shape in it, and asserts the
+gate either names that shape or stays quiet about it.
 
-Three of the planted imports are one import deep. Two of the three cross a line
-and have to be named, which is what the contracts being evaluated over a graph
-buys: the module that crosses does not have to be the module anybody opened. The
-third is a legal chain and has to stay silent, because a gate that reported
-every chain would pass the other cases while refusing the tree this repository
-already has.
+The shapes fall in three groups. Some cross a layer line, directly or one import
+deep, which is what evaluating the contracts over a graph buys: the module that
+crosses does not have to be the module anybody opened. Some leave the graph
+altogether, through a module beside the root packages or through a directory
+inside one that holds no __init__.py, and check_root_packages.py beside this
+file is what refuses those. The rest name a root package in a string, which
+import-linter reads as text rather than as an import.
 
-Six more hold the width of the graph rather than the arrows across it, because
-import-linter only reads what root_packages reaches. Four put the module in the
-middle beside the root packages and one puts it inside one, in a directory with
-no __init__.py that Python imports through and grimp does not read. The sixth
-proves a directory nothing imports through is left alone, which is what
-services/door/tests is.
-
-Ruff's TID rules see that shape too. Pointed at the same two file tree with
-`door` as a banned-api, ruff 0.16.5 reported `TID251 door is banned` on the file
-in the middle, measured on 2026-08-29. What they cannot see is an import that
-crosses in a file their config does not cover: with a ruff.toml under
-services/api and the crossing import in services/shared_wire.py, ruff reported
-"All checks passed". That is the case
-docs/decisions/0006-import-boundaries.md is really about, and it is the case
-check_root_packages.py beside this file exists to refuse, because import-linter
-misses it too until the module in the middle is a declared root package.
+Each group also holds a legal case that has to stay quiet, because a gate that
+reported every chain would pass every violation here and refuse the real tree.
+docs/decisions/0006-import-boundaries.md priced ruff's TID rules against all of
+this and recorded the crossing import they miss.
 
     python3 tools/import-boundaries/test_import_boundaries.py [IMAGE]
 
@@ -167,10 +155,7 @@ def test_a_module_outside_every_root_package_is_refused(tree):
 
 def test_a_package_outside_every_root_package_is_refused(tree):
     """Same hole, reached through a package rather than a loose file."""
-    tree.write("services/shared/__init__.py", "")
-    tree.write("services/shared/wire.py", "from door.adapters import wire\n")
-    tree.write("services/api/app/door_gateway.py", "from shared import wire\n")
-    tree.write("services/door/adapters/wire.py", "PASSWORD_HEX_DIGITS = 8\n")
+    tree.shared_package()
     code, output = tree.root_packages()
     assert code == 1, output
     assert "root_packages does not name shared" in output, output
@@ -182,10 +167,7 @@ def test_a_declared_third_package_puts_the_chain_back_in_the_graph(tree):
     Once `shared` is on the list, the contract breaks and both hops are named,
     so the reader is not left hunting for the module in the middle.
     """
-    tree.write("services/shared/__init__.py", "")
-    tree.write("services/shared/wire.py", "from door.adapters import wire\n")
-    tree.write("services/api/app/door_gateway.py", "from shared import wire\n")
-    tree.write("services/door/adapters/wire.py", "PASSWORD_HEX_DIGITS = 8\n")
+    tree.shared_package()
     tree.declare("shared")
     code, output = tree.root_packages()
     assert code == 0, output
@@ -243,6 +225,71 @@ def test_a_directory_nothing_imports_through_is_left_alone(tree):
     code, output = tree.root_packages()
     assert code == 0, output
     assert "grimp will not read" in output, output
+
+
+def test_a_string_import_of_a_root_package_is_reported(tree):
+    """A module name written as a string is a hole in the graph.
+
+    import-linter reads imports, and a string is not an import until the call
+    runs. Measured on 2026-08-30 outside this repository: each spelling below
+    gave "Contracts: 2 kept, 0 broken" and exit 0, and importing app.main in
+    the gate's own image left door.adapters.oac_ethernet.wire in sys.modules.
+    """
+    tree.plant_string_import(
+        'importlib.import_module("door.adapters.oac_ethernet.wire")',
+        '__import__("door.adapters.oac_ethernet.wire", fromlist=["wire"])',
+        'importlib.__import__("door.adapters.oac_ethernet.wire", fromlist=["w"])')
+    # Asserted rather than described, so the day import-linter starts reading
+    # strings is the day this goes red and somebody deletes the check.
+    code, output = tree.check()
+    assert code == 0, output
+    assert "2 kept, 0 broken" in output, output
+    code, output = tree.root_packages()
+    assert code == 1, output
+    assert output.count("reads imports rather than strings") == 3, output
+
+
+def test_a_module_getattr_reaching_for_a_root_package_is_reported(tree):
+    """The same hole, reached by touching an attribute rather than calling.
+
+    PEP 562 lets app/__init__.py answer `app.wire` by loading the door service
+    on demand, so nothing that reads as an import appears in the members API.
+    Measured the same day: both contracts kept, and importing app.main left
+    door.adapters.wire in sys.modules.
+    """
+    tree.write("services/api/app/__init__.py",
+               "import importlib\n\n\ndef __getattr__(name):\n"
+               "    return importlib.import_module('door.adapters.wire')\n")
+    tree.write("services/door/adapters/wire.py", "PASSWORD_HEX_DIGITS = 8\n")
+    code, output = tree.root_packages()
+    assert code == 1, output
+    assert "reads imports rather than strings" in output, output
+
+
+def test_a_string_import_of_anything_else_is_left_alone(tree):
+    """Loading a module by name is ordinary Python and stays ordinary here.
+
+    Only a string naming a declared root package is a hole. A check that spoke
+    up about every string would be switched off in a week.
+    """
+    tree.plant_string_import('importlib.import_module("json")',
+                             'importlib.import_module("fastapi.routing")')
+    code, output = tree.root_packages()
+    assert code == 0, output
+
+
+def test_the_refusal_names_the_module_the_interpreter_would_import(tree):
+    """A namespace directory offers the name first and does not get it.
+
+    Naming the directory sends the reader to the remedy for a package, and
+    following that leaves check_root_packages.py at exit 0 while lint-imports
+    stops on "'bridge' is a module, not a package". Measured on 2026-08-30.
+    """
+    tree.shadowed_name()
+    code, output = tree.root_packages()
+    assert code == 1, output
+    assert "services/api/bridge.py provides it" in output, output
+    assert "not a package" in output, output
 
 
 

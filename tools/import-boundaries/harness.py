@@ -75,6 +75,45 @@ class Tree:
             capture_output=True, text=True)
         return done.returncode, done.stdout + done.stderr
 
+    def plant_string_import(self, *calls: str) -> None:
+        """Dynamic imports in the members API, one per file, and what they reach.
+
+        Each call goes in a file the contracts already cover, so the only thing
+        separating these trees from a plain `from door.adapters import wire` is
+        that the module name is a string.
+        """
+        self.write("services/door/adapters/oac_ethernet/__init__.py", "")
+        self.write("services/door/adapters/oac_ethernet/wire.py",
+                   "PASSWORD_HEX_DIGITS = 8\n")
+        for number, call in enumerate(calls):
+            self.write(f"services/api/app/gateway_{number}.py",
+                       f"import importlib\n\nwire = {call}\n")
+
+    def shared_package(self) -> None:
+        """A package beside the root packages, with the members API behind it.
+
+        app.door_gateway imports shared.wire and shared.wire imports the door
+        service, so the chain crosses in a module import-linter never reads
+        until `shared` is declared.
+        """
+        self.write("services/shared/__init__.py", "")
+        self.write("services/shared/wire.py", "from door.adapters import wire\n")
+        self.write("services/api/app/door_gateway.py", "from shared import wire\n")
+        self.write("services/door/adapters/wire.py", "PASSWORD_HEX_DIGITS = 8\n")
+
+    def shadowed_name(self) -> None:
+        """A name a namespace directory offers first and a real module provides.
+
+        services/bridge/ holds a .py file and no __init__.py, so the import
+        system records it and keeps looking, and services/api/bridge.py on the
+        next PYTHONPATH entry is what `import bridge` loads. Measured on
+        2026-08-30 in the 3.13.15 image this gate runs in.
+        """
+        self.write("services/bridge/leftover.py", "ANYTHING = 1\n")
+        self.write("services/api/bridge.py", "from door.adapters import wire\n")
+        self.write("services/api/app/door_gateway.py", "import bridge\n")
+        self.write("services/door/adapters/wire.py", "PASSWORD_HEX_DIGITS = 8\n")
+
     def declare(self, name: str) -> None:
         """Add one root package to the copied contracts.ini.
 

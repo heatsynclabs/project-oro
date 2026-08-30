@@ -2,27 +2,28 @@
 """Refuse an import that leaves the graph the contracts are checked over.
 
 import-linter starts at the root packages named in contracts.ini and follows
-imports from there. A module outside every root package is not a node in that
-graph, so a chain that passes through it is invisible. Measured on 2026-08-29
-in a copy of this tree: services/shared_wire.py holding
-`from door.adapters.oac_ethernet import wire`, and services/api/app/door_gateway.py
-holding `import shared_wire`, gave "Contracts: 2 kept, 0 broken" and exit 0,
-while `python -c "import app.door_gateway"` in the same image left
-door.adapters.oac_ethernet.wire in sys.modules.
+imports from there, so anything that graph does not reach is checked by nothing.
+There are three ways out of it and this refuses all three.
 
-There is a second way out of the graph and it is inside a root package rather
-than beside one. A directory holding .py files and no __init__.py is a namespace
-package: the interpreter imports through it and grimp does not walk into it.
-Measured the same day, `services/api/app/gateway/` with no __init__.py holding
-`from door.adapters import wire`, imported by app/main.py, gave
-"Analyzed 6 files, 0 dependencies" and both contracts kept, while the
-interpreter loaded door.adapters.wire. Adding one empty __init__.py to the same
-tree turned it red.
+A module beside the root packages. services/shared_wire.py holding
+`from door.adapters.oac_ethernet import wire`, imported by
+services/api/app/door_gateway.py, gave "Contracts: 2 kept, 0 broken" and exit 0
+while the same image running `python -c "import app.door_gateway"` left
+door.adapters.oac_ethernet.wire in sys.modules. Measured on 2026-08-29.
 
-So this refuses two things. A top level name that one of the gate's PYTHONPATH
-directories provides while contracts.ini does not declare it, and an import that
-reaches through a directory inside a root package that grimp will not read. A
-third party import is left alone, because no directory here provides it.
+A directory inside a root package holding .py files and no __init__.py. Python
+imports through it as a namespace package and grimp does not walk into it.
+services/api/app/gateway/ holding `from door.adapters import wire`, imported by
+app/main.py, gave "Analyzed 6 files, 0 dependencies" and both contracts kept.
+
+A module name written as a string. import-linter reads imports, and a string is
+not an import until the call runs. Measured on 2026-08-30, the name
+door.adapters.oac_ethernet.wire passed from services/api/app to
+importlib.import_module, to __import__ and to importlib.__import__ gave both
+contracts kept each time while the interpreter loaded the door service.
+
+A third party import is left alone, because no directory here provides it, and
+so is a string naming anything that is not a root package.
 
     tools/import-boundaries/check_root_packages.py CONFIG DIRECTORY [DIRECTORY ...]
 
@@ -88,16 +89,22 @@ def imported_top_level_names(module: pathlib.Path) -> set[str]:
 def provider(name: str, directories: list[pathlib.Path]) -> pathlib.Path | None:
     """Where the interpreter would find this name, or nothing if it is elsewhere.
 
-    Directory before file within one PYTHONPATH entry, and entries in the order
-    they were given, which is the order the import system uses.
+    Two passes, because a directory with no __init__.py does not win the name
+    where it stands. The import system records it as a namespace portion and
+    keeps searching, and a package or a module found later takes the name off
+    it. Measured on 2026-08-30 in the image this gate runs in: services/bridge/
+    holding a .py file, and services/api/bridge.py on the entry after it,
+    `import bridge` loaded services/api/bridge.py.
     """
     for directory in directories:
-        package = directory / name
-        if package.is_dir() and any(package.rglob("*.py")):
-            return package
-        module = directory / f"{name}.py"
-        if module.is_file():
-            return module
+        if (directory / name / "__init__.py").is_file():
+            return directory / name
+        if (directory / f"{name}.py").is_file():
+            return directory / f"{name}.py"
+    for directory in directories:
+        namespace = directory / name
+        if namespace.is_dir() and any(namespace.rglob("*.py")):
+            return namespace
     return None
 
 
@@ -125,6 +132,48 @@ def refusal(module: pathlib.Path, name: str, found: pathlib.Path) -> str:
             f"it. root_packages does not name {name}, so import-linter never "
             f"reads it and a chain through it is reported as kept. {remedy} Or "
             f"move what it holds into a package the contracts already reach.")
+
+
+# Whether importlib is bound to its own name or another, and whether __import__
+# is reached as the builtin or as an attribute of it.
+DYNAMIC_IMPORT_NAMES = ("import_module", "__import__")
+
+
+def dynamic_import_target(node: ast.AST) -> str | None:
+    """The module name one dynamic import spells out as a literal, or nothing.
+
+    A name built at runtime is not in the source to be read, so nothing here
+    can see it, and contracts.ini carries that limit beside the list of roots.
+    """
+    if not isinstance(node, ast.Call) or not node.args:
+        return None
+    if isinstance(node.func, ast.Attribute):
+        spelling = node.func.attr
+    elif isinstance(node.func, ast.Name):
+        spelling = node.func.id
+    else:
+        return None
+    named = node.args[0]
+    if spelling in DYNAMIC_IMPORT_NAMES and isinstance(named, ast.Constant):
+        return named.value if isinstance(named.value, str) else None
+    return None
+
+
+def string_refusal(module: pathlib.Path, named: str) -> str:
+    return (f"{readable(module)} passes \"{named}\" to a dynamic import, and "
+            f"{named.split('.')[0]} is a root package. import-linter reads "
+            f"imports rather than strings, so the contracts are reported kept "
+            f"over this call while the interpreter loads {named}. Write it as a "
+            f"plain import and they are checked over it. If one then breaks, "
+            f"the break is the answer: the call was crossing a line.")
+
+
+def string_imports(module: pathlib.Path, roots: list[str]) -> list[str]:
+    """Dynamic imports in one file that name a root package in a literal."""
+    named = [dynamic_import_target(node)
+             for node in ast.walk(ast.parse(module.read_text()))]
+    return [string_refusal(module, one) for one in named
+            if one is not None and one.split(".")[0] in roots]
 
 
 def _absolute_targets(node: ast.AST, root: str) -> list[list[str]]:
@@ -211,6 +260,7 @@ def findings(config: pathlib.Path, directories: list[pathlib.Path]) -> list[str]
                 where = provider(name, directories)
                 if where is not None:
                     found.append(refusal(module, name, where))
+            found.extend(string_imports(module, roots))
         found.extend(holes_inside(root, directories))
     return found
 
@@ -237,7 +287,8 @@ def main(argv: list[str]) -> int:
                   for root in roots)
     print(f"{modules} modules in {' and '.join(roots)}. Every import of theirs "
           "that these directories provide is inside a declared root package, "
-          "and none of them reaches through a directory grimp will not read.")
+          "none of them reaches through a directory grimp will not read, and "
+          "none of them names a root package in a string.")
     return 0
 
 

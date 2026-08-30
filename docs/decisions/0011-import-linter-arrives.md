@@ -180,6 +180,24 @@ written down where somebody bumping the base will read it.
   same tree turned it red. `check_root_packages.py` refuses that too, and it
   leaves alone a directory nothing in a root package imports through, which is
   what `services/door/tests` is.
+- The graph is only as literal as the source. import-linter reads imports, and
+  a module name written as a string is not one until the call runs. Measured on
+  2026-08-30 in a copy of this tree, `door.adapters.oac_ethernet.wire` passed
+  from `services/api/app` to `importlib.import_module`, to `__import__` and to
+  `importlib.__import__` each gave "Contracts: 2 kept, 0 broken" and exit 0
+  while the same image running `python -c "import app.main"` left the door
+  service in `sys.modules`. A PEP 562 `__getattr__` in `app/__init__.py` did the
+  same with nothing that reads as an import anywhere in the members API.
+  `check_root_packages.py` now refuses a call to any of those three whose first
+  argument is a literal naming a root package, and leaves alone a literal naming
+  anything else, because loading a module by name is ordinary Python.
+- What that check cannot reach is a name the source does not hold.
+  `import_module("door." + part)`, or a name read out of a config file, is not
+  in the file for any tool that reads source to find, so a computed name
+  reaching a root package is a rule 5 violation the tooling does not catch and
+  review is what stands behind it. Nothing under `services/`, `packages/`,
+  `apps/` or `tools/` imports dynamically today, checked on 2026-08-30 by
+  grepping every `.py` file for `import_module` and `__import__`.
 
 ## What was borrowed
 
