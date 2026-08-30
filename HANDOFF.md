@@ -31,10 +31,10 @@ This table is the single place this is tracked. Update it as things land.
 | Thing | State |
 |---|---|
 | `db/migrations/` schema, rules, RLS, immutability | **Built.** Applies clean from nothing |
-| `db/tests/` and `db/tests/run.sh` | **Built.** 171 assertions, deterministic |
+| `db/tests/` and `db/tests/run.sh` | **Built.** 179 assertions, deterministic |
 | `db/seed/001_reference.sql` | **Built.** Tiers, roles, governance parameters |
 | `tools/voice-check/` prose gate | **Built.** 77 tests |
-| `tools/mock/` mock server for the API contract | **Built.** `make mock-test`, 13 checks, run by CI |
+| `tools/mock/` mock server for the API contract | **Built.** `make mock-test`, 14 checks, run by CI. This row said 13 until 2026-08-29, when the suite printed 14/14 and nobody had changed it |
 | `tools/development/tests/run.sh` | **Built.** 23 checks over both stack shapes, `make development-test`. It reads the deployment's certificate issuer, asserts a laptop answers plain HTTP with no redirect, and calls the identity service under `id.` on the deployment and on its own port on a laptop. In CI |
 | `.githooks/commit-msg` | **Built.** Install it, see section 3 |
 | The plan documents | **Written.** Reviewed adversarially twice |
@@ -43,11 +43,11 @@ This table is the single place this is tracked. Update it as things land.
 | `tools/backup/` backup and the restore drill | **Built.** `make backup`, `make restore`, `make backup-test`, in CI. Gate one of rule 12, which is the first thing above every phase. A backup is two files: the database archive and a roles file, because `oro_api` and `door_reader` are cluster roles that a database archive does not carry, and the archive is full of `GRANT ... TO oro_api`, so a restore without them dies on the first grant. An earlier version of this row, and the commit message that introduced it, said every policy names one of those roles. That is false and was measured: no policy in `db/migrations` names a role at all, every one of them defaults to PUBLIC. The grants are the reason, not the policies. The drill backs up a migrated database, destroys the cluster, restores, and compares 95 things including every card's slot, then makes eight further attempts that have to be refused or to change exactly what they claim. A restore over a database holding members is refused until the caller names how many they are destroying, on the command line: an exported variable is refused outright, because make imports the environment and that would arm every later restore in the shell.
 
 Stopping a restore stops it. `docker exec` does not forward a signal, so an earlier version went on and committed while the operator's terminal had stopped printing; the connection is named and terminated now, and a test kills a restore part way and requires the database not to have moved. `kill -9` is still a limit and is written down in three places rather than fixed, because nothing catches it. The archive is streamed onto the container's `/dev/shm` so no copy of the members database lands on a disk, which is why `compose.yaml` now sets `shm_size: 256mb`: the Docker default is 64MB and a restore refuses an archive that does not fit. That 256 carries an assumption about the size of the real dump, stated where it is set. Also here: `roles_the_archive_needs.sh`, `tests/checks.sh` and `tests/what_a_restore_changes.sh` **It proves the mechanism, not the lab's data**: phase 0 still needs a shell on hsl-web. No timer and no offsite copy, so a fire in the lab takes the backups with the server |
-| `COMMENT ON` for every column | **Not done, and it is a rule rather than a nicety.** Rule 10 says every table and every column carries one so the schema documents itself. Measured on 2026-08-29 by parsing `db/migrations`: all 16 tables are commented, and 12 of 150 columns are. The 138 without are listed by table in the audit that found it, and `members`, `approvals`, `member_roles`, `payments` and `member_certifications` are entirely uncommented. The gate rule 10 names, CI failing when a table exists without a comment, does not exist either, and would not have caught this because it only names tables |
+| `COMMENT ON` for every table and column | **Built.** `db/migrations/014_column_comments.sql` writes the 147 that were missing, and `db/tests/comments.sql` is the gate rule 10 names, widened from tables to columns. Measured on 2026-08-29 against a database built from the migrations and the seed: 17 relations, 16 tables and the `member_directory` view, and 159 columns between them, of which 12 carried a comment. This row previously said 16 tables and 12 of 150 columns. That count came from parsing `db/migrations` rather than from a database, and it missed the view's 8 columns and one more besides, which is why the real number of comments written is 147 and not 138. Each comment is meant to say something the column name and the type do not, and two of them say that nothing reads the column at all: `tiers.notes` is set by no seed row, selected by nothing, and absent from the `Tier` object in the contract, and `certifications.legacy_id` has no legacy table behind it because nothing imports certifications. The comments were written per table group, verified by a second reader, and then audited by a third, which found 36 further defects in 147 comments after the first two passes: overstatements about what a policy covers, behaviour credited to the wrong file, and a claim that a DELETE of a member cascades when most of the foreign keys onto `members` carry no `ON DELETE` action and refuse it. All 36 are fixed. The gate asks two questions and watches each one fail. It names any table or column with no comment, or with a comment of nothing but spaces, and it names any comment carrying a character rule 11 bans. That second question exists because the assembler that wrote this migration wrapped three file paths across two quoted chunks, so `docs/api/contract-review-notes.md` reached the database with a space inside it, naming a file nobody can open. Neither of the two passes over the comment text could have seen it: the wrap happened when the text was written into the file, after both of them. Only the pass that read the migration found it |
 | `docs/runbooks/` | **Started.** One file, the restore runbook, which is what created the directory. Eight numbered steps with the output each one prints |
 | `tools/bootstrap/` seat the first three admins | **Built.** `make bootstrap-admins`, in CI. The only path from an empty database to somebody who can administer it, and it spends the escape `013_bootstrap_three_admins.sql` opens. Per person: an identity account, then `link_or_create_member`, then the role, in that order because a member row holding a role is not claimable afterwards. The handover password goes to the terminal and to no file. Safe to run twice, and the fourth admin is refused by the database rather than by the script |
 | `tools/migration/` the legacy import | **Built.** `make migration-test`, in CI. Members, cards, the `admin` and `accountant` booleans as roles, and the waiver date as a pointer to where the document is kept. A preflight refuses to start while anything needs a person and names the rows. Eleven cases: ten imports of the same fixture, three that carry and seven that must be refused, plus one that runs the role step alone. Every refusal is checked by its text and not only its exit code. The fixture was written by a replica of the legacy application through its own models |
-| `tools/identity/configure.py`, the four clients and the branding | **Built.** `make identity-configure`. The project, three public PKCE clients with no secret, the door service machine account, and the GANTRY palette on the hosted screens, set and activated. Idempotent, and the suite runs it twice to prove that |
+| `tools/identity/configure.py`, the four clients and the branding | **Built.** `make identity-configure`. The project, three public PKCE clients with no secret, the door service machine account, and the GANTRY palette on the hosted screens, set and activated. Idempotent, and the 6 checks in `check_reconfiguration.py` run it twice to prove that. Those 6 are the ones the count in section 3 used to leave out: `make identity-test` prints 45 across five files, 6 then 16 then 11 then 6 then 6 |
 | Legacy members signing in | **Demonstrated with invented accounts.** 6 checks in `make identity-test` take hashes the legacy application wrote and sign in with the passwords that produced them. Nine of eleven succeed and the two that do not are over the bcrypt limit. This is not part (b) of the phase 2 proof: every password in it was chosen by whoever wrote the replica |
 | `.github/workflows/deploy.yml` | **Written, never run.** Dormant until a server exists and four secrets are set. One step, `make up` over SSH. [ADR 0008](docs/decisions/0008-deploying-from-actions.md), which supersedes what `architecture.md` said about CI never holding a deploy credential |
 | Ten minute tokens with rotating refresh | **Built and demonstrated.** 11 further checks in `make identity-test` sign a member in through the real hosted screens, read the access token lifetime off the token, use the refresh token, and prove the previous one stops working |
@@ -56,15 +56,15 @@ Stopping a restore stops it. `docker exec` does not forward a signal, so an earl
 | `services/door/` port, fake, conformance suite | **Built.** 104 tests, `services/door/tests/run.sh` |
 | `services/door/` HTTP API, reconcile loop, real socket against hardware | Not started. Phase 5 |
 | `apps/members/` | **Built against the contract mock.** The six self service views, read only, no sign in. `docs/plan/api-design.md` section 7 step 2, not phase 3. See its README |
-| `tools/members-portal/tests/` | **Built.** 32 checks over the portal through Caddy, `make portal-test`, split across two files because one runs past the 300 line ceiling. No browser, so it does not see the rendered document: what it can do is read what the document says, and it refuses an EEPROM slot number, the wrong card access wording, and any use of the ink token that fails contrast. In CI |
+| `tools/members-portal/tests/` | **Built.** 33 checks over the portal through Caddy, 22 of behaviour and 11 of appearance, `make portal-test`, split across two files because one runs past the 300 line ceiling. No browser, so it does not see the rendered document: what it can do is read what the document says, and it refuses an EEPROM slot number, the wrong card access wording, and any use of the ink token that fails contrast. In CI |
 | `apps/` admin, door | Not started. Phase 3 onward |
 | `packages/gantry-tokens` | **Built.** The token layer, the two measured defects fixed, and the contrast checker over the theme by ground cross product. 69 tests plus 112 measured pairs, `packages/gantry-tokens/tests/run.sh`. Sixteen pairs are triaged in `validator/known-failures.txt`, four of them a real `--g-ink-3` defect held open on a brand colour decision |
 | `packages/gantry-css`, `gantry-vue` | Not started. Later in phase 1 and after |
 | `compose.yaml`, `compose.development.yaml`, `Makefile`, `.env.example`, `caddy/`, `db/init/` | **Built.** Postgres, Caddy and the identity service. The override file adds the mock, points Caddy at the development routes and publishes the identity service on a port, so the portal and the mock share one origin over plain HTTP and a browser can open a login screen. `make up` on a clean machine, proven |
 | `docs/api/members-v1.yaml` | **Written.** OpenAPI 3.1.1, validates clean. Still needs the review by somebody who did not write it that phase 1 asks for |
-| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Fifteen jobs. Twelve were green on run 33228017933 on 2026-08-29, and on run 33231216898 the same day thirteen ran with twelve green and the commit message job skipped. All fifteen were green on run 33236264196 on 2026-08-29, except the commit message job, which is gated to pull requests and is skipped on a push to main. They run in parallel, so the wall clock is the slowest job and not the sum. Measured on run 33236264196, the first with all fifteen: development stack and identity 54s each, legacy import and first three admins 48s each, members portal and members API 25s each, restore drill 24s, database 18s, mock 14s, contract 12s, prose and door 8s, theme 6s, ceilings 4s. The lead moves around: the migration job held it at 58s on run 33228017933 and is third here, so re-measure rather than quoting this. Ten of the fifteen start containers, the ceilings one included, because it runs ruff as a pinned image rather than installing it. A separate workflow, the deploy, is dormant and runs only on `workflow_dispatch` with the hostname typed in |
+| `.github/workflows/ci.yml` and `tools/ci/` | **Built.** Sixteen jobs, and every measurement below was taken when there were fifteen. Twelve were green on run 33228017933 on 2026-08-29, and on run 33231216898 the same day thirteen ran with twelve green and the commit message job skipped. All fifteen were green on run 33236264196 on 2026-08-29, except the commit message job, which is gated to pull requests and is skipped on a push to main. They run in parallel, so the wall clock is the slowest job and not the sum. Measured on run 33236264196, the first with all fifteen: development stack and identity 54s each, legacy import and first three admins 48s each, members portal and members API 25s each, restore drill 24s, database 18s, mock 14s, contract 12s, prose and door 8s, theme 6s, ceilings 4s. The lead moves around: the migration job held it at 58s on run 33228017933 and is third here, so re-measure rather than quoting this. Eleven of the sixteen start containers, the ceilings one and the import boundaries one included, because each runs its linter as an image rather than installing it. The import boundaries job is the sixteenth and has never run here, so it has no timing yet. A separate workflow, the deploy, is dormant and runs only on `workflow_dispatch` with the hostname typed in |
 | File and function ceiling linting | **Built.** `make ceilings`, in CI, with 8 tests of its own over a throwaway repository: five put one violation in it and assert the checker catches it, three put something that is not a violation in it and assert the checker stays quiet. Ruff in a pinned container for complexity, parameters and nesting depth, and `tools/ceilings/check_ceilings.py` for the two ceilings no tool measures. [ADR 0005](docs/decisions/0005-file-and-function-ceilings.md). Two files are exempt with a reason, and an exemption that stops being needed fails the check |
-| Import boundary linting | **Decided, owed, and now overdue on the Python half.** [ADR 0006](docs/decisions/0006-import-boundaries.md) names its own flip condition as the first `import` under `apps/` or `packages/`, or the first commit under `services/api/`, and says either one makes the gate land in the same pull request. The second fired in 432fd1e and no gate came with it. The TypeScript half is still genuinely unowed: there is no TypeScript at all. What is left to decide is how `import-linter` arrives, which that ADR flagged as the part that will bite: it needs grimp, the ADR records grimp having no wheel for Python 3.14 on macOS, and every other tool here runs as a pinned image so that nothing is installed. That choice is not made and it is the reason this is still a line in a table. The graph is clean today, checked by reading every import in `services/`: nothing crosses a layer |
+| Import boundary linting | **Built on the Python half.** `make import-boundaries`, in CI, with 14 checks of its own over a throwaway tree: eight plant a violation and require the gate to name it, six plant something legal and require it to stay quiet. Two contracts in `tools/import-boundaries/contracts.ini`, the members API and the door service not importing each other and the door service's domain not importing its adapters, over a graph of 23 files and 34 dependencies which is clean. [ADR 0011](docs/decisions/0011-import-linter-arrives.md) settles how import-linter arrives, which was the open part: nobody publishes an image for it, so this repository builds one from a digest pinned python:3.13-slim and a hashed lock, and 3.13 is deliberate because grimp's only cp314 macOS arm64 wheel is for the free threaded build. The part that took three passes is that import-linter only sees what `root_packages` reaches, so `tools/import-boundaries/check_root_packages.py` holds the width of the graph beside it. Two shapes were measured reporting two contracts kept while the interpreter loaded the door service from the members API: a module beside the root packages, at `services/shared_wire.py`, and a directory inside one with no `__init__.py`, which Python imports through as a namespace package and grimp does not walk into. Both are refused now and both are in the suite, asserted rather than described, so the day import-linter stops needing help is the day they go red. The TypeScript half is still genuinely unowed: there is no TypeScript at all |
 | `tools/attributions/generate.py` | Not started. Needs a lockfile first |
 | `CODEOWNERS`, `.sops.yaml` | Not started. Created with the first real name and the first secret |
 
@@ -75,7 +75,7 @@ git config core.hooksPath .githooks      # once per clone, enables the commit ga
 
 make check                               # every suite below, in one command
 
-./db/tests/run.sh                        # rebuilds the schema from nothing, runs 171 assertions
+./db/tests/run.sh                        # rebuilds the schema from nothing, runs 179 assertions
 ./db/tests/run.sh --update               # regenerate expected output, deliberately
 
 python3 tools/voice-check/test_voice_check.py
@@ -89,12 +89,13 @@ make mock-test                           # the API contract mock, started, calle
 
 make development                         # portal at /, contract mock under /v1, one origin, plain HTTP
 make development-test                    # 23 checks over both stack shapes, throwaway project
-make portal-test                         # 22 checks over the members portal, likewise
-make identity-test                       # 39 checks over the phase 2 identity work, likewise
+make portal-test                         # 33 checks over the members portal, likewise
+make identity-test                       # 45 checks over the phase 2 identity work, likewise
 make migration-test                      # eleven cases, ten of them imports: three carried and seven refused
 make identity-configure                  # the project, the clients and the branding, against a running stack
 
 make ceilings                            # rule 6, in a pinned ruff and a line counter
+make import-boundaries                   # rule 5, over the Python in services/
 
 ./tools/ci/voice-gate.sh                 # the prose gate over every tracked file
 ./tools/ci/voice-gate.sh origin/main     # or only over what a branch changed
@@ -111,20 +112,29 @@ are not checks at all: `git config core.hooksPath` sets up a clone,
 command, and CI runs them separately so a failure names the suite. Every check
 in the block has a job.
 
-Seven of those jobs start containers and are slow: the database, the mock, the
-development stack, the portal, the identity service, the ceilings and the
-migration. Counted by reading which of the scripts each job runs mention docker.
+Eleven of those jobs start containers: the database, the mock, the development
+stack, the portal, the identity service, the ceilings, the import boundaries,
+the migration, the first three admins, the restore drill and the members API.
+Counted on 2026-08-29 by grepping for docker in the script each job runs, which
+is also where the count in section 2 comes from. This paragraph said seven until
+then, and it had been wrong since the bootstrap, backup and API jobs landed.
+
+Starting a container does not make a job slow. The ceilings one came in at 4
+seconds on run 33236264196. The import boundaries one builds its image the first
+time and then reads a graph of 23 files, and the reading is 0.40, 0.41 and 0.45
+seconds over three runs on a laptop with the image already built. It has not run
+in CI yet.
 The identity one applies its own schema and seeds an instance before it answers
 anything, and the migration one builds eleven databases, which is what makes it
 the slowest on run 33228017933 at 58 seconds. On run 33236264196 it came third at 48, behind the development stack and identity at 54 each.
 
 `tools/ci/` holds the two checks that need a git range, so what CI runs is the
 same script a person runs rather than a copy of it that drifts. The contract lint
-reports three warnings and that is expected;
+reports five warnings and that is expected;
 `docs/decisions/0001-openapi-toolchain.md` says which and why.
 
-`make check` runs every suite in this repository in one command, which is what a
-person wants at 2am, and each still works on its own. It leaves out the contract
+`make check` runs the seventeen suites in this repository in one command, which
+is what a person wants at 2am, and each still works on its own. It leaves out the contract
 lint, which is the last line of the block above: that one needs Node, and
 everything else here needs only Docker and python3. CI runs it as its own job.
 
@@ -301,40 +311,107 @@ phases at once.
     session columns are dropped on purpose. Certifications, payments and door
     events are still not migrated.
 
-13. Write the 138 missing `COMMENT ON COLUMN` statements. Rule 10 asks for one
-    per column and there are 12. This is the largest single piece of rule
-    compliance debt in the repository and it is the kind that gets worse: every
-    table added from here adds more. Do it per table, and make each comment say
-    something the column name does not already say, per rule 7. `members`,
-    `approvals`, `member_roles`, `payments` and `member_certifications` have
-    none at all. Consider writing the gate rule 10 names in the same change, and
-    note that the gate as rule 10 words it only covers tables, which are all
-    already commented, so it would have caught none of this.
+13. **Done, and the count in this item was wrong.** 147 `COMMENT ON COLUMN`
+    statements landed in `db/migrations/014_column_comments.sql` on 2026-08-29,
+    and `db/tests/comments.sql` is the gate. This item said 138 missing out of
+    150, which came from parsing `db/migrations`. Measured against a database
+    built from those migrations there are 159 columns across 17 relations, the
+    `member_directory` view included, and 12 carried a comment. Section 2 has
+    the rest.
 
-14. Declare in the contract the two refusals the API service now makes and the
-    document does not describe: an unknown path and a wrong method. Both answer
-    as RFC 9457 problem details now, and `docs/api/members-v1.yaml` says errors
-    take one shape everywhere. It currently declares neither.
+    Two things worth carrying forward. Two columns turned out to be read by
+    nothing at all, `tiers.notes` and `certifications.legacy_id`, and their
+    comments say so rather than inventing a purpose. And the gate now asks a
+    second question, whether any comment carries a character rule 11 bans,
+    because the tool that assembled the migration wrapped three file paths
+    across two quoted chunks and put a space inside them. That happened after
+    the two passes over the comment text, so only a reader of the migration
+    itself could have found it, and one did.
 
-15. Fix the five remaining copies of "Only `id` and `name` are populated" in the
-    contract, at `Member.oriented_by`, `RoleGrant.granted_by`,
-    `RoleGrant.revoked_by`, `MemberCertification.granted_by` and
-    `MemberCertification.revoked_by`. The same sentence was corrected on
-    `MyCard.revoked_by` and the reasoning that corrected it applies to all five:
-    no policy lets one member read another member's row, so the claim describes
-    something the database will not produce.
+14. **Done.** `NoSuchPath` and `WrongMethod` are declared under
+    `components.responses` in `docs/api/members-v1.yaml`, with the slugs,
+    statuses, titles and sentences copied from
+    `services/api/app/problems.py` rather than paraphrased, which is the promise
+    that file makes about its own text.
 
-16. Two ADRs are owed and neither is written. The key set clock in
-    `services/api/app/identity.py`, which is a re-read window with a default
-    that nothing requires, and the `/dev/shm` choice plus the signal handling in
-    `tools/backup/restore.sh`. Both are design decisions inside one file with
-    their reasoning recorded there, so this is a judgement about where the
-    record belongs rather than a gap in the reasoning.
+    Neither is referenced by an operation and that is the answer rather than an
+    omission. OpenAPI declares the paths a document has and gives no way to
+    declare the absence of one, and a 405 belongs to the path rather than to any
+    operation under it: hanging it on `GET /me` would say that operation can
+    answer 405, when the 405 comes from `POST /me`, which this document does not
+    declare. The reasoning is in `info.description` where a reader meets the
+    one shape claim it sits under.
 
-17. The import boundary gate is overdue, and section 2 says why. ADR 0006 names
-    its own flip condition and that condition fired in 432fd1e. What is
-    unsettled is how `import-linter` arrives, given every other tool here runs
-    as a pinned image and grimp is the part that ADR expected to bite.
+    It costs two `no-unused-components` warnings, so the contract lint now
+    reports five rather than three. Four places said three and all four are
+    corrected: this file, `docs/decisions/0001-openapi-toolchain.md`,
+    `docs/api/contract-review-notes.md` and the comment in
+    `.github/workflows/ci.yml`. Warnings do not fail that job.
+
+15. **Done, and this item named the wrong five.** Measured
+    whitespace insensitively, the contract carried six copies of the sentence,
+    not five, one of them wrapped across two lines so a plain grep found five.
+    The six were not the six properties this item and finding 3 name.
+
+    `RoleGrant.revoked_by` and `MemberCertification.revoked_by`, which this item
+    named, carried no description at all, so the problem was invisible on them
+    rather than misstated. Three the item did not name carried the sentence:
+    `Card.revoked_by`, `Waiver.recorded_by` and `Approval.target_member`.
+
+    The answer turns on who reads the response rather than on which schema
+    carries the property, because `admin_reads_all` in
+    `db/migrations/004_security.sql` keys on whether the caller holds admin and
+    not on which endpoint answered. So four were corrected, two were described
+    for the first time, and two were left alone because `Card` and `Approval`
+    are returned only under `/admin/`. `Waiver.recorded_by` is a seventh
+    property with this problem that finding 3 never listed, and the finding now
+    records that. One decision still covers all seven and nobody has made it.
+
+    A side effect worth knowing: the contract grew by about 136 lines in two
+    places, so every line citation in `docs/api/contract-review-notes.md` moved.
+    That file says a citation landing in the wrong place is a drift to fix, and
+    they are fixed, with one exception now written into its preamble. Finding 3
+    keeps its own numbers frozen because the text after its note is the record
+    of the state before the edit.
+
+16. **Done.** [ADR 0013](docs/decisions/0013-signing-key-refresh.md) for the key
+    set clock in `services/api/app/identity.py`, and
+    [ADR 0014](docs/decisions/0014-restoring-without-touching-a-disk.md) for the
+    `/dev/shm` choice and the signal handling in `tools/backup/restore.sh`. Both
+    are proposed rather than accepted, because nobody is named to accept them.
+
+    Writing 0013 found a defect in its own first draft, which is the reason to
+    write these down at all. The draft said the service polls the identity
+    provider once a window forever. It does not: `read_key_set()` has two
+    callers, one at start and one that a request reaches only by carrying a
+    bearer token. Measured with the module loaded against a key set server that
+    logs every request and the window at two seconds: one read at start, then
+    nothing across twelve idle seconds, then one read on the first request
+    carrying a token and none for the nine behind it.
+
+17. **Done for Python, still owed for JavaScript.** `make import-boundaries`
+    landed on 2026-08-29 with
+    [ADR 0011](docs/decisions/0011-import-linter-arrives.md), which takes the
+    number this directory was missing and settles how `import-linter` arrives.
+    The open question ADR 0006 left, whether `services/door` gets a `domain`
+    over `adapters` contract, is answered yes in the same change with the reason
+    beside the contract.
+
+    What took three passes was not the tool. It was that import-linter holds a
+    contract only over what `root_packages` reaches, and two shapes were
+    measured reporting both contracts kept while the interpreter loaded the door
+    service from the members API: a module beside the root packages, and a
+    directory inside one with no `__init__.py`, which Python imports through as
+    a namespace package and grimp does not walk into.
+    `tools/import-boundaries/check_root_packages.py` refuses both, and both are
+    in the suite as assertions rather than as prose, so the day import-linter
+    stops needing help there is the day they go red.
+
+    What it does not cover: `apps/` holds no Python at all, and the seven Python
+    files under `packages/gantry-tokens/validator/` sit under no rule 5 arrow
+    with anything below them, so neither tree has a contract.
+    `eslint-plugin-boundaries` still waits on its own flip condition, which is
+    the first `import` statement in either tree.
 
 ### The build that is actually left
 
@@ -790,6 +867,34 @@ whether or not the caller opened a transaction and whatever psql was told about
 errors. `tools/migration/tests/check_the_guard.sh` runs the file alone, with no
 `ON_ERROR_STOP`, and asserts the trigger reads `O` and no row was written. Run
 against the old two statement shape that check reports `role_grant_rules is 'D'`.
+
+**A SQL comment built from quoted chunks can name a file that does not exist.**
+`db/migrations/014_column_comments.sql` writes each comment as a run of single
+quoted strings that Postgres concatenates, which is the house style and is fine.
+What is not fine is where the wrap falls. Python's `textwrap` breaks on hyphens
+by default, so `docs/api/contract-review-notes.md` came out as one chunk ending
+`contract-review-` and the next beginning `notes.md`, and the trailing space that
+joins the chunks landed inside the path. The comment in the database named
+`docs/api/contract-review- notes.md`. Three paths were broken that way. Neither of the two passes over the comment
+text could have caught it, because the wrap happened when the text was written
+into the file and both of them read it flowing. The pass that read the migration
+found it, and even there it is easy to miss: on the page the hyphen sits at the
+end of a line, which is where a hyphen belongs.
+
+`db/tests/comments.sql` now refuses any comment matching an alphanumeric, a
+hyphen, a space and an alphanumeric, or carrying any character outside ASCII,
+which covers the em dash and the emoji rule 11 bans as well. It watches itself
+find both, on a table it makes and drops, and it assembles those two offending
+comments with `chr()` rather than typing them, because typing either one would
+put it in a file the prose gate reads.
+
+**`.github/workflows/ci.yml` is one line under the ceiling.** It measures 299
+against the 300 in rule 6, counted the way `tools/ceilings/check_ceilings.py`
+counts. The import boundaries job took the rest of the headroom, and the checker
+fails the build at 301. The next job added has to make room. Trimming a comment
+to fit is the wrong trade, because the comments are why anybody can read that
+file at 2am. The seam to split on is already named in section 3: eleven of the
+sixteen jobs start a container and five do not.
 
 **A legacy role flag on somebody who left is a security finding, not a data
 error.** The legacy system recorded a departure in `exit_reason` and never
