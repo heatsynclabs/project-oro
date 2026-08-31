@@ -115,7 +115,7 @@ docker run --rm -p 127.0.0.1:8711:8000 \
   -e ORO_API_DATABASE_URL=postgresql://oro_api_login:PASSWORD@HOST:5432/oro \
   -e ORO_API_JWKS_URL=https://id.example.org/oauth/v2/keys \
   -e ORO_API_TOKEN_ISSUER=https://id.example.org \
-  -e ORO_API_TOKEN_AUDIENCE=oro-members-api \
+  -e ORO_API_TOKEN_AUDIENCE=oro-project \
   oro-api
 ```
 
@@ -124,12 +124,28 @@ docker run --rm -p 127.0.0.1:8711:8000 \
 | `ORO_API_DATABASE_URL` | libpq URL for the `oro` database, as `oro_api_login` |
 | `ORO_API_JWKS_URL` | where the identity provider publishes its signing keys |
 | `ORO_API_TOKEN_ISSUER` | the `iss` claim every token has to carry |
-| `ORO_API_TOKEN_AUDIENCE` | the `aud` claim every token has to carry |
+| `ORO_API_TOKEN_AUDIENCE` | the `aud` claim every token has to carry. Against the identity service in `compose.yaml` that is `oro-project`, and the paragraph below says how that was established |
 | `ORO_API_DB_POOL_MAX` | connections in the pool. Ten by default, and the suite runs it at one |
 | `ORO_API_JWKS_MAX_AGE_SECONDS` | how long the provider's signing keys are used before they are read again. Sixty by default, and the suite runs it at five |
 
 The first four are required and the service refuses to start without them,
 naming the one that is missing.
+
+**The audience was measured rather than chosen, and this file had it wrong.** It
+said `oro-members-api` until 2026-08-30, and nothing issues that. A real access
+token from the identity service in `compose.yaml` carries a list: the client id
+of every application registered under the project, and the project's own
+identifier, which `tools/identity/configure.py` sets to `oro-project`. The
+client ids are generated per instance, so the project identifier is the only
+entry a container can be configured with ahead of time. With the old value set,
+the service refused every real token, logged `token refused: Audience doesn't
+match`, and answered the member 401.
+
+Nothing in `app/` changed to fix it. PyJWT compares the configured audience
+against every entry when the claim is a list, and `tools/api-against-identity/`
+watched it do that. That suite is also where the two values are held together:
+one check fails if the audience an api container is given and the project
+`configure.py` registers stop being the same string.
 
 `oro_api_login` does not exist until somebody creates it. Run
 `oro_api_login.sql` against the database as the superuser, with
@@ -160,6 +176,11 @@ are and how long that lasts, and the last check in it is the reason this suite
 exists. `check_signing_keys.py` is when the provider's keys are read, which is
 one clock answering two failures that pull in opposite directions.
 
+That suite mints its own tokens, so what it cannot see is what the identity
+provider actually issues. `tools/api-against-identity/` is the suite that does:
+it signs a member in on the hosted screens and hands the token that comes back
+to this service. Run it with `make api-identity-test`.
+
 Four ways to make it go red, each of which was run:
 
 | Break | What goes red |
@@ -179,8 +200,11 @@ Four ways to make it go red, each of which was run:
   on a statement and a ten second ceiling on an idle transaction.
   `app/database.py` says where each number comes from.
 - **An OIDC provider** publishing a JWKS. The identity service in `compose.yaml`
-  is that provider, and nothing here has been run against it yet: the suite
-  serves its own JWKS from its own key.
+  is that provider, and `tools/api-against-identity/` is what has been run
+  against it: a member signs in on the hosted screens and the token that comes
+  back reads their own record here. The suite in `tests/` still serves its own
+  JWKS from its own key, and that is what lets it withdraw a key and watch one
+  stop being accepted, which nothing can ask a real provider to do on cue.
 - **Four Python packages**, which bring seventeen more with them. They are
   chosen and priced in
   [ADR 0012](../../docs/decisions/0012-python-dependencies.md), and every one is

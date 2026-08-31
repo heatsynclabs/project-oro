@@ -1,0 +1,26 @@
+# The one thing this suite changes about the stack compose.yaml describes.
+#
+#   docker compose -f compose.yaml -f compose.development.yaml \
+#     -f tools/api-against-identity/identity-on-the-network.yaml up
+#
+# Every part of this run sits inside the compose network: the members API, the
+# identity service, and the container the checks themselves run in. So the name
+# the identity service answers to has to be the name it has on that network.
+# ORO_HOSTNAME=identity supplies the name, and compose.development.yaml already
+# reads it into ZITADEL_EXTERNALDOMAIN.
+#
+# The port is the half it cannot supply. compose.development.yaml sets
+# ZITADEL_EXTERNALPORT from ORO_IDENTITY_PORT, which is the port on the laptop,
+# and the port on the network is 8080. Those two variables are what the service
+# signs into the iss claim of every token and what it compares an arriving Host
+# header against, so with this line the issuer is http://identity:8080 and every
+# container in the run reaches it there.
+#
+# The laptop port compose publishes stays published and answers nothing useful.
+# A request to it carries a Host header naming the loopback, which is not a
+# domain this instance knows, and the answer is "Instance not found. Make sure
+# you got the domain right". HANDOFF.md section 7 has that trap in full.
+services:
+  identity:
+    environment:
+      ZITADEL_EXTERNALPORT: "8080"
