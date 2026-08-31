@@ -145,10 +145,6 @@ body {
 	margin: 0;
 }
 
-/* Where the mockups put an avatar, a member's name and a sign out link. There
- * is no identity service and nobody is signed in, so this says that instead.
- * Chrome that names a person nobody authenticated is a lie the page tells
- * before a reader has read a word of it. */
 /* The chip and the two controls, at the end of the app bar. They wrap under the
    portal name on a narrow screen rather than squeezing it. */
 .who {
@@ -256,31 +252,22 @@ h2 {
 	margin: 0 0 var(--space-5);
 }
 
+/* Announced, never shown. A screen reader needs to be told that a view finished
+   loading, because nothing else says so when the content arrives after the page.
+   A sighted member can see that it arrived and does not need a line reading
+   "Your cards, loaded." under every heading. */
 .status {
-	font-family: var(--font-ui);
-	font-size: var(--text-xs);
-	letter-spacing: var(--tracking-wide);
-	text-transform: uppercase;
-	color: var(--ink-info);
-	margin: 0 0 var(--space-4);
-	min-height: 1.2em;
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
 }
 
-/* ---------------------------------------------------- foot and noscript */
-
-.foot {
-	border-top: var(--bd-2);
-	padding: var(--space-8) max(var(--space-4), var(--safe-l)) var(--space-12);
-	font-size: var(--text-sm);
-}
-
-.foot-in {
-	max-width: var(--container-xl);
-	margin-inline: auto;
-}
-
-.foot p { margin: 0 0 var(--space-3); }
-.foot p:last-child { margin-bottom: 0; }
+/* ------------------------------------------------------------- noscript */
 
 .noscript {
 	border: var(--bd-2);

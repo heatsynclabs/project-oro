@@ -207,7 +207,7 @@ def test_a_caller_with_no_token_is_refused():
 
 
 def test_every_view_reads_an_endpoint_this_contract_serves():
-    assert len(VIEWS) == 6, f"{len(VIEWS)} views, expected 6: " \
+    assert len(VIEWS) == 7, f"{len(VIEWS)} views, expected 7: " \
         f"{[view.get('data-source') for view in VIEWS]}"
     for view in VIEWS:
         answer = contract(view.get("data-source"))
@@ -245,6 +245,8 @@ def test_every_field_the_page_shows_is_a_field_the_contract_serves():
     for view in VIEWS:
         source = view.get("data-source")
         data = contract(source).json()
+        # A paged endpoint answers with the page. The view names the list in it.
+        data = data[view.get("data-list-in")] if view.get("data-list-in") else data
         base = data[0] if isinstance(data, list) else data
         bound = fields_of(view)
         assert bound, f"{source} is read by a view that shows no field"

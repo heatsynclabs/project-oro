@@ -10,7 +10,7 @@ An unknown path and a method a path does not take are answered by Starlette
 before any endpoint here runs, and its answer is `{"detail": ...}` as
 `application/json`. That is a second shape, and the contract opens by saying
 errors are problem details in one shape everywhere.
-app/main.py:refused_by_the_router turns both into NO_SUCH_PATH and
+app/refusals.py:refused_by_the_router turns both into NO_SUCH_PATH and
 WRONG_METHOD, and check_members_api.py holds it there.
 """
 

@@ -270,3 +270,24 @@ code {
 }
 
 .action:hover { background-color: var(--hazard-dim); }
+
+/* ------------------------------------------------------------- the landing */
+
+/* What somebody who has never been here sees. One page, two things to do. */
+.landing-do {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	margin: var(--space-5) 0 var(--space-4);
+}
+
+.landing-join {
+	background-color: var(--g-accent);
+	color: var(--tape-dark);
+	border-color: var(--tape-dark);
+}
+
+.landing-note {
+	color: var(--ink-faint);
+	max-width: 44ch;
+}

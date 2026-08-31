@@ -150,15 +150,23 @@ function showList(section, items) {
   parts.status.textContent = section.dataset.loaded;
 }
 
-function showFromTemplate(section, templateId, problem) {
-  const parts = clear(section);
+// A block cloned out of the page and shown wherever it was asked for. The
+// section's own error region is one caller and the profile form's is the other,
+// because a refusal on a save must not take the form off the screen with the
+// half the member had just typed into it.
+function fillFromTemplate(into, templateId, problem) {
   const template = document.getElementById(templateId);
   const block = template.content.cloneNode(true);
   if (problem) {
     bindFields(block, problem);
   }
-  parts.error.appendChild(block);
-  parts.error.hidden = false;
+  into.replaceChildren(block);
+  into.hidden = false;
+}
+
+function showFromTemplate(section, templateId, problem) {
+  const parts = clear(section);
+  fillFromTemplate(parts.error, templateId, problem);
   parts.status.textContent = "";
 }
 
@@ -204,7 +212,9 @@ function showWho(state, name) {
   if (signedIn && name) {
     document.querySelector("[data-name]").textContent = name;
   }
-  for (const control of document.querySelectorAll("[data-sign-in]")) {
+  // The app bar's own control only. The landing carries its own pair and is
+  // shown or hidden as a page rather than a control at a time.
+  for (const control of document.querySelectorAll(".appbar [data-sign-in]")) {
     control.hidden = state !== "signed-out";
   }
   document.querySelector("[data-sign-out]").hidden = !signedIn;
@@ -237,7 +247,42 @@ function showLoading(section) {
   parts.status.textContent = section.dataset.loading;
 }
 
+
+// The two shapes this page has. Signed in it is a set of views with a nav above
+// them. Signed out it is one page with a way in, because every view is about the
+// reader's own things and somebody who has never been here has none.
+function showTheLanding() {
+  const landing = document.querySelector("[data-landing]");
+  document.querySelector(".views").hidden = true;
+  for (const section of document.querySelectorAll("[data-source]")) {
+    section.hidden = true;
+  }
+  // What is behind the members API is a true thing to say about records, and
+  // there are none on this page. The band stays for the sentences that are
+  // about signing in, because those are the reason somebody is still here.
+  for (const line of document.querySelectorAll("[data-behind]")) {
+    line.hidden = true;
+  }
+  quietTheBandIfNothingIsLeft();
+  landing.hidden = false;
+  landing.querySelector("h2").focus();
+}
+
+function quietTheBandIfNothingIsLeft() {
+  const band = document.querySelector(".notice");
+  const showing = Array.from(band.querySelectorAll("p")).some((p) => !p.hidden);
+  band.hidden = !showing;
+}
+
+function showTheViews() {
+  document.querySelector(".views").hidden = false;
+  document.querySelector(".notice").hidden = false;
+  document.querySelector("[data-landing]").hidden = true;
+}
+
 const render = {
+  showTheLanding: showTheLanding,
+  showTheViews: showTheViews,
   showRecord: showRecord,
   showList: showList,
   showProblem: showProblem,
@@ -247,6 +292,7 @@ const render = {
   showSigningIn: showSigningIn,
   showSilence: showSilence,
   showLoading: showLoading,
+  fillFromTemplate: fillFromTemplate,
   formatted: formatted,
   readPath: readPath,
 };

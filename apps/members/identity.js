@@ -71,39 +71,9 @@ async function readEndpoints() {
   }
 }
 
-// ------------------------------------------------------------------- PKCE
-
-function base64url(bytes) {
-  let text = "";
-  for (const byte of bytes) {
-    text += String.fromCharCode(byte);
-  }
-  return window.btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function randomText() {
-  const bytes = new Uint8Array(32);
-  window.crypto.getRandomValues(bytes);
-  return base64url(bytes);
-}
-
-async function challengeFor(verifier) {
-  const digest = await window.crypto.subtle.digest(
-    "SHA-256", new TextEncoder().encode(verifier));
-  return base64url(new Uint8Array(digest));
-}
-
-// crypto.subtle exists only where the browser calls the origin secure, which
-// means HTTPS or localhost. A laptop serving plain HTTP under any other
-// hostname cannot build the challenge at all, and a member deserves that
-// sentence rather than a button that does nothing.
-function canBuildAChallenge() {
-  return Boolean(window.crypto && window.crypto.subtle);
-}
-
 // ------------------------------------------------------ out, and back again
 
-async function startSignIn() {
+async function startSignIn(prompt) {
   if (!configuration || !canBuildAChallenge() || !(await readEndpoints())) {
     return false;
   }
@@ -122,7 +92,7 @@ async function startSignIn() {
     state: state,
     // Ask who is signing in, every time. Without it a member is taken straight
     // into whoever used this browser last. README.md carries the measurement.
-    prompt: "select_account",
+    prompt: prompt || "select_account",
     code_challenge: await challengeFor(verifier),
     code_challenge_method: "S256",
   });
@@ -292,6 +262,9 @@ async function begin() {
 const identity = {
   begin: begin,
   startSignIn: startSignIn,
+  // Joining is the same request with prompt=create, which opens
+  // Registration rather than the account chooser. README.md has why.
+  startJoin: function () { return startSignIn("create"); },
   signOut: signOut,
   signedIn: session.signedIn,
   accessToken: accessToken,

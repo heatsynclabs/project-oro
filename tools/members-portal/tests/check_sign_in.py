@@ -90,8 +90,9 @@ def test_the_page_offers_a_sign_in_and_a_sign_out_a_keyboard_can_reach():
         assert found, f"no button carries {wanted}"
         assert found[0].get("type") == "button", (
             f"the {wanted} button has no type, so it defaults to submit")
-    assert not page.named(HTML, "form"), \
-        "a control on this page sits in a form, and nothing here submits one"
+        assert found[0].enclosing("data-profile-form") is None, (
+            f"the {wanted} button sits inside the profile form, so pressing it "
+            "would save the form on the way past")
 
 
 def test_a_signed_out_reader_is_told_what_to_do_about_it():
@@ -226,21 +227,6 @@ def test_the_page_finds_out_what_is_behind_the_api_the_way_this_suite_does():
 
 
 # ---------------------------------------------------------- the one write path
-
-def test_the_only_control_that_writes_is_the_one_that_writes_your_own_record():
-    """Read only, with one exception, and the exception is countable.
-
-    A form that appears to save and does not is worse than no form, and there is
-    still no form and no field on this page. The controls are buttons: two
-    navigate to the identity service, and the third sends POST /me on a first
-    sign in, which is the only write this portal makes.
-    """
-    for tag in ("form", "input", "textarea", "select"):
-        assert not page.named(HTML, tag), f"the page carries a {tag} element"
-    writes = page.carrying(HTML, "data-claim-member")
-    assert len(writes) == 1, \
-        f"{len(writes)} controls on this page write, and exactly one may"
-
 
 def test_the_first_sign_in_offers_the_operation_the_contract_declares():
     """A person who has never been here has no member record and the API refuses

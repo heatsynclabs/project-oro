@@ -112,6 +112,21 @@ async function claimMemberRecord(person) {
   return send("/me", "POST", token, asked);
 }
 
+// The other thing this portal writes: a member changing their own profile.
+// PATCH rather than PUT because the body is the fields that may change and not
+// the whole record, and the operation is updateMe in docs/api/members-v1.yaml.
+//
+// What may be in that body is MemberSelfUpdate, and the form in index.html is
+// where each field is named. Nothing is listed here, so this file cannot offer
+// a field the page does not and the page cannot send one the API refuses.
+async function saveProfile(changes) {
+  const token = await identity.accessToken();
+  if (!token) {
+    return signedOut();
+  }
+  return send("/me", "PATCH", token, changes);
+}
+
 // What is behind /v1, measured rather than assumed, so the page can stop saying
 // "the contract mock" on the day that stops being true without anybody
 // remembering to edit a sentence.
@@ -134,5 +149,6 @@ async function whatAnswers() {
 const api = {
   read: read,
   claimMemberRecord: claimMemberRecord,
+  saveProfile: saveProfile,
   whatAnswers: whatAnswers,
 };

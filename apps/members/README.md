@@ -2,9 +2,9 @@
 
 ## What it is
 
-The six self service views a member has of their own record: the record itself,
-their cards, their certifications, their waiver, whether they can be nominated
-for card access, and the member directory.
+The seven self service views a member has of their own record: the record
+itself, their cards, their entries, their certifications, their waiver, whether
+they can be nominated for card access, and the member directory.
 
 A member signs in to it, and what it shows is their own record. The sign in is
 an authorization code flow with PKCE against the identity service, and every
@@ -16,11 +16,18 @@ anything that answers 200 to that is checking no tokens, which makes it the
 contract mock. So the sentence about invented data disappears on the day a real
 service takes that prefix, without anybody remembering to edit it.
 
-It reads. The one thing it writes is `POST /me` on a first sign in, for a
-person the identity service knows and the members database does not. There is
-no form and no field anywhere on the page: the name and address that operation
-needs come from the identity service, which the person has just proved
-themselves to. A PATCH belongs to a later step.
+It writes in two places, and both are the reader's own record. `POST /me` on a
+first sign in, for a person the identity service knows and the members database
+does not, which needs no field because the name and the address come from the
+identity service. And `PATCH /me` from the profile form, which is the reason
+this portal can replace the one the lab runs today: a member changes their own
+contact details, what the directory shows about them, and who to call in an
+emergency.
+
+Every field in that form is one `MemberSelfUpdate` declares. A save sends all of
+them, and an emptied box sends null, which is what the member is looking at. It
+sends nothing else, so a field the form does not offer keeps whatever it holds.
+Nothing else on the page changes anything.
 
 Why it exists before the service does: `docs/plan/api-design.md` section 7 step 2
 asks for the portal to be finished against the mock, because a portal that can be
@@ -105,8 +112,9 @@ The deployment is unchanged and still serves TLS.
 `docs/decisions/0003-plain-http-for-development.md` says why the two differ and
 what developing over plain HTTP can hide.
 
-Views are addressed by fragment: `#/me`, `#/cards`, `#/certifications`,
-`#/waiver`, `#/card-eligibility`, `#/directory`. A fragment rather than a path
+Views are addressed by fragment: `#/me`, `#/cards`, `#/entries`,
+`#/certifications`, `#/waiver`, `#/card-eligibility`, `#/directory`. A fragment
+rather than a path
 because this is a file server: a path route would need a rewrite in Caddy, and
 without one a reload of a deep link answers 404.
 
@@ -119,7 +127,7 @@ make portal-test
 ```
 
 That brings up its own stack on its own ports, so a stack you already have up is
-neither read nor disturbed, and runs three suites against it. To check a stack
+neither read nor disturbed, and runs four suites against it. To check a stack
 you already have running instead:
 
 ```sh
@@ -127,9 +135,9 @@ ORO_PORTAL_URL=http://localhost:8080 ORO_MOCK_URL=http://localhost:4010 \
   python3 tools/members-portal/tests/check_portal.py
 ```
 
-The same two variables run `check_appearance.py` and `check_sign_in.py`. None of
-the three runs a browser, so none of them sees the rendered document. They assert
-what is either side of that.
+The same two variables run `check_appearance.py`, `check_sign_in.py` and
+`check_profile.py`. None of the four runs a browser, so none of them sees the
+rendered document. They assert what is either side of that.
 
 `check_portal.py` is the page against the contract underneath it. The copy and
 the structure a reader is served: the skip link, the error copy, and the heading
@@ -153,7 +161,15 @@ the block a first sign in gets offers the operation the contract declares. It
 makes the same measurement of what is behind `/v1` that the page makes, reading
 the probe token out of `api.js` so the two cannot disagree.
 
-Three files rather than one because one file holding them runs past the 300 line
+`check_profile.py` is what the page lets a member change. That there is one form
+and it saves the record the view it sits in reads. That every field it offers is
+one `MemberSelfUpdate` declares and none is one an admin owns, both read out of
+the contract rather than listed there, so a field added here without a contract
+change turns it red. That every control carries a label a screen reader can use,
+that the three kinds of field are grouped and each group is named, and that the
+page says what happened when a save finishes either way.
+
+Four files rather than one because one file holding them runs past the 300 line
 ceiling in rule 6.
 
 Run the prose gate over any file you change here:
@@ -262,30 +278,43 @@ if that copy comes back.
 ### How a view is wired
 
 Each view is a `<section>` in `index.html` carrying `data-source`, the path it
-reads. Inside it, an element with `data-field` names a path into the record, and
-a `<template data-item-for="...">` names a list inside that record. `api.js`
-fetches and never touches the DOM. `identity.js` talks to the identity service
-and never touches the DOM either, and `session.js` under it holds what comes
-back and calls nothing. `render.js` writes to the DOM and never fetches.
-`main.js` is the only file that does both, which is what a composition root is
-for.
+reads. Inside it, an element with `data-field` names a path into the record, an
+element with `data-edit` names a field of `MemberSelfUpdate` a member may
+change, and a `<template data-item-for="...">` names a list inside that record.
+A view whose endpoint answers with a page rather than a list carries
+`data-list-in`, naming the property the items are in, which is the entries view
+and `items`.
 
-Five files rather than three because each ran past the 300 line ceiling in rule
+`api.js` fetches and never touches the DOM. `identity.js` talks to the identity
+service and never touches the DOM either, and `session.js` under it holds what
+comes back and calls nothing. `render.js` and `profile.js` write to the DOM and
+never fetch. `main.js` is the only file that does both, which is what a
+composition root is for.
+
+Six files rather than three because each ran past the 300 line ceiling in rule
 6 as one. There is no `import` statement anywhere in this tree, deliberately:
 ADR 0006 makes the first one the condition that brings `eslint-plugin-boundaries`
 in, and with it a lockfile and a hundred packages. These are classic scripts and
 the load order in `index.html` is what puts each global in place before the
 next file uses it.
 
-The styling is in two files for the same reason the checks are: one file runs
-past the ceiling. `members.css` is the page frame, the masthead down to the foot.
-`components.css` is what sits inside a view, and it is the GANTRY component layer
-as far as one app needs one. HANDOFF.md section 2 has `packages/gantry-css` as a
-later step, and the second app that wants a card is what should move it.
+The styling is in three files for the same reason the checks are: one file runs
+past the ceiling. `members.css` is the page frame, the masthead down to the
+noscript line. `components.css` is what sits inside a view, and it is the GANTRY
+component layer as far as one app needs one. `form.css` is the profile form.
+HANDOFF.md section 2 has `packages/gantry-css` as a later step, and the second
+app that wants a card is what should move them.
 
-Every sentence a reader sees is in `index.html`, including the two error blocks,
-which are templates the renderer clones. That is what lets a check with no
-browser read the copy.
+Every sentence a reader sees is in `index.html`, the error blocks and the two
+words a save reports included. The blocks are templates the renderer clones, and
+those two words are attributes on the form, the way every view carries
+`data-loading` and `data-loaded`. That is what lets a check with no browser read
+the copy.
+
+`index.html` is the one file in this app past the 300 line ceiling, listed in
+`tools/ceilings/exemptions.txt` with that as the reason: splitting it takes a
+build step, which ADR 0006 keeps out, or a fragment fetched at run time, which
+would hide half the copy from the checks that exist to read it.
 
 ### Where this and the mockups differ
 
@@ -320,6 +349,26 @@ matter to anybody reading that suite.
 
 ### What this does not do yet
 
+- These two views have never been run against the members API. Measured on
+  2026-08-31 against the development stack: `PATCH /me` answered 405 with the
+  `wrong-method` problem detail and `GET /me/door-events` answered 404 with
+  `no-such-path`. Both are refusals the contract declares and the page shows the
+  sentence in either one, so the form reports what happened rather than
+  appearing to save. `services/api/app/profile.py` and
+  `services/api/app/door_events.py` are in the tree as this is written and the
+  container on that stack was built before them, so the numbers above are the
+  old image rather than the state of the service. Re-measure. What these were
+  built and checked against is the contract mock, which serves both.
+- Five fields of `MemberSelfUpdate` are not on the form, and a field the form
+  does not offer is a field it does not send, so a save leaves it alone rather
+  than emptying it. `tier_id` is a uuid and no endpoint in the contract lists
+  the tiers, so the only control this page could offer is a box to paste an
+  identifier into. `marketing_source`, `twitter_url`, `facebook_url` and
+  `github_url` are fields nothing on this page shows, and a box that changes
+  something a member cannot then read is a box whose effect nobody can check.
+  Both wait on a decision rather than on code.
+- The entries view reads one page and offers no way to the next. The contract
+  answers `next_cursor` and nothing here sends it back.
 - No theme switch. Bare `:root` in `packages/gantry-tokens` carries the paper
   set, so a page naming no theme is light and this one names none. Setting
   `data-theme="dark"` on the `html` element flips it, and every rule in both
@@ -337,6 +386,12 @@ matter to anybody reading that suite.
   old one refused. What that run cannot cover is the part only a browser does:
   the redirect back carrying the code, `crypto.subtle` building the challenge,
   and `sessionStorage`. `tools/browser-checks/` is where that belongs.
+- Nor has the save been driven through a browser. What was run on 2026-08-31 is
+  the request the form builds, assembled out of the served markup and sent to
+  the contract mock, which validated it against `MemberSelfUpdate` and answered
+  a member record carrying every field the form offers. What that cannot cover
+  is the part only a browser does: the submit event, the boxes being filled from
+  the answer, and a per field refusal landing under its own field.
 - No silent renewal across a closed tab. `sessionStorage` goes with the tab, so
   a member who closes it signs in again. The identity service still holds the
   session, so that is one click rather than a password.

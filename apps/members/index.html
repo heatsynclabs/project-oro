@@ -6,6 +6,7 @@
 <title>Members portal</title>
 <link rel="stylesheet" href="/theme/tokens.css">
 <link rel="stylesheet" href="/components.css">
+<link rel="stylesheet" href="/form.css">
 <link rel="stylesheet" href="/members.css">
 </head>
 <body>
@@ -35,19 +36,20 @@
 
 <div class="notice" data-ground="hazard" role="note">
 <svg class="notice-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2 23 21H1Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v6M12 17.5v.5" stroke="currentColor" stroke-width="2"/></svg>
-<p data-behind="unknown">Nothing has answered the members API on this origin yet, so this page is not saying whose records these are.</p>
-<p data-behind="mock" hidden>Everything below comes from the contract mock, which answers with the examples written into the API contract. No real member data is involved and nothing here is saved. The name and the record you are about to read belong to nobody.</p>
-<p data-behind="service" hidden>Everything below comes from the members API, so it is what the lab holds about you. This page reads it. The one thing on it that writes is the button offered on a first sign in, and it creates your own record.</p>
-<p data-signing-in="unconfigured" hidden>Signing in is not set up here. The identity service generates a client id one instance at a time, so no page can carry one: <code>tools/identity/configure.py</code> writes it into <code>identity.json</code> beside this file. Run that against this stack and reload.</p>
-<p data-signing-in="wrong-origin" hidden>The sign in configuration beside this page names a different address than the one you are reading it on, so the identity service would send somebody else the code and this page would never see it. Run <code>tools/identity/configure.py</code> again, naming the origin you are on.</p>
-<p data-signing-in="sign-in-failed" hidden>You came back from the identity service and this page could not finish signing you in, so nobody is signed in. The code may have expired on the way, or this browser may be refusing to keep anything for this page. Try signing in again.</p>
-<p data-signing-in="insecure-origin" hidden>This page is on a plain HTTP address the browser does not treat as secure, so it has no way to build the PKCE challenge a sign in needs. Open the portal as localhost, or serve it over HTTPS.</p>
+<p data-behind="unknown">Nothing has answered the members API yet, so this page cannot say whose records these are.</p>
+<p data-behind="mock" hidden>These records come from the contract mock. No real member data is here, and nothing you change is saved.</p>
+<p data-behind="service" hidden>These records come from the members API, so they are what the lab holds about you.</p>
+<p data-signing-in="unconfigured" hidden>Signing in is not set up here. Run <code>tools/identity/configure.py</code> against this stack and reload.</p>
+<p data-signing-in="wrong-origin" hidden>The sign in configuration beside this page names a different address than the one you are reading it on, so a sign in would never come back here. Run <code>tools/identity/configure.py</code> again, naming this origin.</p>
+<p data-signing-in="sign-in-failed" hidden>You came back from the identity service and this page could not finish signing you in. Try again.</p>
+<p data-signing-in="insecure-origin" hidden>This browser does not treat this address as secure, so a sign in cannot start here. Open the portal as localhost, or serve it over HTTPS.</p>
 </div>
 
 <nav class="views" aria-label="Portal views">
 <ul>
 <li><a href="#/me" data-nav="/me">Your record</a></li>
 <li><a href="#/cards" data-nav="/cards">Your cards</a></li>
+<li><a href="#/entries" data-nav="/entries">Entries</a></li>
 <li><a href="#/certifications" data-nav="/certifications">Certifications</a></li>
 <li><a href="#/waiver" data-nav="/waiver">Waiver</a></li>
 <li><a href="#/card-eligibility" data-nav="/card-eligibility">Card access</a></li>
@@ -57,24 +59,21 @@
 
 <main id="main" tabindex="-1">
 
+<section class="view landing" id="view-landing" data-landing hidden>
+<h2 tabindex="-1">Your membership at HeatSync Labs</h2>
+<p class="lede">Your record, your cards, your waiver and the member directory, in one place.</p>
+<p class="landing-do">
+<button type="button" class="action landing-join" data-join>Join HeatSync Labs</button>
+<button type="button" class="action" data-sign-in>I already have an account</button>
+</p>
+<p class="landing-note">Joining takes a name, an address and a password. The lab emails you a code to confirm the address.</p>
+</section>
+
 <section class="view" id="view-me" data-route="/me" data-source="/me" data-loading="Reading your record." data-loaded="Your record, loaded." hidden>
 <h2 tabindex="-1">Your record</h2>
-<p class="lede">What the lab holds about you. Your roles are read from your member record on every request rather than from your sign in, so losing a role takes effect on the next thing you do.</p>
+<p class="lede">What the lab holds about you.</p>
 <p class="status" role="status" data-status></p><div class="error" data-error hidden></div>
 <div class="grid2" data-target hidden>
-
-<article class="card">
-<p class="card-label">Profile</p>
-<h3 class="card-title" data-field="name"></h3>
-<dl class="kv">
-<dt>Display name</dt><dd data-field="display_name" data-fallback="Not set"></dd>
-<dt>Pronouns</dt><dd data-field="pronouns" data-fallback="Not set"></dd>
-<dt>Email</dt><dd><span data-field="email"></span> <span class="chip" data-chip data-field="email_visible" data-format="visibility"></span> <span class="chip" data-chip="present" data-field="email_verified_at" data-format="confirmed" data-fallback="Email not confirmed yet"></span></dd>
-<dt>Phone</dt><dd><span data-field="phone" data-fallback="Not set"></span> <span class="chip" data-chip data-field="phone_visible" data-format="visibility"></span></dd>
-<dt>Postal code</dt><dd data-field="postal_code" data-fallback="Not set"></dd>
-</dl>
-<p class="note">Confirming your email does not unlock anything and not confirming it takes nothing away. It is how the lab knows a message actually reaches you, which matters on the day somebody needs to tell you the space is shut.</p>
-</article>
 
 <article class="card">
 <p class="card-label">Membership</p>
@@ -86,35 +85,52 @@
 <dt>Orientation</dt><dd data-field="oriented_at" data-format="date" data-fallback="Not recorded"></dd>
 <dt>Tier carries a card</dt><dd data-field="tier.card_eligible" data-format="yesno"></dd>
 </dl>
-<p class="note">Standing and the date above are set by an admin. Payments are out of scope for this build, so nothing here records money or how you pay.</p>
+<p class="note">Standing, the dues date and your orientation are set by an admin.</p>
 </article>
 
 <article class="card">
-<p class="card-label">Directory</p>
-<h3 class="card-title">What other members see</h3>
-<dl class="kv">
-<dt>Listed</dt><dd><span class="chip" data-chip data-field="listed_in_directory" data-format="visibility"></span></dd>
-<dt>Skills you have</dt><dd data-field="current_skills" data-fallback="Not set"></dd>
-<dt>Skills you want</dt><dd data-field="desired_skills" data-fallback="Not set"></dd>
-<dt>Website</dt><dd data-field="website_url" data-fallback="Not set"></dd>
-</dl>
-</article>
-
-<article class="card">
-<p class="card-label">Emergency contact</p>
-<h3 class="card-title">Who the lab calls</h3>
-<dl class="kv">
-<dt>Name</dt><dd data-field="emergency_name" data-fallback="Not set"></dd>
-<dt>Phone</dt><dd data-field="emergency_phone" data-fallback="Not set"></dd>
-<dt>Email</dt><dd data-field="emergency_email" data-fallback="Not set"></dd>
-</dl>
-</article>
-
-<article class="card card-wide">
 <p class="card-label">Roles</p>
 <h3 class="card-title">What you hold</h3>
 <ul class="rows" data-list="roles"></ul>
 </article>
+
+<!-- required, type=email and type=url are a courtesy, so a member is told
+     before the request goes rather than after it comes back. The rule is
+     enforce_profile_self_edit in db/migrations/004_security.sql, and
+     MemberSelfUpdate in docs/api/members-v1.yaml is the list every field here
+     comes from. -->
+<form class="card card-wide" data-profile-form data-saving="Saving." data-saved="Saved.">
+<p class="card-label">Yours to change</p>
+<h3 class="card-title">Your profile</h3>
+<fieldset data-fields="about">
+<legend>About you</legend>
+<p class="field"><label for="edit-name">Name</label><input id="edit-name" type="text" data-edit="name" required></p>
+<p class="field"><label for="edit-display-name">Display name</label><input id="edit-display-name" type="text" data-edit="display_name"></p>
+<p class="field"><label for="edit-pronouns">Pronouns</label><input id="edit-pronouns" type="text" data-edit="pronouns"></p>
+<p class="field"><label for="edit-email">Email</label><input id="edit-email" type="email" data-edit="email"> <span class="chip" data-chip="present" data-field="email_verified_at" data-format="confirmed" data-fallback="Email not confirmed yet"></span></p>
+<p class="field"><label for="edit-phone">Phone</label><input id="edit-phone" type="tel" data-edit="phone"></p>
+<p class="field"><label for="edit-postal-code">Postal code</label><input id="edit-postal-code" type="text" data-edit="postal_code"></p>
+<p class="field"><label for="edit-current-skills">Skills you have</label><textarea id="edit-current-skills" rows="2" data-edit="current_skills"></textarea></p>
+<p class="field"><label for="edit-desired-skills">Skills you want</label><textarea id="edit-desired-skills" rows="2" data-edit="desired_skills"></textarea></p>
+<p class="field"><label for="edit-website">Website</label><input id="edit-website" type="url" data-edit="website_url"></p>
+<p class="note">Confirming your email is how the lab reaches you. It unlocks nothing, and changing your address clears the confirmation.</p>
+</fieldset>
+<fieldset data-fields="directory">
+<legend>What the directory shows</legend>
+<p class="switch"><input id="edit-listed" type="checkbox" data-edit="listed_in_directory"><label for="edit-listed">List me in the directory</label></p>
+<p class="switch"><input id="edit-email-visible" type="checkbox" data-edit="email_visible"><label for="edit-email-visible">Show my email to other members</label></p>
+<p class="switch"><input id="edit-phone-visible" type="checkbox" data-edit="phone_visible"><label for="edit-phone-visible">Show my phone number to other members</label></p>
+<p class="note">While you are not listed, the directory shows nothing about you.</p>
+</fieldset>
+<fieldset data-fields="emergency">
+<legend>Emergency contact</legend>
+<p class="field"><label for="edit-emergency-name">Name</label><input id="edit-emergency-name" type="text" data-edit="emergency_name"></p>
+<p class="field"><label for="edit-emergency-phone">Phone</label><input id="edit-emergency-phone" type="tel" data-edit="emergency_phone"></p>
+<p class="field"><label for="edit-emergency-email">Email</label><input id="edit-emergency-email" type="email" data-edit="emergency_email"></p>
+</fieldset>
+<p class="save"><button type="submit" class="action" data-save>Save changes</button> <span class="saved" role="status" data-save-status></span></p>
+<div class="error" data-save-error hidden></div>
+</form>
 
 </div>
 <template data-item-for="roles">
@@ -132,7 +148,7 @@
 
 <section class="view" id="view-cards" data-route="/cards" data-source="/me/cards" data-loading="Reading your cards." data-loaded="Your cards, loaded." hidden>
 <h2 tabindex="-1">Your cards</h2>
-<p class="lede">The API sends a tag number masked to its last four characters, and this page shows no more than that. Where a card sits inside the door controller is the door service's business, so it is not on this page and never reaches a browser.</p>
+<p class="lede">Your cards, each shown by the last four characters of its tag number.</p>
 <p class="status" role="status" data-status></p><div class="error" data-error hidden></div>
 <p class="empty" data-empty hidden>No card is recorded for you. The card access view says what being nominated involves.</p>
 <div class="sheet-scroll">
@@ -150,14 +166,34 @@
 <td data-field="revoked_at" data-format="date" data-fallback="Not revoked"></td>
 </tr>
 </template>
-<p class="note">If you lose a card, tell an admin and they revoke it. Issuing one is an ordinary admin action, and what authorises it is a vote of card members at Hack Your Hackerspace.</p>
+<p class="note">If you lose a card, tell an admin and they revoke it.</p>
+</section>
+
+<section class="view" id="view-entries" data-route="/entries" data-source="/me/door-events" data-list-in="items" data-loading="Reading your entries." data-loaded="Your entries, loaded." hidden>
+<h2 tabindex="-1">Entries</h2>
+<p class="lede">What the door recorded about you, most recent first. You and an admin can read this, and nobody else can.</p>
+<p class="status" role="status" data-status></p><div class="error" data-error hidden></div>
+<p class="empty" data-empty hidden>No entry is recorded for you.</p>
+<div class="sheet-scroll">
+<table class="sheet">
+<thead><tr><th scope="col">When</th><th scope="col">Door</th><th scope="col">What happened</th></tr></thead>
+<tbody data-target hidden></tbody>
+</table>
+</div>
+<template data-item>
+<tr>
+<td data-field="occurred_at" data-format="datetime"></td>
+<td data-field="door" data-fallback="Not recorded"></td>
+<td data-field="event_key"></td>
+</tr>
+</template>
 </section>
 
 <section class="view" id="view-certifications" data-route="/certifications" data-source="/me/certifications" data-loading="Reading your certifications." data-loaded="Your certifications, loaded." hidden>
 <h2 tabindex="-1">Certifications</h2>
-<p class="lede">A certification is per tool. Certification is required before you use the tool it covers. A revoked one stays on this list with its date, because a certification can be revoked and granted again later, and that history is what an instructor needs to see.</p>
+<p class="lede">A certification is per tool, and it is required before you use the tool it covers. A revoked one stays on this list with its date.</p>
 <p class="status" role="status" data-status></p><div class="error" data-error hidden></div>
-<p class="empty" data-empty hidden>Nothing is recorded for you yet. An instructor for a tool records a certification after they have run you through it.</p>
+<p class="empty" data-empty hidden>Nothing is recorded for you yet. An instructor records a certification after they have run you through the tool.</p>
 <div class="grid2" data-target hidden></div>
 <template data-item>
 <article class="card">
@@ -177,9 +213,9 @@
 
 <section class="view" id="view-waiver" data-route="/waiver" data-source="/me/waiver" data-empty-on="404" data-loading="Reading your waiver record." data-loaded="Your waiver record, loaded." hidden>
 <h2 tabindex="-1">Waiver</h2>
-<p class="lede">This system records that you signed a waiver, when, and where the document is kept. It holds nothing that is on the document. The lab already keeps waivers somewhere, and a second copy would be a second thing to protect.</p>
+<p class="lede">That you signed a waiver, when, and where the document is kept. Nothing that is written on the document is held here.</p>
 <p class="status" role="status" data-status></p><div class="error" data-error hidden></div>
-<p class="empty" data-empty hidden>No waiver is recorded for you. That is an answer rather than a fault: it means nobody has written one down. An admin records it once you have signed.</p>
+<p class="empty" data-empty hidden>No waiver is recorded for you. An admin records it once you have signed one.</p>
 <div class="grid2" data-target hidden>
 <article class="card">
 <p class="card-label">Waiver</p>
@@ -198,7 +234,7 @@
 
 <section class="view" id="view-eligibility" data-route="/card-eligibility" data-source="/me/card-eligibility" data-loading="Working out where you stand." data-loaded="Your card access standing, loaded." hidden>
 <h2 tabindex="-1">Card access</h2>
-<p class="lede">Whether you can be nominated for card access, and what is missing if you cannot be. Being eligible is not the same as holding a card. A cardholder nominates you, the proposal is posted publicly at least two weeks ahead, and card members vote on it at Hack Your Hackerspace.</p>
+<p class="lede">Whether you can be nominated for card access, and what is missing if you cannot be. Eligibility is not a card: a cardholder nominates you, and card members vote at Hack Your Hackerspace.</p>
 <p class="status" role="status" data-status></p><div class="error" data-error hidden></div>
 <div class="grid2" data-target hidden>
 <article class="card">
@@ -209,7 +245,6 @@
 <dt>Eligible on</dt><dd data-field="eligible_on" data-format="date" data-fallback="Waiting on something that is not about time"></dd>
 <dt>Where you stand</dt><dd data-field="reason"></dd>
 </dl>
-<p class="note">The numbers behind these rules live in the governance parameters table, because the membership has voted them up and down three times in eight months.</p>
 </article>
 <article class="card">
 <p class="card-label">What happens next</p>
@@ -221,9 +256,9 @@
 
 <section class="view" id="view-directory" data-route="/directory" data-source="/members" data-loading="Reading the directory." data-loaded="The directory, loaded." hidden>
 <h2 tabindex="-1">Directory</h2>
-<p class="lede">Members who chose to be listed, showing only what each of them chose to show. Reading it needs nothing more than being a member. It is not gated on orientation: the legacy application gated it on an admin having typed a date into a field, which locked paying members out for a volunteer's inaction.</p>
+<p class="lede">Members who chose to be listed, showing only what each of them chose to show. Any member can read it, whether or not their orientation has been recorded.</p>
 <p class="status" role="status" data-status></p><div class="error" data-error hidden></div>
-<p class="empty" data-empty hidden>Nobody is listed. Every member has chosen not to appear, which is theirs to choose.</p>
+<p class="empty" data-empty hidden>Nobody has chosen to be listed.</p>
 <div class="grid2" data-target hidden></div>
 <template data-item>
 <article class="card">
@@ -243,45 +278,40 @@
 
 </main>
 
-<footer class="foot" data-ground="plate">
-<div class="foot-in">
-<p>Static files behind Caddy, reading the members API on this same origin. What is behind that path is measured on every load and said in the notice at the top of the page, because this line used to claim a mock long after that stopped being true.</p>
-<p class="tag">Open Source. Open Doors.</p>
-</div>
-</footer>
-
 <noscript>
-<p class="noscript">This portal reads the members API in the browser, so with JavaScript turned off it can show you nothing at all rather than showing you an empty record. The API itself is readable without it: every view above is one GET under /v1 on this origin.</p>
+<p class="noscript">This portal reads the members API in the browser, so with JavaScript turned off it shows you nothing at all rather than an empty record.</p>
 </noscript>
 
 <template id="api-unreachable">
 <h3>The members API did not answer</h3>
-<p>Nothing was read, so this page is showing you nothing rather than an empty record. Your cards and your certifications are unaffected by this, and so is the door. Start the contract mock with <code>make development</code>, then reload this page. If it was already running, <code>make logs</code> follows every service, the mock included, and what it printed last says why.</p>
+<p>Nothing was read or changed, and the door is unaffected. Start the stack with <code>make development</code>, then reload this page. If it was already running, <code>make logs</code> says what each service printed last.</p>
 </template>
 
 <template id="not-signed-in">
 <h3>Sign in to read this</h3>
-<p>This view is your own record, so there is nothing to show until the lab knows who is asking. Signing in sends you to the identity service and brings you back to this page.</p>
+<p>This is your own record, so there is nothing to show until the lab knows who is asking.</p>
 <button type="button" class="action" data-sign-in>Sign in</button>
 </template>
 
 <template id="api-no-member-record">
 <h3 data-field="title"></h3>
 <p data-field="detail"></p>
-<p>Creating it writes a member record and joins this sign in to it, under the name and address the identity service already holds for you. It grants nothing: no role, no tier and no card. Your standing stays unknown until an admin sets it. If the lab already holds a record carrying your address, this is refused and an admin joins you to that one instead.</p>
+<p>Creating it writes a member record under the name and address the identity service already holds for you. It grants no role, no tier and no card, and an admin sets your standing. If the lab already holds a record carrying your address, an admin joins you to that one instead.</p>
 <button type="button" class="action" data-claim-member>Create my member record</button>
 </template>
 
 <template id="api-problem">
-<h3 data-field="title"></h3>
-<p data-field="detail"></p>
-<p class="problem-kind">Nothing was read or changed. The API named this refusal <span data-field="type"></span>.</p>
+<h3 data-field="title" data-fallback="That was refused"></h3>
+<p data-field="detail" data-fallback="The API refused it and said nothing more about why."></p>
+<p class="problem-kind">Nothing was read or changed. The API named this refusal <span data-field="type" data-fallback="nothing"></span>.</p>
 </template>
 
 <script src="/session.js"></script>
+<script src="/pkce.js"></script>
 <script src="/identity.js"></script>
 <script src="/api.js"></script>
 <script src="/render.js"></script>
+<script src="/profile.js"></script>
 <script src="/main.js"></script>
 </body>
 </html>

@@ -2,13 +2,15 @@
 
 ## What it is
 
-The service the three portals will call. Today it answers eight of the twenty
+The service the three portals will call. Today it answers ten of the twenty
 four operations in `docs/api/members-v1.yaml`:
 
 | Operation | Path | What it proves |
 |---|---|---|
 | `getMe` | `GET /me` | A member reads their own record, with their tier and their live roles |
 | `createMe` | `POST /me` | A first sign in becomes a member record, and a second call writes nothing |
+| `updateMe` | `PATCH /me` | A member changes their own profile, and the database refuses the values it holds the rules for |
+| `listMyDoorEvents` | `GET /me/door-events` | A member's own entries into the building, a page at a time |
 | `listMyCards` | `GET /me/cards` | A member's own cards, tag numbers masked, no door hardware named |
 | `listMyCertifications` | `GET /me/certifications` | What they are certified on, revoked grants included |
 | `getMyWaiver` | `GET /me/waiver` | That a waiver exists, when, and where the document is kept |
@@ -16,12 +18,13 @@ four operations in `docs/api/members-v1.yaml`:
 | `listDirectory` | `GET /members` | The directory, with an email or a phone number hidden unless its owner published it |
 | `getDirectoryMember` | `GET /members/{id}` | The same object and the same visibility rules, for one member |
 
-Those are the six sources `apps/members/index.html` declares, plus the
-operation that gets a person a record to read. There is no admin path and no
-other write path. Nothing here touches an approval or the door. It is a
-vertical slice built to prove one thing end to end: an HTTP request carrying an
-access token turns into a database transaction that runs under the member's own
-row level security policies, and the policies are what decide the answer.
+Those are the six sources `apps/members/index.html` declares, the operation
+that gets a person a record to read, the one that lets them change it, and the
+record of their own entries. There is no admin path. Nothing here touches an
+approval or the door service. It is a vertical slice built to prove one thing
+end to end: an HTTP request carrying an access token turns into a database
+transaction that runs under the member's own row level security policies, and
+the policies are what decide the answer.
 
 `POST /me` is the exception to "no write path" and it is a narrow one. It calls
 `link_or_create_member` in `db/migrations/008_system_paths.sql`, the only path
@@ -84,7 +87,8 @@ holds the behaviour.
 itself, a path nothing serves and a method a path does not take. Both arrive as
 `{"detail": ...}` in `application/json` unless something catches them, and the
 contract opens by saying errors are RFC 9457 in one shape everywhere.
-`refused_by_the_router` in `app/main.py` is where the second shape stops.
+`app/refusals.py` is where every shape but the one stops, and
+`refused_by_the_router` in it is the pair FastAPI would have answered.
 
 **The service logs in as `oro_api_login` and becomes `oro_api`.**
 `db/migrations/004_security.sql` creates `oro_api` `NOLOGIN` on purpose, so
@@ -99,7 +103,7 @@ holding one function.
 
 - **The generated OpenAPI document and the pages FastAPI serves for it.**
   `docs/api/members-v1.yaml` is the contract. A second document describing
-  eight operations would disagree with it about the other sixteen. Rule 10
+  ten operations would disagree with it about the other fourteen. Rule 10
   wants the document verified against the running service, and that check
   belongs with the change that completes the set.
 - **A health endpoint.** The contract declares none, and rule 10 says not to
@@ -113,9 +117,16 @@ holding one function.
   `sub`, `aud`, `exp`, `iat`, `nbf`, `client_id` and `jti`. So a legacy member
   who signs in before an admin has linked them gets a second, empty record.
   `app/first_sign_in.py` carries the measurement and what would close it.
-- **`PATCH /me`, and every admin operation.** A member cannot change their own
-  profile through this service yet, which is why `POST /me` takes an address at
-  all: it is the only chance a member has to record one.
+- **Every admin operation.** No path here writes anybody's record but the
+  caller's own, and nothing grants a role, issues a card or records a waiver.
+- **A 403 on `PATCH /me`.** The contract declared one until this operation was
+  built, for a field an admin owns. It does not any more. Such a field is
+  answered 422 and never reaches the database, because
+  `enforce_profile_self_edit` in `db/migrations/004_security.sql` returns early
+  for an admin, so forwarding a name to it would let an admin move
+  `identity_subject` on their own record. Finding 9 of
+  `docs/api/contract-review-notes.md` carries the decision, and `app/profile.py`
+  carries it beside the code.
 - **A checked email address.** Nothing here validates the shape of what
   somebody types into `email`. `format: email` in the contract is a promise
   about the value with no validator behind it, because the one FastAPI would
@@ -191,18 +202,24 @@ image. Then it makes real HTTP requests against the result. Everything it starts
 is named after its own process id and is removed when it exits, so a stack you
 have up is neither read nor touched.
 
-Sixty eight checks. One is in `run.sh` itself, a refusal: a container with no
-settings has to stop and name the one that is missing. The other sixty seven
-are in five files. `check_members_api.py` is what the member record and the
+Ninety four checks. One is in `run.sh` itself, a refusal: a container with no
+settings has to stop and name the one that is missing. The other ninety three
+are in seven files. `check_members_api.py` is what the member record and the
 directory return and what they withhold. `check_self_service.py` is the four
 paths a member reads about themselves. Each one is asked what it answers its
 owner, then what it answers somebody who is not its owner, which is the check
-that catches a WHERE clause going missing. `check_members_first_sign_in.py` is `POST /me`,
-and it is the only file here that writes: it deletes what it wrote whether or
-not a check failed, because a record left behind is a member in the directory
-that the other checks count. `check_identity_isolation.py` is who the service
-thinks you are and how long that lasts, and the last check in it is the reason
-this suite exists. `check_signing_keys.py` is when the provider's keys are
+that catches a WHERE clause going missing. `check_members_first_sign_in.py` is `POST /me`.
+It deletes what it wrote whether or not a check failed, because a record left
+behind is a member in the directory that the other checks count.
+`check_profile_edit.py` is the other file that writes, and most of it is
+refusals: a field an admin owns, a link that is not a link, a tier that is not a
+tier, an address another member already holds. Three of those four come back out
+of the database rather than out of this service, and its two members are not in
+the directory, so nothing it does can move a count anywhere else.
+`check_door_events.py` is a member reading their own entries. It pages a fixture
+where two of them share an instant, which is what a cursor carrying only a time
+gets wrong. `check_identity_isolation.py` is who the service thinks you are and
+how long that lasts, and the last check in it is the reason this suite exists. `check_signing_keys.py` is when the provider's keys are
 read, which is one clock answering two failures that pull in opposite
 directions.
 
@@ -220,6 +237,9 @@ Four ways to make it go red, each of which was run:
 | Drop `SET LOCAL ROLE oro_api` | `permission denied for table members`, because the login role inherits nothing |
 | Read the directory from `members` instead of `member_directory` | The directory returns one row, the caller's own, because no policy lets one member read another's row |
 | Drop `WHERE member_id = current_member_id()` from the cards query | Nothing, until an admin calls it, and then `admin_reads_all_cards` answers `/me/cards` with the whole lab's cards. The suite seats no admin, so this one is held by review rather than by a check |
+| Answer nothing from `what_the_database_refused` | `test_a_link_that_is_not_a_link_is_refused_by_the_database` and `test_a_tier_that_is_not_a_tier_is_refused` go red, and a member who typed a link wrong is handed a 500 |
+| Order the door events by `occurred_at` alone | `test_the_pages_walked_end_to_end_are_the_whole_list_and_no_more` goes red, because the two entries sharing an instant fall either side of a page boundary and one of them is read twice |
+| Drop `WHERE member_id = current_member_id()` from the door events query | Nothing. Measured: with `WHERE true` in its place all fourteen door event checks passed, because `member_reads_own_door_events` filters the same rows and this suite seats no admin. Like the cards row above it, that WHERE is held by review until somebody adds an admin fixture |
 | Pass the request's `email` to `link_or_create_member` | `test_a_first_sign_in_never_claims_a_record_by_the_address_typed_in` goes red, because a stranger takes over Ida's record by typing her address |
 | Turn PyJWKClient's per key cache back on | A key withdrawn from the published JWKS keeps verifying tokens, and `test_a_key_withdrawn_from_the_jwks_stops_being_accepted` goes red |
 | Let an unknown key id trigger a read of the JWKS | Twenty tokens naming keys nobody published cost twenty outbound requests, and a member's own call times out while they arrive |

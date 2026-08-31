@@ -110,3 +110,68 @@ VALUES
    '2025-01-20T17:00:00Z', 'paper-file', 'drawer 2, 2024', 'The old one'),
   ('cccccccc-0000-0000-0000-000000000001', '2025-01-18T17:00:00Z',
    NULL, 'google-form', 'response-8814', NULL);
+
+-- Two more invented people, for the checks that write. Neither is listed in
+-- the directory, so the directory checks still count exactly two, and nothing
+-- outside services/api/tests/check_profile_edit.py reads either of them.
+--
+-- Quill is edited and read back. Her address is already confirmed, which is
+-- the state the trigger in db/migrations/004_security.sql clears when a member
+-- changes it, and the only row in this fixture that carries a date there.
+-- Fen is the one every refusal is aimed at: after a refused change his record
+-- has to read exactly as it does here.
+INSERT INTO members
+  (id, identity_subject, name, email, email_verified_at, tier_id, joined_on,
+   standing, website_url, listed_in_directory)
+VALUES
+  ('cccccccc-0000-0000-0000-000000000005', 'sub-c-quill',
+   'Quill', 'quill@example.test', '2025-02-11T18:00:00Z', 'basic',
+   '2025-02-01', 'good', NULL, false),
+  ('cccccccc-0000-0000-0000-000000000006', 'sub-c-fen',
+   'Fen', 'fen@example.test', NULL, 'none', '2025-07-01',
+   'unknown', 'https://fen.example.test', false);
+
+-- Six entries at the door, five of them Wren's.
+--
+-- Two of Wren's share an instant, which is what a page boundary has to survive:
+-- the door service buffers events while the link is down and flushes them on
+-- reconnect, so two rows carrying the same occurred_at is ordinary rather than
+-- contrived. A cursor that carried only the time would either repeat one of
+-- them or lose it.
+--
+-- Ida's is the most recent of the six on purpose, so a leak arrives at the top
+-- of Wren's first page rather than at the bottom of her last. That is a
+-- position rather than a detector: measured on 2026-08-30, the service reads
+-- these correctly with no member at all in its WHERE, because
+-- member_reads_own_door_events filters the same rows and nobody in this fixture
+-- holds admin.
+--
+-- event_key is 'G' because that is the only value anything in this repository
+-- writes, in db/tests/policies.sql. Nothing enumerates the vocabulary and no
+-- constraint bounds it, per the column comment in
+-- db/migrations/014_column_comments.sql, so the one on the service row is
+-- invented like everything else here.
+INSERT INTO door_events
+  (occurred_at, recorded_at, source, event_key, member_id, card_id, door,
+   raw_data, detail, dedupe_key)
+VALUES
+  ('2025-06-01T17:00:00Z', '2025-06-01T17:00:04Z', 'controller', 'G',
+   'cccccccc-0000-0000-0000-000000000001',
+   'dddddddd-0000-0000-0000-000000000001', 'front', 42, '{}', 'ev-c-wren-1'),
+  ('2025-06-02T18:30:00Z', '2025-06-02T18:30:03Z', 'controller', 'G',
+   'cccccccc-0000-0000-0000-000000000001',
+   'dddddddd-0000-0000-0000-000000000001', 'rear', NULL, '{}', 'ev-c-wren-2'),
+  ('2025-06-03T19:00:00Z', '2025-06-03T19:00:02Z', 'controller', 'G',
+   'cccccccc-0000-0000-0000-000000000001', NULL, 'front', NULL, '{}',
+   'ev-c-wren-3'),
+  -- The pair. Recorded eleven minutes after they happened, which is the gap a
+  -- buffered flush leaves behind.
+  ('2025-06-04T20:00:00Z', '2025-06-04T20:11:00Z', 'service', 'flush',
+   'cccccccc-0000-0000-0000-000000000001', NULL, NULL, NULL,
+   '{"buffered": true}', 'ev-c-wren-4'),
+  ('2025-06-04T20:00:00Z', '2025-06-04T20:11:00Z', 'service', 'flush',
+   'cccccccc-0000-0000-0000-000000000001', NULL, NULL, NULL,
+   '{"buffered": true}', 'ev-c-wren-5'),
+  ('2025-06-05T21:00:00Z', '2025-06-05T21:00:01Z', 'controller', 'G',
+   'cccccccc-0000-0000-0000-000000000002',
+   NULL, 'front', NULL, '{}', 'ev-c-ida-1');

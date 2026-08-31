@@ -1,0 +1,116 @@
+/* The one form in this portal: the profile a member changes on their own
+ * record. Split from components.css because that file runs at the 300 line
+ * ceiling in rule 6, which is the same reason the checks are three files.
+ *
+ * Every colour and size resolves through a GANTRY token, as in the other two
+ * stylesheets. The contrast validator in packages/gantry-tokens measures tokens
+ * and cannot measure a literal typed here.
+ */
+
+/* Three groups, and a member should be able to tell them apart without reading
+   a paragraph about it. A fieldset draws the boundary and its legend names the
+   group, which is also what a screen reader announces with every control
+   inside it. */
+fieldset {
+	border: 1px solid var(--g-line);
+	padding: var(--space-4);
+	margin: 0 0 var(--space-4);
+}
+
+legend {
+	font-family: var(--font-ui);
+	font-size: var(--text-xs);
+	font-weight: var(--font-semibold);
+	letter-spacing: var(--tracking-eyebrow);
+	text-transform: uppercase;
+	padding: 0 var(--space-2);
+}
+
+.field {
+	display: grid;
+	gap: var(--space-1);
+	margin: 0 0 var(--space-4);
+	max-width: 42rem;
+}
+
+.field label {
+	font-family: var(--font-ui);
+	font-size: var(--text-xs);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--g-ink-2);
+}
+
+/* --tap is 44px. A field read on a phone in a workshop is tapped with a glove
+   on, and the floor is the same one the controls hold. */
+input, textarea {
+	min-height: var(--tap);
+	width: 100%;
+	padding: var(--space-2) var(--space-3);
+	font-family: inherit;
+	font-size: var(--text-base);
+	color: var(--g-ink);
+	background-color: var(--g-bg);
+	border: var(--bd-2);
+}
+
+textarea {
+	line-height: var(--leading-normal);
+	resize: vertical;
+}
+
+/* The API answers a refusal with one sentence per field. profile.js puts each
+   one here and points the input at it with aria-describedby, so a screen reader
+   reads the problem with the field rather than somewhere else on the page. */
+.field-problem {
+	font-size: var(--text-sm);
+	color: var(--ink-err);
+}
+
+.field-problem:empty { display: none; }
+
+[aria-invalid="true"] { border-color: var(--ink-err); }
+
+/* A checkbox, because the answer is yes or no. The whole row is 44px tall, so
+   the label beside the small box is part of what a finger can hit. */
+.switch {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-height: var(--tap);
+	margin: 0;
+}
+
+.switch input {
+	width: 1.4rem;
+	height: 1.4rem;
+	min-height: 0;
+	flex: none;
+	accent-color: var(--g-accent);
+}
+
+.switch label { font-size: var(--text-sm); }
+
+.save {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	flex-wrap: wrap;
+	margin: var(--space-5) 0 0;
+}
+
+/* What happened, in one place, every time. It is shown and not only announced,
+   unlike the status line under a heading, because a member who has just pressed
+   the button is looking straight at the button. */
+.saved {
+	font-family: var(--font-ui);
+	font-size: var(--text-xs);
+	font-weight: var(--font-semibold);
+	letter-spacing: var(--tracking-ui);
+	text-transform: uppercase;
+	color: var(--g-ink);
+}
+
+.saved:empty { display: none; }
+
+.save + .error { margin-top: var(--space-4); }

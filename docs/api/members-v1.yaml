@@ -167,10 +167,29 @@ paths:
         An address that already belongs to another member is refused, because one
         address identifies one member.
 
-        The database refuses standing, paid through, orientation, the identity
-        your account is joined by, and the legacy columns, by trigger. This
-        endpoint not accepting them is the courtesy layer. The trigger is the
-        rule.
+        Membership standing, what you are paid through, orientation, and the
+        identity your account is joined by are set by an admin. This operation
+        does not take those fields. A body carrying one is answered 422 naming
+        the field, and nothing reaches the database.
+
+        That is a decision rather than an oversight, and finding 9 of
+        `docs/api/contract-review-notes.md` is where it was made. The rule
+        underneath is `enforce_profile_self_edit` in
+        `db/migrations/004_security.sql`, which refuses those columns for every
+        writer, and it stays the only thing that decides them. Passing the field
+        down to it instead reads as the tidier arrangement and is not available
+        here: that trigger returns early for an admin, so an admin could point
+        `identity_subject` on their own record at somebody else's sign in
+        through a self service path. So this operation declares no 403. What it
+        takes is the list in `MemberSelfUpdate` and a name outside that list is
+        a name it does not take.
+
+        The values are a different question, and the database answers all of
+        them. A link that does not start with http:// or https:// is refused by
+        `social_urls_are_http` in `db/migrations/001_schema.sql`. A tier that is
+        not a tier is refused by the foreign key on `tier_id`. This service
+        holds no copy of either rule: it sends what it was given and turns the
+        refusal into the problem detail below.
       requestBody:
         required: true
         content:
@@ -183,20 +202,6 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Member' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403':
-          description: A field only an admin may set.
-          content:
-            application/problem+json:
-              schema: { $ref: '#/components/schemas/ProblemDetail' }
-              example:
-                type: https://oro.heatsynclabs.org/errors/admin-only-field
-                title: That field is set by an admin
-                status: 403
-                detail: >-
-                  Membership standing, orientation, and the identity your
-                  account is joined by are set by an admin, not on your own
-                  profile. Ask an admin to change it.
-                instance: /me
         '409': { $ref: '#/components/responses/EmailAlreadyKnown' }
         '422': { $ref: '#/components/responses/Invalid' }
     post:
@@ -1610,9 +1615,12 @@ components:
     MemberSelfUpdate:
       type: object
       description: >-
-        What a member may change on their own profile. The database refuses the
-        rest by trigger and names why, so this list is the courtesy layer rather
-        than the rule.
+        What a member may change on their own profile, and the whole of what
+        `PATCH /me` takes. `enforce_profile_self_edit` in
+        `db/migrations/004_security.sql` refuses the columns an admin owns to
+        every writer and stays the rule for all of them. This list is narrower
+        than that, and the description on `PATCH /me` says why the two are not
+        the same thing.
       properties:
         name: { type: string }
         display_name: { type: [string, 'null'] }

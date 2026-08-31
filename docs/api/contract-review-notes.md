@@ -28,9 +28,9 @@ below.
 Findings are ordered by what they would cost to fix once services and portals
 exist, most expensive first.
 
-Three of the fourteen are addressed. Findings 1, 3 and 14 carry a note saying
-what was done and where. None of the three is deleted, because the record of
-what was wrong is what this file is for. The other eleven are open and none of
+Four of the fourteen are addressed. Findings 1, 3, 9 and 14 carry a note saying
+what was done and where. None of the four is deleted, because the record of
+what was wrong is what this file is for. The other ten are open and none of
 them has been decided.
 
 Line numbers are against the working tree, not against the commit that first
@@ -316,7 +316,30 @@ read.
 
 ## 9. `PATCH /me` declares a 403 its own request schema makes unreachable
 
-**Defect, or a question about strictness. Pick one.**
+**Defect. Addressed on 2026-08-30, in the change that implemented the
+operation.** Strictness was picked. `additionalProperties: false` stays, the
+403 is gone from `PATCH /me`, and the operation's description says why. A body
+naming `standing`, `paid_through`, `oriented_at`, `oriented_by`,
+`email_verified_at` or `identity_subject` is answered 422 naming the field, and
+nothing is sent to the database.
+
+The argument that settled it is not about tidiness. `enforce_profile_self_edit`
+in `004_security.sql` line 88 returns early when the caller is an admin, so an
+endpoint that forwarded whatever name it was given would let an admin point
+`identity_subject` on their own record at another sign in, through a self
+service path, with no approval behind it. Revocation is single actor and role
+grants for admin need two, so that would be a way round the two approver rule.
+`services/api/app/profile.py` carries the same reasoning where the code is, and
+`test_the_identity_a_record_is_joined_by_is_not_a_field_either` in
+`services/api/tests/check_profile_edit.py` holds it.
+
+The trigger did not become a courtesy layer by this. It still refuses those
+columns to every other writer, and it is the only thing that decides them.
+What the API decides is what the operation takes, which is a different question
+and a narrower list: `joined_on` is refused here and the trigger allows it.
+
+What follows is the finding as it was written, and its line numbers are
+frozen at that state.
 
 `PATCH /me` declares a 403 at line 186 whose example says membership standing and
 orientation are set by an admin. `MemberSelfUpdate` (line 1541) sets

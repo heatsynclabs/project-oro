@@ -33,6 +33,7 @@ export ORO_IDENTITY_PORT=8186
 # Its own, because the default is shared and a stack started by make development
 # is already holding it.
 export ORO_MOCK_PORT=4012
+export ORO_MAIL_PORT=8027
 export ORO_MOCK_URL="http://localhost:4012"
 # Invented, used by nothing, and removed with the volumes when this exits.
 # compose.yaml interpolates the whole file, so the identity values have to be
@@ -65,16 +66,17 @@ compose_dev up --detach --wait --wait-timeout 300 db caddy mock api >/dev/null |
 }
 echo
 
-# Three suites, all against this one stack. check_portal.py is the page against
-# the contract underneath it, check_appearance.py is the page itself, and
-# check_sign_in.py is what it does about signing in. Split because one file
-# holding them runs past the 300 line ceiling in rule 6.
+# Four suites, all against this one stack. check_portal.py is the page against
+# the contract underneath it, check_appearance.py is the page itself,
+# check_sign_in.py is what it does about signing in, and check_profile.py is
+# what it lets a member change. Split because one file holding them runs past
+# the 300 line ceiling in rule 6.
 #
 # set -e is on, so run each without letting a red one stop the others: a reader
 # who broke two wants to see both.
 set +e
 FAILED=0
-for SUITE in check_portal check_appearance check_sign_in; do
+for SUITE in check_portal check_appearance check_sign_in check_profile; do
   ORO_PORTAL_URL="http://$ORO_HOSTNAME:$ORO_HTTP_PORT" ORO_PORTAL_PROJECT="$PROJECT" \
     ORO_MOCK_URL="$ORO_MOCK_URL" \
     python3 "$ROOT/tools/members-portal/tests/$SUITE.py" || FAILED=1

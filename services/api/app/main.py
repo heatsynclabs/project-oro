@@ -1,28 +1,27 @@
-"""The members API, eight operations of the twenty four in the contract.
+"""The members API, ten operations of the twenty four in the contract.
 
-Read services/api/README.md first. It says which three, why the service exists
-before the phase it belongs to, and what is deliberately missing.
+Read services/api/README.md first. It says which ten, why the service exists
+before the phase it belongs to, and what is deliberately missing. Every refusal
+that is not an endpoint's own lives in app/refusals.py.
 
 The generated OpenAPI document and the interactive pages FastAPI would serve
 are turned off. docs/api/members-v1.yaml is the contract, it was written before
-this service, and a second document describing three operations would disagree
-with it on the other twenty. Rule 10 asks for the document to be verified
+this service, and a second document describing ten operations would disagree
+with it on the other fourteen. Rule 10 asks for the document to be verified
 against the running service, and that check belongs with the operation that
-completes the set rather than with the first three.
+completes the set rather than with the tenth.
 """
 
 import contextlib
 import logging
 
 import psycopg
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.encoders import jsonable_encoder
-from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from starlette.exceptions import HTTPException as RouterRefusal
 
-from . import (config, database, first_sign_in, identity, members, problems,
-               self_service)
+from . import (config, database, door_events, first_sign_in, identity, members,
+               problems, profile, refusals, self_service)
 
 # uvicorn configures its own loggers and leaves the root logger alone, so
 # without this the service's own lines are dropped below WARNING and the only
@@ -49,93 +48,11 @@ app = FastAPI(
     docs_url=None,
     redoc_url=None,
 )
+refusals.install(app)
 
 
 def _subject(request: Request) -> str | None:
     return identity.subject_from(request.headers.get("authorization"))
-
-
-@app.exception_handler(psycopg.errors.RaiseException)
-async def refused_by_the_database(request: Request, refusal: Exception):
-    message = str(refusal).strip()
-    if database.NO_IDENTITY_REFUSAL in message:
-        # The database's own sentence, not a constant from this file, because
-        # the fact worth being able to check later is that the database refused
-        # this and not the service.
-        _log.info("refused by the database: %s", message)
-        return problems.problem_response(
-            problems.UNAUTHENTICATED, request.url.path
-        )
-    _log.warning("the database refused this request: %s", message)
-    return problems.problem_response(problems.UNEXPECTED, request.url.path)
-
-
-@app.exception_handler(RouterRefusal)
-async def refused_by_the_router(request: Request, refusal: RouterRefusal):
-    """Starlette's 404 and 405, said in the shape app/problems.py promises.
-
-    Starlette answers an unknown path and an unsupported method itself, before
-    any endpoint here runs, and its body is `{"detail": ...}` served as
-    `application/json`. The contract opens by saying errors are RFC 9457
-    problem details in one shape everywhere, so this is where the second shape
-    stops. Its headers are carried through: the Allow header on a 405 is
-    required by RFC 9110 and Starlette had already worked out what belongs in
-    it.
-    """
-    known = {404: problems.NO_SUCH_PATH, 405: problems.WRONG_METHOD}
-    problem = known.get(refusal.status_code)
-    if problem is None:
-        _log.warning(
-            "the router refused %s with %s, which app/problems.py has no "
-            "sentence for: %s", request.url.path, refusal.status_code,
-            refusal.detail)
-        problem = problems.UNEXPECTED
-    return problems.problem_response(
-        problem, request.url.path, headers=refusal.headers)
-
-
-@app.exception_handler(psycopg.errors.UniqueViolation)
-async def refused_by_a_unique_constraint(request: Request, refusal: Exception):
-    """The one constraint a member can hit, said in the contract's shape.
-
-    Only members.email is turned into a refusal a person is shown. Any other
-    unique violation is a fault in this service rather than something the
-    caller did, and saying otherwise would send them looking for a mistake they
-    did not make.
-    """
-    named = getattr(getattr(refusal, "diag", None), "constraint_name", None)
-    if named == database.EMAIL_CONSTRAINT:
-        _log.info("refused by the database: the address on this request "
-                  "already belongs to another member record (%s)", named)
-        return problems.problem_response(
-            problems.EMAIL_ALREADY_KNOWN, request.url.path)
-    _log.warning("a unique constraint refused this request: %s", refusal)
-    return problems.problem_response(problems.UNEXPECTED, request.url.path)
-
-
-@app.exception_handler(RequestValidationError)
-async def refused_before_the_endpoint(request: Request,
-                                      refusal: RequestValidationError):
-    """A request body FastAPI could not read, said in the contract's shape.
-
-    FastAPI answers this one itself, as `{"detail": [...]}` in
-    application/json, which is the third shape after the two
-    refused_by_the_router catches. `loc` starts with the word body, and what a
-    caller wants is the field it named.
-    """
-    errors = [
-        {"field": ".".join(str(part) for part in named["loc"][1:]) or "body",
-         "detail": named["msg"]}
-        for named in refusal.errors()
-    ]
-    return problems.problem_response(
-        problems.INVALID_REQUEST, request.url.path, errors=errors)
-
-
-@app.exception_handler(Exception)
-async def anything_else(request: Request, fault: Exception):
-    _log.exception("unhandled fault answering %s", request.url.path)
-    return problems.problem_response(problems.UNEXPECTED, request.url.path)
 
 
 @app.get("/me")
@@ -171,6 +88,51 @@ def create_me(request: Request, asked: first_sign_in.FirstSignIn):
         return member
     return JSONResponse(status_code=201, content=jsonable_encoder(member),
                         headers={"Location": "/me"})
+
+
+@app.patch("/me")
+def update_me(request: Request, asked: profile.MemberSelfUpdate):
+    """A member changing their own record, and reading it back in one request.
+
+    The refusals that reach the caller from down in the database are here
+    rather than in app/refusals.py because naming the field one of them is
+    about needs the request, and a handler only has the exception. Everything
+    it does not recognise is re-raised and answered there, which is what
+    carries the 409 on an address another member already holds.
+    """
+    try:
+        with database.member_transaction(_subject(request)) as connection:
+            if database.caller_member_id(connection) is None:
+                return _no_member_record(request)
+            profile.write_the_change(connection, asked)
+            return members.read_own_member(connection)
+    except psycopg.errors.IntegrityError as refused:
+        errors = profile.what_the_database_refused(refused, asked)
+        if errors is None:
+            raise
+        return problems.problem_response(
+            problems.INVALID_REQUEST, request.url.path, errors=errors)
+
+
+@app.get("/me/door-events")
+def list_my_door_events(request: Request, cursor: str | None = None,
+                        limit: int = Query(50, ge=1, le=200)):
+    """A page of the caller's own entries into the building.
+
+    The cursor is refused inside the transaction for the reason list_directory
+    gives about `fields`: a caller the database has not identified is
+    anonymous, and 401 is the honest answer before anything is said about what
+    they asked for.
+    """
+    with database.member_transaction(_subject(request)) as connection:
+        if database.caller_member_id(connection) is None:
+            return _no_member_record(request)
+        try:
+            return door_events.read_page(connection, limit, cursor)
+        except door_events.CursorIsNotOne as refused:
+            return problems.problem_response(
+                problems.INVALID_REQUEST, request.url.path,
+                errors=[{"field": "cursor", "detail": str(refused)}])
 
 
 @app.get("/me/cards")
