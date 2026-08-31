@@ -1,0 +1,14 @@
+# What the browser checks install into their own image. One line: the browsers
+# themselves already sit in the base image, and everything else in
+# requirements.txt is something this one package brought.
+#
+#   playwright   the driver, chosen in docs/decisions/0015-a-browser-driver.md
+#
+# The version has to be the version the base image was built for. That image
+# ships the browser builds playwright expects and no Python package at all, so a
+# mismatch here means the driver goes looking for a browser build that is not
+# there. mcr.microsoft.com/playwright/python:v1.62.0-noble pairs with this line.
+#
+# requirements.txt beside this file is the lock, and its first two lines are the
+# command that regenerates it.
+playwright==1.62.0
