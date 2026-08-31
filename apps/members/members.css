@@ -149,21 +149,34 @@ body {
  * is no identity service and nobody is signed in, so this says that instead.
  * Chrome that names a person nobody authenticated is a lie the page tells
  * before a reader has read a word of it. */
-.who { margin: 0 0 0 auto; }
+/* The chip and the two controls, at the end of the app bar. They wrap under the
+   portal name on a narrow screen rather than squeezing it. */
+.who {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+	margin: 0 0 0 auto;
+}
 
 /* ------------------------------------------------- the band that says what
  * this is. A hazard ground paints itself and remaps its own inks, so the
  * sentence inside stays legible without a colour being named here. */
 
+/* A grid rather than a row, because the band carries a sentence about what is
+   behind the members API and, when signing in cannot work here, a second one
+   about that. Each takes its own row beside the mark. */
 .notice {
-	display: flex;
+	display: grid;
+	grid-template-columns: auto 1fr;
 	gap: var(--space-3);
-	align-items: flex-start;
+	align-items: start;
 	padding: var(--space-4) max(var(--space-4), var(--safe-l));
 	border-bottom: var(--bd-2);
 }
 
 .notice p {
+	grid-column: 2;
 	margin: 0;
 	max-width: 78ch;
 }

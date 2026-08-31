@@ -19,6 +19,12 @@
  * the ghosted chip: opacity on text is a contrast cut nothing measures.
  */
 
+/* The hidden attribute is honoured by the user agent stylesheet, and any author
+   rule that sets display beats it whatever the specificity, because an author
+   sheet outranks the user agent's. .grid2, .chip, .action and .sheet all set
+   one, so without this a hidden element stays on screen. */
+[hidden] { display: none !important; }
+
 /* ------------------------------------------------------------------ cards */
 
 .grid2 {
@@ -240,3 +246,27 @@ code {
 	background-color: var(--hazard-dim);
 	padding: 0.1em 0.35em;
 }
+
+/* ---------------------------------------------------------------- actions */
+
+/* Every control on this page: the sign in and sign out in the app bar, and the
+   one button that creates a member record on a first sign in. Shaped like the
+   view switcher, so a member reads them as the same kind of thing, and holding
+   the same 44px floor because this gets read on a phone in a workshop. */
+.action {
+	display: inline-flex;
+	align-items: center;
+	min-height: var(--tap);
+	padding: 0 var(--space-4);
+	font-family: var(--font-ui);
+	font-size: var(--text-xs);
+	font-weight: var(--font-semibold);
+	letter-spacing: var(--tracking-ui);
+	text-transform: uppercase;
+	color: var(--g-ink);
+	background-color: transparent;
+	border: var(--bd-2);
+	cursor: pointer;
+}
+
+.action:hover { background-color: var(--hazard-dim); }

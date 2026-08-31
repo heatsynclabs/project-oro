@@ -28,8 +28,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import harness  # noqa: E402
 import page  # noqa: E402
-from harness import (MISSING, PORTAL, ROOT, fetch,  # noqa: E402
-                     resolve, signed_in)
+from harness import (MISSING, PORTAL, ROOT, contract,  # noqa: E402
+                     fetch, resolve)
 
 HTML = fetch("/").body
 VIEWS = page.carrying(HTML, "data-source")
@@ -54,22 +54,20 @@ def test_the_page_declares_a_language_and_a_viewport():
     assert '<meta name="viewport"' in HTML, "no viewport meta tag"
 
 
-def test_the_page_says_it_is_reading_from_the_contract_mock():
+def test_the_page_says_what_it_is_before_a_reader_reads_a_word():
     """Rule 7. A volunteer at 2am must not have to work out whether the record
-    in front of them is a real person."""
+    in front of them belongs to a real person.
+
+    The band used to say the contract mock was answering and nobody was signed
+    in. Both stop being true, at different times, so it carries a sentence per
+    answer and shows the one it measured. check_sign_in.py holds how.
+    """
     notice = [element for element in page.elements(HTML)
               if element.get("role") == "note"]
     assert notice, "no element with role=note, so nothing says what this is"
-    assert "contract mock" in HTML, "the page never says it reads from the mock"
-    assert "No real member data" in HTML, "the page never says the data is invented"
-    assert "no sign in" in HTML, "the page never says there is nobody signed in"
-
-
-def test_the_page_offers_nothing_that_looks_like_it_saves():
-    """Read only, and provably so. A form that appears to save and does not is
-    worse than no form."""
-    for tag in ("form", "input", "textarea", "select"):
-        assert not page.named(HTML, tag), f"the page carries a {tag} element"
+    assert "contract mock" in HTML, "the page has no sentence for the mock"
+    assert "No real member data" in HTML, "that sentence no longer says so"
+    assert "members API" in HTML, "the page has no sentence for the real service"
 
 
 def test_a_skip_link_reaches_the_main_landmark():
@@ -188,20 +186,31 @@ def test_the_page_paints_itself_with_ground_tokens():
 
 # --------------------------------------------- the contract underneath it all
 
-def test_the_mock_answers_on_the_origin_the_page_calls():
-    assert signed_in("/v1/me").status == 200, "the portal origin does not serve /v1/me"
+def test_the_contract_mock_answers_the_paths_this_suite_asks_it_about():
+    """The mock is how these checks read the contract. It had /v1 on the
+    portal's origin until 2026-08-30, when the members API took that prefix, so
+    it is reached on its own port now. The mock takes any bearer token, which is
+    what lets a suite with no browser ask it anything."""
+    assert contract("/me").status == 200, \
+        f"the contract mock does not answer at {harness.MOCK}. " \
+        "Set ORO_MOCK_URL if it is on another port"
 
 
-def test_the_token_the_portal_sends_is_the_one_the_mock_accepts():
-    assert fetch("/v1/me").status == 401, "the mock accepted a call with no token"
-    assert signed_in("/v1/me").status == 200, "the mock refused the portal's token"
+def test_a_caller_with_no_token_is_refused():
+    """This used to compare the token the page shipped against the one the mock
+    took. The page ships none now: it gets an access token from the identity
+    service, and check_sign_in.py is where that is asserted. What is still worth
+    holding is that nothing under /v1 answers a caller carrying nothing, because
+    an API that did would let every check below pass against a portal that
+    signed nobody in."""
+    assert fetch("/v1/me").status == 401, "the API answered a call with no token"
 
 
 def test_every_view_reads_an_endpoint_this_contract_serves():
     assert len(VIEWS) == 6, f"{len(VIEWS)} views, expected 6: " \
         f"{[view.get('data-source') for view in VIEWS]}"
     for view in VIEWS:
-        answer = signed_in("/v1" + view.get("data-source"))
+        answer = contract(view.get("data-source"))
         assert answer.status == 200, \
             f"{view.get('data-source')} answered {answer.status}"
 
@@ -235,7 +244,7 @@ def test_every_field_the_page_shows_is_a_field_the_contract_serves():
     assert VIEWS, "no view section on the page, so this checked nothing"
     for view in VIEWS:
         source = view.get("data-source")
-        data = signed_in("/v1" + source).json()
+        data = contract(source).json()
         base = data[0] if isinstance(data, list) else data
         bound = fields_of(view)
         assert bound, f"{source} is read by a view that shows no field"
@@ -249,12 +258,20 @@ def test_every_field_the_page_shows_is_a_field_the_contract_serves():
                 f"{source} does not carry {field.get('data-field')}"
 
 
-def test_card_eligibility_shows_its_requirements_rather_than_a_boolean():
+def test_card_eligibility_says_where_a_member_stands_rather_than_yes_or_no():
     """api-design.md section 3.1 puts this endpoint in the contract to end a
-    recurring support conversation. A bare yes or no does not end it."""
+    recurring support conversation. A bare yes or no does not end it, so the
+    view shows the date, the sentence the database has about the first rule
+    that failed, and what happens after that.
+
+    This asked for a requirements array until 2026-08-30. The contract dropped
+    it: card_eligibility in db/migrations/012_close_remaining.sql is the one
+    place that decides this and it returns three values, so filling an array
+    meant deciding eligibility a second time.
+    """
     view = [v for v in VIEWS if v.get("data-source") == "/me/card-eligibility"][0]
     bound = {field.get("data-field") for field in fields_of(view)}
-    for expected in ("rule", "met", "detail", "process"):
+    for expected in ("eligible", "eligible_on", "reason", "process"):
         assert expected in bound, f"the eligibility view never shows {expected}"
 
 

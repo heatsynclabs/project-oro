@@ -39,23 +39,13 @@ const formats = {
   // date can be absent: changing your own email clears it, and you cannot set
   // it yourself.
   confirmed: () => "Email confirmed",
-  // The four rules card eligibility is decided on, as words a member would
-  // use. The enum is closed by the CardEligibility schema in
-  // docs/api/members-v1.yaml, so an unmapped value is a contract change and
-  // shows through rather than being swallowed.
-  requirement: (value) => ({
-    tier: "Membership tier",
-    tenure: "How long you have been a member",
-    standing: "Standing",
-    waiver: "Waiver",
-  }[value] || value),
   // What a member chose to show, in the words the directory page uses, so the
   // same setting reads the same wherever it appears.
   visibility: (value) => (value ? "Visible to members" : "Hidden"),
   state: (value) => (value ? "Active" : "Not active"),
 };
 
-function present(value, format, fallback) {
+function formatted(value, format, fallback) {
   if (value === null || value === undefined || value === "") {
     // An empty string fallback is a real choice: a note line with nothing to
     // say collapses rather than reading "Not recorded" under every row title.
@@ -90,7 +80,7 @@ function markChip(element, value) {
 function bindFields(root, record) {
   for (const element of root.querySelectorAll("[data-field]")) {
     const value = readPath(record, element.dataset.field);
-    element.textContent = present(
+    element.textContent = formatted(
       value,
       element.dataset.format,
       element.dataset.fallback
@@ -172,6 +162,13 @@ function showFromTemplate(section, templateId, problem) {
   parts.status.textContent = "";
 }
 
+// The one refusal a member can act on. services/api/app/problems.py names it
+// no-member-record: the sign in is real and no member row is joined to it, so
+// the block for it carries the button that creates one. Keyed on the slug at
+// the end of the type rather than on the status, because the status is 401 and
+// so is every other way of not being signed in.
+const NO_MEMBER_RECORD = "/no-member-record";
+
 // A refusal the contract expects is not a fault. GET /me/waiver answers 404
 // when nobody has recorded a waiver, and the reader needs that sentence rather
 // than an error block. The section says which status means that.
@@ -182,7 +179,53 @@ function showProblem(section, problem) {
     parts.status.textContent = "";
     return;
   }
+  if (String(problem.type || "").endsWith(NO_MEMBER_RECORD)) {
+    showFromTemplate(section, "api-no-member-record", problem);
+    return;
+  }
   showFromTemplate(section, "api-problem", problem);
+}
+
+
+function showSignedOut(section) {
+  showFromTemplate(section, "not-signed-in", null);
+}
+
+
+// ---------------------------------------------------------------- the chrome
+
+// Which chip and which controls each state gets. Every sentence in them is in
+// index.html; a member's name is data rather than copy, so it comes from here.
+function showWho(state, name) {
+  const signedIn = state === "signed-in";
+  for (const chip of document.querySelectorAll("[data-who]")) {
+    chip.hidden = chip.dataset.who !== (signedIn ? "signed-in" : "signed-out");
+  }
+  if (signedIn && name) {
+    document.querySelector("[data-name]").textContent = name;
+  }
+  for (const control of document.querySelectorAll("[data-sign-in]")) {
+    control.hidden = state !== "signed-out";
+  }
+  document.querySelector("[data-sign-out]").hidden = !signedIn;
+}
+
+// The band under the masthead answers two questions and they are independent:
+// what is behind the members API, and whether signing in can work on this
+// origin at all. Each group holds one sentence per answer and shows one of
+// them, or none when the group has nothing to say.
+function pickOne(attribute, wanted) {
+  for (const element of document.querySelectorAll("[" + attribute + "]")) {
+    element.hidden = element.getAttribute(attribute) !== wanted;
+  }
+}
+
+function showBehindTheApi(which) {
+  pickOne("data-behind", which);
+}
+
+function showSigningIn(which) {
+  pickOne("data-signing-in", which);
 }
 
 function showSilence(section) {
@@ -198,8 +241,12 @@ const render = {
   showRecord: showRecord,
   showList: showList,
   showProblem: showProblem,
+  showSignedOut: showSignedOut,
+  showWho: showWho,
+  showBehindTheApi: showBehindTheApi,
+  showSigningIn: showSigningIn,
   showSilence: showSilence,
   showLoading: showLoading,
-  present: present,
+  formatted: formatted,
   readPath: readPath,
 };

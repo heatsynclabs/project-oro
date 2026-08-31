@@ -38,6 +38,9 @@ export ORO_MOCK_PORT=4013
 # it exits. Rule 13: nothing here resembles a credential anybody holds.
 export ORO_DB_PASSWORD="throwaway-$$"
 export ORO_IDENTITY_DB_PASSWORD="throwaway-identity-$$"
+# compose.yaml includes compose.api.yaml, which interpolates this whether or
+# not the members API is one of the services this suite starts.
+export ORO_API_DB_PASSWORD="throwawayapi$$"
 # Exactly 32 bytes, which is what the service requires and all it requires.
 export ORO_IDENTITY_MASTERKEY="throwaway-master-key-0123456789a"
 export ORO_IDENTITY_ADMIN_USERNAME="fixture-admin"

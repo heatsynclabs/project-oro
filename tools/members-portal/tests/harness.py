@@ -17,6 +17,12 @@ import urllib.request
 from pathlib import Path
 
 BASE = os.environ.get("ORO_PORTAL_URL", "http://localhost")
+# The contract mock, on its own port rather than through the portal's origin.
+# /v1 there was the mock until 2026-08-30 and is the members API now, and that
+# service refuses every call this suite could make: no browser runs here, so
+# nothing signs in. What the mock is still for is the contract itself, which is
+# what the field checks in check_portal.py ask about.
+MOCK = os.environ.get("ORO_MOCK_URL", "http://localhost:4010")
 # The compose project the stack under test runs as. run.sh uses a throwaway
 # name so it never reads a stack somebody is already running; make development
 # uses the name in compose.yaml, which is the default here.
@@ -36,8 +42,13 @@ class Answer:
         return json.loads(self.body)
 
 
-def fetch(path, headers=None):
-    request = urllib.request.Request(BASE + path, headers=headers or {})
+def call(url, headers=None, method="GET", body=None):
+    payload = None
+    if body is not None:
+        payload = json.dumps(body).encode()
+        headers = dict(headers or {}, **{"Content-Type": "application/json"})
+    request = urllib.request.Request(url, headers=headers or {},
+                                     data=payload, method=method)
     try:
         with urllib.request.urlopen(request) as answer:
             return Answer(answer.status, answer.headers, answer.read().decode())
@@ -45,18 +56,39 @@ def fetch(path, headers=None):
         return Answer(refused.code, refused.headers, refused.read().decode())
 
 
-def portal_token():
-    """The bearer token the portal sends, read out of its own source. Hard coded
-    here instead and this passes while the page sends what the mock refuses."""
-    source = (PORTAL / "api.js").read_text()
-    found = re.search(r'CONTRACT_MOCK_TOKEN = "([^"]+)"', source)
-    assert found, "api.js does not declare CONTRACT_MOCK_TOKEN"
-    return found.group(1)
+def fetch(path, headers=None, method="GET", body=None):
+    """A call to the portal's own origin, which is where every path here is."""
+    return call(BASE + path, headers, method, body)
 
 
-def signed_in(path):
-    return fetch(path, {"Authorization": "Bearer " + portal_token(),
-                        "Accept": "application/json, application/problem+json"})
+# The portal used to carry a bearer token as a constant and this read it out of
+# the source, so the two could not drift. It carries none now: it gets an access
+# token from the identity service, and no browser runs here to sign in with. The
+# contract mock takes any bearer token, which is what still lets these checks
+# read the contract underneath the page. check_sign_in.py is where the absence
+# of a token in what the server sends is asserted.
+STAND_IN_TOKEN = "a stand in for the access token no browser here signed in for"
+
+
+ACCEPTED = "application/json, application/problem+json"
+
+
+def signed_in(path, method="GET", body=None):
+    """A call to whatever answers /v1 on the portal's own origin."""
+    return fetch(path, {"Authorization": "Bearer " + STAND_IN_TOKEN,
+                        "Accept": ACCEPTED}, method=method, body=body)
+
+
+def contract(path):
+    """A call to the contract mock, which takes any bearer token.
+
+    This is how a check asks what the contract serves at a path, which is a
+    question about docs/api/members-v1.yaml rather than about the running
+    service. The mock answers /me rather than /v1/me: Prism ignores the prefix
+    the contract declares in its server URL.
+    """
+    return call(MOCK + path, {"Authorization": "Bearer " + STAND_IN_TOKEN,
+                              "Accept": ACCEPTED})
 
 
 def resolve(record, dotted):
@@ -122,7 +154,7 @@ def caddy_bind_sources():
 def run(checks, what: str = "portal") -> int:
     """Run every test_ function in a namespace and report what failed.
 
-    `what` names the suite in the summary line, because there are two of them
+    `what` names the suite in the summary line, because there are three of them
     now and a reader looking at a red run needs to know which one went red."""
     found = [(name, function) for name, function in sorted(checks.items())
              if name.startswith("test_") and callable(function)]

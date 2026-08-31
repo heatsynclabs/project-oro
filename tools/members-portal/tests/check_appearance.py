@@ -113,16 +113,18 @@ def test_the_page_wears_the_components_the_mockups_use():
     for element in page.elements(HTML):
         classes.update(element.get("class", "").split())
     for wanted in ("card", "card-label", "card-title", "kv", "chip",
-                   "sheet", "note", "grid2", "tape"):
+                   "sheet", "note", "grid2", "tape", "action"):
         assert wanted in classes, f"nothing on the page carries class {wanted}"
 
 
-def test_the_view_switcher_keeps_the_tap_target_floor():
-    """A card table read on a phone in a workshop. --tap is 44px and the
-    switcher is the only control on the page."""
+def test_every_control_keeps_the_tap_target_floor():
+    """A card table read on a phone in a workshop. --tap is 44px, and the
+    controls are the view switcher and the buttons that sign a member in, sign
+    them out, and write their record on a first sign in."""
     styles = stylesheet_rules()
-    assert re.search(r"\.views a\s*\{[^}]*min-height: var\(--tap\)", styles), \
-        "the view switcher sets no minimum height, so its targets can go under 44px"
+    for selector in (r"\.views a", r"\.action"):
+        assert re.search(selector + r"\s*\{[^}]*min-height: var\(--tap\)", styles), \
+            f"{selector} sets no minimum height, so it can go under 44px"
 
 
 # ----------------------------------------- what the mockups drew and this drops
@@ -169,14 +171,30 @@ def test_the_card_eligibility_view_is_reachable():
 
 # ------------------------------------------- honesty about who is reading it
 
-def test_the_page_claims_nobody_is_signed_in():
+def test_the_chrome_names_whoever_is_signed_in_and_offers_the_way_out():
     """The mockups put an avatar, a member's name and a sign out link in the app
-    bar. There is no identity service, so all three would be chrome with nobody
-    behind them. HANDOFF.md section 2 is what makes that true today."""
-    assert "Not signed in" in HTML, "the chrome does not say nobody is signed in"
-    assert "sign out" not in HTML.lower(), \
-        "the page offers a sign out, and there is nothing to sign out of"
-    assert "no sign in" in HTML, "the notice no longer says there is no sign in"
+    bar. Two of the three are right now that there is a sign in behind them: the
+    chip carries whoever the identity service says is reading, and the control
+    beside it ends the session there as well as here. The avatar is still not
+    here, because nothing in this system holds one.
+
+    This check used to assert the opposite, that the page said nobody was signed
+    in and offered no way out. That was true while the identity service was not
+    reachable from the portal and it is a lie now.
+    """
+    chips = {element.get("data-who")
+             for element in page.carrying(HTML, "data-who")}
+    assert chips == {"signed-out", "signed-in"}, \
+        f"the app bar carries chips for {sorted(chips)}, expected both states"
+    assert "Not signed in" in HTML, \
+        "the chrome no longer says so when nobody is signed in"
+    assert page.carrying(HTML, "data-name"), \
+        "nothing in the chrome carries the name of whoever is signed in"
+    assert any("data-sign-out" in element.attrs
+               for element in page.named(HTML, "button")), \
+        "the page offers no way out of a session it can start"
+    assert "avatar" not in HTML.lower(), \
+        "the page carries an avatar, and nothing here holds a picture of anybody"
 
 
 # ------------------------------------------------------ colour and contrast
