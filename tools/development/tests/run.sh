@@ -27,6 +27,9 @@ export ORO_IDENTITY_PORT=8185
 # Its own, because the default is shared and a stack started by make development
 # is already holding it. Every other port here is chosen for the same reason.
 export ORO_MOCK_PORT=4011
+# Its own, like every other port here, so a suite run beside a stack a
+# person has up does not fight it for one.
+export ORO_MAIL_PORT=8026
 # Invented, used by nothing, and removed with the volumes when this exits.
 export ORO_DB_PASSWORD="throwaway-$$"
 export ORO_IDENTITY_DB_PASSWORD="throwaway-identity-$$"
@@ -211,8 +214,8 @@ check "the API reads the identity service's key set" "yes" \
 echo
 echo "Bringing up what a laptop adds"
 compose_dev up --detach --wait --wait-timeout 300 >/dev/null
-check "the override adds the mock and nothing else" \
-  "api caddy db identity mock" "$(running_services)"
+check "the override adds the mock and the mail catcher and nothing else" \
+  "api caddy db identity mail mock" "$(running_services)"
 check "the portal is served at the root over plain HTTP" \
   "200" "$(status_of "$HTTP_ORIGIN/")"
 check "nothing redirects the reader anywhere" "" "$(redirect_from "$HTTP_ORIGIN/")"

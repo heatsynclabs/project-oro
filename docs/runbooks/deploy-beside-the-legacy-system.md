@@ -27,7 +27,7 @@ command below runs on hsl-web through your ssh session, and the table after the
 assumptions lists where each copy lives and what removes it. If you catch
 yourself typing `scp`, stop.
 
-**What you have at the end, and what you do not.** After step 8 hsl-web runs an
+**What you have at the end, and what you do not.** After step 9 hsl-web runs an
 identity service, a Postgres holding a migrated copy of the members data, and a
 members API answering under `/v1` on a new hostname. There is no portal. The
 deployment's routes serve a health check and the members API, with a 404 at the
@@ -98,9 +98,9 @@ Rule 13 asks for this to be written down rather than reconstructed later.
 | Production | The legacy Postgres on hsl-web | Nothing here. It is never written to |
 | The archive | `/root/hsl-legacy-backups` on hsl-web, mode 600 inside a mode 700 directory | You do, by hand. Nothing else will |
 | The roles file beside it | The same directory. On 9.6 it carries password hashes until step 2 strips them | The same |
-| The staging copy | Inside the `oro-staging` container, which has no volume | `docker rm -f oro-staging` at the end of step 7, which takes the rows with it |
+| The staging copy | Inside the `oro-staging` container, which has no volume | `docker rm -f oro-staging` at the end of step 8, which takes the rows with it |
 | The `legacy` schema | Inside whichever database the import ran against | `DROP SCHEMA legacy CASCADE`, which the import itself tells you to run |
-| The imported members | The `db_data` volume of the ORO stack, once step 8 puts them there | `docker compose down --volumes` |
+| The imported members | The `db_data` volume of the ORO stack, once step 9 puts them there | `docker compose down --volumes` |
 | Your terminal | The preflight and the import print member names and email addresses | Closing it. Do not redirect that output into a file, and never paste it into a channel |
 
 ---
@@ -198,7 +198,7 @@ getent hosts id.oro.heatsynclabs.org
 ```
 
 Read: nothing, most likely, because neither record exists yet. That is fine for
-everything up to step 8 and it is not fine for step 9. Phase 0 item 4 of
+everything up to step 9 and it is not fine for step 10. Phase 0 item 4 of
 `docs/plan/order-of-operations.md` asks for these records, and whoever controls
 the zone is a name nobody has filled in. Until they exist you reach this
 deployment with `curl --resolve` or with a line in your own machine's hosts
@@ -339,7 +339,7 @@ If that errors, the archive is damaged or was never finished. Take it again
 rather than carrying on.
 
 **A backup nobody has restored is a hypothesis, so restore it.** This is phase
-0 item 5, and it wants a copy rather than the original. Step 7 restores it into
+0 item 5, and it wants a copy rather than the original. Step 8 restores it into
 Postgres 18 while building the staging copy. Do it once here as well, into the
 same major version the archive came from, because that is the restore you would
 actually perform if production were gone. It needs Docker, so if step 1 said
@@ -681,7 +681,7 @@ curl -sI https://members.heatsynclabs.org/ | head -3
 
 Expected: the same status line the legacy application gave before you started.
 Somebody should have written that down during step 1. If it changed, take this
-stack down with `make down` and read step 10.
+stack down with `make down` and read step 11.
 
 ```
 ss -lntp
@@ -694,7 +694,163 @@ Then ask a member to open the members site and say whether it looks normal.
 That costs a message, and it is the only check here that reads the thing a
 member actually sees.
 
-## 7. Make a staging copy, and let the migration ask its questions
+## 7. Decide about mail, and prove whichever way you go
+
+The identity service sends nothing, and it does not say so. It accepts the
+request, answers 200, and writes the reason into its own log. The screens are
+worse than the API. Measured on 2026-08-31, following Reset Password on the
+sign in screen gave the member this:
+
+```
+Password Reset Link Sent
+Check your email to reset your password.
+```
+
+while the service wrote this:
+
+```
+level=error msg="could not create email channel"
+  error="ID=QUERY-fwofw Message=Errors.SMTPConfig.NotFound"
+```
+
+So this is a decision rather than a step anybody can skip past. Take it here,
+while no member has been given a sign in yet and nothing depends on the answer.
+
+**What is unavailable until somebody configures a mail server.** Every one of
+these is measured, and `tools/identity/README.md` holds the measurement:
+
+1. A member cannot reset a forgotten password. The screen tells them a link is
+   on its way. An admin sets a new one for them instead, through the identity
+   service.
+2. A member cannot verify a new address after changing it, so the address on
+   their account is the one an admin recorded.
+3. The Register button cannot work, because a registration lands in
+   `USER_STATE_INITIAL` waiting for a code. `tools/identity/configure.py`
+   turns that button off for this reason.
+4. An account that is already in `USER_STATE_INITIAL` cannot be repaired at
+   all. Every write to it is refused. The only route is to remove it and make
+   a new one, which is what
+   `tools/identity/make_a_sign_in.py --repair ADDRESS --remove-and-recreate`
+   does, and it costs the member their identity subject.
+
+Everybody's sign in is made by an admin either way:
+
+```
+ORO_IDENTITY_TOKEN="$(docker compose cp identity:/bootstrap/pat - | tar -xO)" \
+  tools/identity/make_a_sign_in.py "Ada Byron <ada@example.org>"
+```
+
+Expected: three lines, and a password on the terminal that is in no file. Run
+it from a terminal or it refuses before it creates anything.
+
+### If you are not configuring one today
+
+Write that down where the answers from step 1 are, with the date and the name
+of whoever decided. The four things above stay unavailable, and the next
+person to stand in front of this deployment needs to know that was a decision
+rather than an oversight. Then go to step 8.
+
+### If you are configuring one
+
+Ask whoever holds the lab's mail for four things. None of them is guessable
+and none of them is in this repository, so do not fill any of them in from
+memory.
+
+| What to ask for | What a good answer looks like |
+|---|---|
+| The host and its port | A name and a port together, in one string, as `smtp.example.org:587`. 587 is the usual submission port and expects STARTTLS, which is the `tls` field below. 465 is the older implicit TLS port |
+| The user and password | Credentials for a mailbox or a relay the lab already owns. Never a volunteer's personal account: it leaves with them |
+| The address messages come from | An address on a domain the lab controls, and one that will still exist in three years. A member replying to a password reset should reach somebody |
+| Whether that address accepts replies | If it does not, a reply to address that does |
+
+The password goes to the identity service and to nothing else. Do not put it in
+`.env`, which nothing here reads for it.
+
+Read a token, and set the two names this uses. `--resolve` is how you reach a
+name the machine does not know yet, and `-k` is the certificate from step 4:
+
+```
+TOKEN="$(docker compose cp identity:/bootstrap/pat - | tar -xO)"
+ID_HOST=id.oro.heatsynclabs.org
+ID_PORT=8443
+```
+
+Create the configuration. Replace every value below with the answers you were
+given:
+
+```
+curl -sk --resolve "$ID_HOST:$ID_PORT:127.0.0.1" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "https://$ID_HOST:$ID_PORT/admin/v1/smtp" -d '{
+    "senderAddress": "members@example.org",
+    "senderName": "HeatSync Labs",
+    "replyToAddress": "members@example.org",
+    "host": "smtp.example.org:587",
+    "user": "members@example.org",
+    "password": "the password you were given",
+    "tls": true,
+    "description": "the lab mail relay"
+  }'
+```
+
+Expected: an id, which the next two commands need.
+
+```
+{"details":{...},"id":"388664033303068677"}
+```
+
+`senderAddress`, `senderName` and `host` are the three the service requires. It
+refuses a request missing any of them by name, so a 400 here names the field
+you left out.
+
+Activate it. A configuration that is created and never activated is stored,
+readable, and changes nothing:
+
+```
+SMTP=the-id-from-above
+curl -sk --resolve "$ID_HOST:$ID_PORT:127.0.0.1" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "https://$ID_HOST:$ID_PORT/admin/v1/smtp/$SMTP/_activate" -d '{}'
+```
+
+Expected: a details block and no error.
+
+Now send a real message, because a mail configuration nobody has sent through
+is a mail configuration that does not work. Put your own address in:
+
+```
+curl -sk --resolve "$ID_HOST:$ID_PORT:127.0.0.1" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "https://$ID_HOST:$ID_PORT/admin/v1/smtp/$SMTP/_test" \
+  -d '{"receiverAddress": "you@example.org"}'
+```
+
+Expected: `{}`, and a message in your inbox within a minute or two.
+
+A wrong host, a wrong port or a blocked outbound connection answers like this,
+and the text is the same whichever of the three it was:
+
+```
+{"code":13, "message":"could not contact with the SMTP server, check the port,
+firewall issues... (EMAIL-skwos)"}
+```
+
+The two checks are separate and both are required. `{}` says the identity
+service reached the relay. The message arriving says the relay accepted it and
+delivered it, and only a person opening a mailbox can say that. A relay that
+answers on the port and then drops everything from an unknown sender is a real
+thing, and it looks identical from here.
+
+Last, prove the thing a member actually does. Open the sign in screen for the
+account you made above, follow Reset Password, and read the mail. If the
+message arrives, this step is done and item 1 in the list above is closed.
+
+**Write down which SMTP configuration is live and who holds its password.**
+Section 3 of `docs/plan/people-and-custody.md` is where secret custody is meant
+to live and it still names nobody, so until it does, this goes in the notes
+from step 1 alongside the master key.
+
+## 8. Make a staging copy, and let the migration ask its questions
 
 Everything from here works against a copy. Production is not read again after
 step 2 and it is never written to.
@@ -859,7 +1015,7 @@ A card at a slot outside 10 to 199 is the one that cannot be automated. A slot
 is an address in the door controller's memory, so renumbering a card points a
 member at somebody else's door permission.
 
-## 8. Run the import against the copy
+## 9. Run the import against the copy
 
 Write the answers down as SQL. `tools/migration/fixtures/decisions.sql` shows
 the shape and is explicitly not a recommendation: it is one plausible set of
@@ -930,7 +1086,7 @@ disk.
 A parallel run needs the data in the stack's own database rather than in a
 container you throw away. That database already holds the ORO schema, because
 the `schema` service put it there at step 5, so its `public` schema is
-occupied and the trick from step 7 does not work on it. Restore into a scratch
+occupied and the trick from step 8 does not work on it. Restore into a scratch
 database in the same container, rename the schema there, then move that one
 schema across:
 
@@ -944,7 +1100,7 @@ docker exec oro-db-1 psql -U postgres -d postgres -q -c 'DROP DATABASE legacy_im
 docker exec oro-db-1 psql -U postgres -d oro -c "SELECT (SELECT count(*) FROM legacy.users) AS users, (SELECT count(*) FROM legacy.cards) AS cards"
 ```
 
-Expected: the same two counts you read at step 7, now inside the stack's
+Expected: the same two counts you read at step 8, now inside the stack's
 database. The pipe in the fifth line runs inside the container, so nothing is
 written to a filesystem on the way.
 
@@ -972,7 +1128,7 @@ make backup
 Expected: two files under `$HOME/oro-backups`, and a first line saying the
 archive was read back before it was named.
 
-## 9. Run the two side by side
+## 10. Run the two side by side
 
 The legacy application serves members exactly as it does today. This one serves
 a health check and the members API under `/v1`, with a 404 at the root. That is
@@ -1002,7 +1158,7 @@ Two things become possible here, and both need a person rather than a command:
   phase 2's exit criterion. Nothing in this repository imports real hashes into
   a running identity service yet, so that is not runnable today. Gap 6.
 
-## 10. Cutover, and what has to be true first
+## 11. Cutover, and what has to be true first
 
 Cutover is phase 6 and this document does not perform it. What it can do is
 list what has to be true beforehand, so nobody arrives at that day with the
@@ -1026,7 +1182,7 @@ list unread. From `docs/plan/order-of-operations.md`:
 The day itself is a DNS change and a port change, both reversible in minutes,
 which is the reason for choosing a separate hostname back at step 4.
 
-## 11. Rollback
+## 12. Rollback
 
 The step people skip writing. Each of these undoes exactly one thing, in the
 reverse order of the steps above, and none of them touches the legacy
@@ -1049,7 +1205,7 @@ every account made in it.
 docker compose down --volumes
 ```
 
-There is no way back from that except step 8 again. The one time it is the
+There is no way back from that except step 9 again. The one time it is the
 right answer is a half written first instance: if the identity service ever
 dies with `permission denied` on its bootstrap file, the second attempt fails
 on a unique constraint over the instance domain it already wrote, and there is
@@ -1095,18 +1251,18 @@ following this at 2am should not discover it by watching a command fail.
    header that it is not a migration runner: it records nothing, and a
    migration written after the database was built will not be applied by it.
    `schema_migrations` is written by nothing outside `db/tests/run.sh`, and the
-   loop at step 7 that writes it lives in this document rather than in the
+   loop at step 8 that writes it lives in this document rather than in the
    repository, where no test covers it.
 2. **`tools/backup/` cannot back up the production database.** `backup.sh` and
    `restore.sh` both hardcode a database named `oro` inside a container, so
    gate one of rule 12 is met at step 2 by typing `pg_dump` rather than by
    running the tool built for it. Nothing tests the commands in step 2.
 3. **`tools/migration/run.sh` cannot be pointed at real data.** It always loads
-   `fixtures/legacy-schema.sql` and `fixtures/legacy-data.sql`, so steps 7 and
-   8 run the numbered SQL files by hand, and the eleven cases in
+   `fixtures/legacy-schema.sql` and `fixtures/legacy-data.sql`, so steps 8 and
+   9 run the numbered SQL files by hand, and the eleven cases in
    `make migration-test` say nothing about that sequence.
 4. **Nothing rewrites a production dump's `public` schema into `legacy`.**
-   Steps 7 and 8 do it with `ALTER SCHEMA`, and no test covers that either.
+   Steps 8 and 9 do it with `ALTER SCHEMA`, and no test covers that either.
 5. **The backup is not on a timer and there is no offsite copy.** A fire in the
    lab takes the server and the archive together. `tools/backup/README.md` says
    what each of those would need.
@@ -1131,10 +1287,16 @@ following this at 2am should not discover it by watching a command fail.
 12. **Whether Docker's published ports bypass this host's firewall.** The
     assumption block at step 3 names the check and nobody has run it.
 13. **Down migrations.** Rule 3 of `CLAUDE.md` starts requiring them at the
-    first production apply. Step 8 against `oro-db-1` is that apply, and from
+    first production apply. Step 9 against `oro-db-1` is that apply, and from
     that day every migration ships with its reverse and both directions get run
     before merge.
 14. **The driver's seat drill.** Phase 0 does not exit until somebody who did
     not build this brings the stack up and restores the database from the
     written runbook while the person who built it watches and says nothing.
     Every question asked out loud is a defect in this file. Fix it here.
+15. **No command resets a password somebody has forgotten.**
+    `tools/identity/make_a_sign_in.py --repair` sets a password only on an
+    account holding none, deliberately, so that running it twice cannot take
+    away a password a member chose. Until a mail server exists, a forgotten
+    password is an admin calling `POST /v2/users/{id}/password` on the identity
+    service and reading the new one out to them.

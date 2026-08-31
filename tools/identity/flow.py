@@ -13,6 +13,7 @@ ceiling in rule 6.
 from __future__ import annotations
 
 import base64
+import collections
 import hashlib
 import http.cookiejar
 import os
@@ -28,6 +29,16 @@ from api import BASE, Answer, post_form
 # break this and tight enough that a screen returning itself fails rather than
 # hangs.
 SCREEN_LIMIT = 8
+
+# What a sign in holds: the password now, and the one to replace it with when
+# the screens ask. A pair rather than a fifth argument, per rule 6.
+Passwords = collections.namedtuple("Passwords", "current new", defaults=("",))
+
+# The change password screen carries three password fields and the ordinary
+# password screen carries one, so matching on the input type alone answers the
+# wrong screen. This name is on the first of the three, read off the screen
+# Zitadel 4.17.1 serves at /ui/login/password/change.
+CHANGE_SCREEN_FIELD = "change-old-password"
 
 
 class _LocalhostCookies(http.cookiejar.DefaultCookiePolicy):
@@ -76,12 +87,34 @@ def sign_in_through_the_screens(client_id: str, origin: str,
                                 login: str, password: str) -> Answer:
     """Sign a member in the way a member does, through the hosted screens.
 
+    For an account that keeps the password it already has. An account asked to
+    change its password at first sign in, which is what compose.yaml asks of
+    the administrator, needs sign_in_and_change_the_password below.
+    """
+    return _through_the_screens(client_id, origin, login, Passwords(password))
+
+
+def sign_in_and_change_the_password(client_id: str, origin: str, login: str,
+                                    passwords: Passwords) -> Answer:
+    """Sign in and answer the change password screen on the way through.
+
+    A first sign in on a handed over password ends there, and it is the screen
+    that turns a value somebody typed into .env into a password only the holder
+    knows. Reusing the current password is refused: measured against 4.17.1 on
+    2026-08-31, the screen came back reading "An internal error occurred".
+    """
+    return _through_the_screens(client_id, origin, login, passwords)
+
+
+def _through_the_screens(client_id: str, origin: str, login: str,
+                         passwords: Passwords) -> Answer:
+    """Read each page, answer what it asks for, skip what it merely offers.
+
     Nothing about the number of screens or their addresses is written down
-    here. Each page is read, the field it asks for is answered if this function
-    knows the answer, and anything it merely offers is skipped. So a screen
-    added or reordered still passes, and a check does not turn red over a path
-    that moved. Today that is three screens: the login name, the password, and
-    a prompt to set up a second factor.
+    here, so a screen added or reordered still passes and a check does not turn
+    red over a path that moved. Today that is the login name, the password, a
+    change password screen when one is required, and a prompt to set up a
+    second factor.
     """
     catcher = _CatchCallback(origin)
     opener = browser(catcher)
@@ -97,7 +130,7 @@ def sign_in_through_the_screens(client_id: str, origin: str,
     for _ in range(SCREEN_LIMIT):
         if catcher.code:
             break
-        page = _submit(opener, page, _answer_for(page, login, password))
+        page = _submit(opener, page, _answer_for(page, login, passwords))
     if not catcher.code:
         raise AssertionError(
             f"the screens did not reach a code within {SCREEN_LIMIT} steps")
@@ -107,7 +140,7 @@ def sign_in_through_the_screens(client_id: str, origin: str,
         "code_verifier": verifier})
 
 
-def _answer_for(page: str, login: str, password: str) -> dict:
+def _answer_for(page: str, login: str, passwords: Passwords) -> dict:
     """What to put into the screen in front of us.
 
     A screen that asks for something we hold gets it. A screen that asks for
@@ -115,12 +148,24 @@ def _answer_for(page: str, login: str, password: str) -> dict:
     offer rather than a requirement, and MFA is deliberately later per
     docs/plan/order-of-operations.md.
     """
-    # A password field first, and by its type rather than by its name. The
+    # The change password screen before the ordinary one, because it carries
+    # password fields too and is told apart by the name of the first of them.
+    if f'name="{CHANGE_SCREEN_FIELD}"' in page:
+        if not passwords.new:
+            raise AssertionError(
+                "this account is asked to change its password at first sign "
+                "in and no new password was given, so the screens stop here. "
+                "compose.yaml asks that of the first administrator. Call "
+                "sign_in_and_change_the_password with a Passwords pair.")
+        return {CHANGE_SCREEN_FIELD: passwords.current,
+                "change-new-password": passwords.new,
+                "change-password-confirmation": passwords.new}
+    # A password field next, and by its type rather than by its name. The
     # password screen carries the login name as a hidden field too, so matching
     # on names alone answers the password screen with a login name and the same
     # screen comes back for as long as the loop is allowed to run.
     if re.search(r'<input[^>]*type="password"', page):
-        return {"password": password}
+        return {"password": passwords.current}
     if re.search(r'<input[^>]*name="loginName"', page):
         return {"loginName": login}
     return {"skip": "true"}

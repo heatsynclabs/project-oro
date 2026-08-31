@@ -27,6 +27,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import api                       # noqa: E402, after the path insert above
 import registrations             # noqa: E402
 import flow                      # noqa: E402
+import clients                   # noqa: E402
+import branding                  # noqa: E402
 import configure                 # noqa: E402
 
 TOKEN = os.environ.get("ORO_IDENTITY_TOKEN", "")
@@ -52,7 +54,7 @@ def _app(name: str) -> dict:
 # The clients, read back from the service rather than from what was sent.
 
 def test_the_three_portals_are_registered():
-    for portal in configure.PORTALS:
+    for portal in clients.PORTALS:
         _app(portal.name)
 
 
@@ -65,7 +67,7 @@ def test_every_portal_is_a_public_client_holding_no_secret():
     credentials is the grant a secret alone completes, and a portal completing
     it would mean it holds one.
     """
-    for portal in configure.PORTALS:
+    for portal in clients.PORTALS:
         config = _app(portal.name)
         assert config["authMethodType"] == "OIDC_AUTH_METHOD_TYPE_NONE", \
             f"{portal.name} uses {config['authMethodType']}"
@@ -78,7 +80,7 @@ def test_every_portal_is_a_public_client_holding_no_secret():
 
 
 def test_every_portal_uses_authorization_code_and_can_refresh():
-    for portal in configure.PORTALS:
+    for portal in clients.PORTALS:
         config = _app(portal.name)
         assert config["responseTypes"] == ["OIDC_RESPONSE_TYPE_CODE"], portal.name
         assert "OIDC_GRANT_TYPE_AUTHORIZATION_CODE" in config["grantTypes"], portal.name
@@ -90,9 +92,9 @@ def test_every_portal_uses_authorization_code_and_can_refresh():
 def test_the_door_service_is_a_machine_account_and_not_an_application():
     """It talks to no browser, so it has no redirect and no login screen."""
     users = api.call("/v2/users", {"queries": [
-        {"userNameQuery": {"userName": configure.DOOR_SERVICE}}]}, TOKEN)
+        {"userNameQuery": {"userName": clients.DOOR_SERVICE}}]}, TOKEN)
     assert users.status == 200, users.message()
-    assert users.body.get("result"), f"there is no {configure.DOOR_SERVICE} account"
+    assert users.body.get("result"), f"there is no {clients.DOOR_SERVICE} account"
     assert registrations.application_named(_project(), "Door service", TOKEN) is None, \
         "the door service was registered as an application as well"
 
@@ -126,10 +128,10 @@ def test_the_branding_reaches_the_login_screen():
         f"/ui/login/resources/dynamic?orgId={organisation}"
         "&default-policy=false&filename=policy/label/css/variables.css")
     assert status == 200, f"the branding stylesheet answered {status}"
-    red, green, blue = (int(api.BRANDING["primaryColor"][i:i + 2], 16)
+    red, green, blue = (int(branding.POLICY["primaryColor"][i:i + 2], 16)
                         for i in (1, 3, 5))
     assert f"rgb({red}, {green}, {blue})" in css, (
-        f"the login screens do not carry {api.BRANDING['primaryColor']}. A label "
+        f"the login screens do not carry {branding.POLICY['primaryColor']}. A label "
         "policy that was set and never activated reads as applied and changes "
         "nothing")
 

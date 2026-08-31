@@ -7,3 +7,4 @@
 
 docs/api/members-v1.yaml  The API contract. One document describing one API, and splitting it across files would put the shape of the contract in a directory listing rather than in the contract. Redocly reads it whole and the mock serves it whole.
 packages/gantry-tokens/tokens.css  The token layer, which is one cascade. A token split across two files is a token whose value depends on load order, which is the defect this package was extracted to remove.
+apps/members/index.html  The whole members page. Every sentence a reader sees and every field binding is in this one document, which is what lets tools/members-portal/tests read the copy and the bindings with no browser. Splitting it takes either a build step, which ADR 0006 keeps out of this tree, or a fragment fetched at run time, which would hide half the copy from those checks.

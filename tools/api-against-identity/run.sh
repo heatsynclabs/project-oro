@@ -66,6 +66,7 @@ export ORO_HTTPS_PORT=8497
 export ORO_IDENTITY_PORT=8197
 # Nothing here starts the mock, and compose still reads the variable.
 export ORO_MOCK_PORT=4097
+export ORO_MAIL_PORT=8029
 # Invented, used by nothing outside this run, and removed with the volumes when
 # it exits. Rule 13: nothing here resembles a credential anybody holds.
 export ORO_DB_PASSWORD="throwaway-$$"

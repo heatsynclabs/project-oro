@@ -243,7 +243,8 @@ services:
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: "${ORO_IDENTITY_ADMIN_USERNAME:?set ORO_IDENTITY_ADMIN_USERNAME in .env}"
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: "${ORO_IDENTITY_ADMIN_PASSWORD:?set ORO_IDENTITY_ADMIN_PASSWORD in .env}"
       # The first human is asked to change that password at first sign in, so
-      # the value above is a handover rather than a credential.
+      # the value above is a handover rather than a credential. A person can
+      # finish that screen and so can tools/identity/flow.py, checked from cold.
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: "true"
       # A machine account holding the rights to configure the instance, and its
       # token written to a file inside the container. Nothing reads it but the

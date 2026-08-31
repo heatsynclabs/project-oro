@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT / "services" / "api" / "tests"))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import api                       # noqa: E402, after the path inserts above
+import clients                   # noqa: E402
 import configure                 # noqa: E402
 import flow                      # noqa: E402
 import harness                   # noqa: E402
@@ -251,7 +252,7 @@ def sign_everybody_in() -> None:
     Done once rather than per check, because each one drives three screens and
     a suite that signed in eight times would spend most of its run there.
     """
-    members_portal = configure.PORTALS[0].identifier
+    members_portal = clients.PORTALS[0].identifier
     STATE["access_token"] = sign_in(make_the_fixtures.MEMBER, members_portal)
     STATE["subject"] = claims_on(STATE["access_token"])["sub"]
     STATE["another_project_token"] = sign_in(

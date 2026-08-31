@@ -30,13 +30,32 @@ make identity-test
 ```
 
 That brings up a Postgres and an identity service on their own ports as a
-throwaway compose project, reads the bootstrap token out of the container, runs
-`configure.py` twice, then all four check files, and takes it all down. Thirty
-nine checks: sixteen on the passwords, eleven on what was configured and on one
-whole sign in, six on what a second run of `configure.py` does to that, and six
-on members carried over from a replica of the legacy application. It is the
-slowest suite in this repository, because the identity service applies its own
-schema and seeds an instance before it answers anything.
+throwaway compose project, applies `db/migrations` to it, reads the bootstrap
+token out of the container, runs `configure.py` twice, then all six check
+files, and takes it all down. Seventy checks on the run of 2026-08-31: six on
+how a refusal is read, twelve on the command that makes somebody a sign in,
+sixteen on the passwords, eleven on what was configured and on one whole sign
+in, eleven on what a second run of `configure.py` does to that, six on members
+carried over from a replica of the legacy application, and eight on that
+command again against the running service. It is the slowest suite in this
+repository, because the identity service applies its own schema and seeds an
+instance before it answers anything.
+
+The schema is applied because one check points a member row at a replacement
+account, and `members.identity_subject` is the only thing joining the two
+systems. Nothing else in this directory reads the database.
+
+To make somebody a sign in, which is what an admin does when a person is
+standing in front of them:
+
+```sh
+ORO_IDENTITY_TOKEN="$(docker compose cp identity:/bootstrap/pat - | tar -xO)" \
+  tools/identity/make_a_sign_in.py "Ada Byron <ada@example.org>"
+```
+
+Run it from a terminal. The password is written to `/dev/tty` and to nothing
+else, so redirecting the report into a file keeps the report and captures no
+password.
 
 To run the checks against a stack you already have up instead:
 
@@ -120,6 +139,108 @@ So `configure.py` sends the name only when the name is the thing that changed.
 back, and reads it back again. Nothing else in this directory would notice,
 because every other check reads a configuration that was right on the first run.
 
+## What state an account can be in, and which of them wait on a message
+
+No mail server is configured anywhere in this repository, and the identity
+service does not say so. It accepts the call, answers 200, and writes
+`could not create email channel ... Errors.SMTPConfig.NotFound` in its own log.
+The screens are worse: the reset password screen answers `Password Reset Link
+Sent. Check your email to reset your password.` while nothing is sent.
+
+So the states matter, because the ones that end in a code being posted are the
+ones a member cannot get out of. Every row below was measured against Zitadel
+4.17.1 on 2026-08-31 by making the account and then walking the hosted screens.
+
+| How the account was made | State | What the member meets at sign in |
+|---|---|---|
+| `POST /v2/users/human` with a password and `email.isVerified` true | ACTIVE | Password, and they are in |
+| `POST /v2/users/human` with no password | ACTIVE | Set Password, which wants a mailed code as well as a password |
+| `POST /v2/users/human` with the address left unverified | ACTIVE | E-Mail Verification, which wants a mailed code |
+| `POST /management/v1/users/human` with no password | INITIAL | Activate User, which wants a mailed code |
+| The Register button on the hosted screens | INITIAL | Activate User, straight after registering |
+
+The first row is what `make_a_sign_in.py`, `tools/bootstrap/seat_admins.py` and
+`api.import_member` all produce, and it is the only row that needs nothing
+delivered. The console's own new user form defaults to `Setup authentication
+later for this User`, which is the second row: it calls
+`zitadel.user.v2.UserService/AddHumanUser`, read off the service's own request
+log while the form was submitted.
+
+Rows two and three are repairable by an admin with no mail at all, and
+`make_a_sign_in.py --repair` is that repair:
+
+- a missing password is `POST /v2/users/{id}/password`
+- an unverified address is `PUT /management/v1/users/{id}/email` carrying
+  `isEmailVerified`. The v2 path refuses it with `Email not changed
+  (COMMAND-Uch5e)` whenever the address is not changing, whatever `isVerified`
+  says, which is the same shape as the `UpdateApplication` trap above
+
+A password somebody has forgotten is the same call and no command runs it.
+`make_a_sign_in.py --repair` sets a password only on an account holding none,
+so that a second run cannot take away a password a member chose for themselves.
+An admin resetting one calls `POST /v2/users/{id}/password` and reads the new
+password out to them. `POST /v2/users/{id}/password_reset` with `returnCode`
+hands back a code instead, which the member types into the reset screen and
+which never touches a mailbox, and that is the closest thing here to the route
+a member would have if mail worked.
+
+### USER_STATE_INITIAL is a dead end, and this is the whole list
+
+Every write to an account in that state is refused, so there is nothing an
+admin can reach for.
+
+| Call | Answer |
+|---|---|
+| `POST /v2/users/{id}/password` | 400 `User is not yet initialized (COMMAND-M9dse)` |
+| `POST /v2/users/{id}/email` | 400 `User is not yet initialized (COMMAND-uz0Uu)` |
+| `PUT /management/v1/users/{id}/email` | 400 `User is not yet initialized (COMMAND-J8dsk)` |
+| `POST /v2/users/{id}/password_reset` | 400 `User is not yet initialized (COMMAND-Sfe4g)` |
+| `POST /management/v1/users/{id}/_reactivate` | 400 `User is not inactive` |
+| `POST /management/v1/users/{id}/_resend_initialization` | 200, and nothing is sent |
+
+One call is not refused and is worth knowing about, because it looks like the
+answer and is not. `POST /v2/users/{id}/invite_code` with `returnCode` hands an
+invite code straight back in the response body, `POST
+/v2/users/{id}/invite_code/verify` accepts it, and after that the address reads
+verified and `POST /v2/users/{id}/password` succeeds. The state stays
+`USER_STATE_INITIAL`. Measured on 2026-08-31: `/v2/sessions` then created a
+session on the new password, and the hosted screens still put that login name
+on Activate User, which still wants the mailed initialization code. An invite
+code is a different credential from an initialization code, and login v1 reads
+the second.
+
+The only route left is to remove the account and make a new one, which is what
+`make_a_sign_in.py --repair ADDRESS --remove-and-recreate` does and why it is a
+separate flag. It costs the member their subject. Their member row is joined to
+the identity service by `members.identity_subject` and nothing else, so the
+command reads that row before it removes anything and points it at the new
+subject afterwards. Left unrepointed, the row is unclaimable:
+`link_or_create_member` matches on the subject first, falls through to the
+email branch, and refuses with `That email already belongs to another account.`
+
+`configure.py` turns the Register button off through `login_policy.py` for this
+reason. A sign up that cannot be finished is worse than no sign up.
+
+### What configuring a mail server would take
+
+Nothing here does it, and the runbook step that decides is
+`docs/runbooks/deploy-beside-the-legacy-system.md` step 7. The shape, measured
+by doing it against a throwaway instance on 2026-08-31 and then removing it:
+
+- `POST /admin/v1/smtp` requires `senderAddress`, `senderName` and `host`,
+  where the host carries the port as `smtp.example.org:587`. It also takes
+  `user`, `password`, `tls`, `replyToAddress` and `description`. The password
+  is write only: a config read back carries every other field and not that one
+- a new configuration is created inactive. `POST /admin/v1/smtp/{id}/_activate`
+  is the half that is easy to miss, the same way the label policy is
+- `POST /admin/v1/smtp/{id}/_test` with a `receiverAddress` opens a real
+  connection and sends a real message. A wrong host answers 500 `could not
+  contact with the SMTP server, check the port, firewall issues...`
+
+Once one is configured and activated, the reset password link, the address
+verification code and the initialization code all start arriving, and rows two
+through five above stop being dead ends.
+
 ## What is here
 
 | File | What it is |
@@ -127,6 +248,10 @@ because every other check reads a configuration that was right on the first run.
 | `configure.py` | Registers the project, the three portals as public PKCE clients, the door service machine account, and the GANTRY branding. Idempotent |
 | `api.py` | Calls to the identity service, shared by the configuration step and the suites |
 | `flow.py` | One whole sign in, driven through the hosted screens with a cookie jar |
+| `make_a_sign_in.py` | The command an admin runs to give somebody a sign in, or to put one right |
+| `sign_ins.py` | What an account is on this service, and the writes that make one. Read by the command and by both of its suites |
+| `tests/check_sign_ins.py` | What the command refuses and what it writes, against stubs, with nothing running |
+| `tests/check_making_a_sign_in.py` | The same command against a real service and a real members schema |
 | `tests/check_identity.py` | Part (a) of the password proof |
 | `tests/check_configuration.py` | What was configured, read back, plus the sign in and what the tokens do afterwards |
 | `tests/check_reconfiguration.py` | What a second run of `configure.py` does to all of that |

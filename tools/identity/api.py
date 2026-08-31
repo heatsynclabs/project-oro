@@ -197,40 +197,6 @@ def token_from_environment() -> str:
 # packages/gantry-tokens/tokens.css and named beside it so a change there can be
 # followed here. Zitadel keeps one light set and one dark set and picks by the
 # viewer's preference, which is the same thing [data-theme] does in the portal.
-BRANDING = {
-    "primaryColor":        "#97600c",   # --accent-text, light. --hazard itself
-                                        # is too pale to read on paper
-    "backgroundColor":     "#f4efe3",   # --char, light
-    "warnColor":           "#b8341f",   # --fault, light
-    "fontColor":           "#1c1812",   # --bone, light
-    "primaryColorDark":    "#f2ab1e",   # --hazard, dark
-    "backgroundColorDark": "#15120f",   # --char, dark
-    "warnColorDark":       "#d24f3a",   # --fault, dark
-    "fontColorDark":       "#ece3d3",   # --bone, dark
-    # A member signs in with an email address, and the organisation suffix
-    # Zitadel appends to a login name is not part of it.
-    "hideLoginNameSuffix": True,
-    "disableWatermark": True,
-}
-
-
-def apply_branding(token: str) -> None:
-    """Set the label policy and activate it.
-
-    Activation is separate and it is the half that is easy to miss: a policy
-    that is set and never activated is stored, readable, and changes nothing on
-    the screens a member sees.
-    """
-    answer = call("/management/v1/policies/label", BRANDING, token)
-    if answer.status != 200:
-        answer = call("/management/v1/policies/label", BRANDING, token, method="PUT")
-    if answer.status != 200 and "not been changed" not in answer.message():
-        raise SystemExit(f"branding: {answer.status} {answer.message()}")
-    activated = call("/management/v1/policies/label/_activate", {}, token)
-    if activated.status != 200:
-        raise SystemExit(f"branding could not be activated: "
-                         f"{activated.status} {activated.message()}")
-    print("branding: applied and activated")
 
 
 def post_form(path: str, fields: dict) -> Answer:

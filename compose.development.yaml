@@ -48,6 +48,41 @@ services:
       # and the route file is where the two names differ.
       ORO_API_TOKEN_ISSUER: "http://${ORO_HOSTNAME}:${ORO_IDENTITY_PORT:-8180}"
 
+  mail:
+    # Somewhere for the identity service to send to. Registration, a forgotten
+    # password and a changed address all end in a code that arrives by mail, and
+    # without a server to take it a person who registers is stopped on a screen
+    # asking for a code nobody can send. Measured on 2026-08-31: the account is
+    # created ACTIVE, and the E-Mail Verification screen after the password has a
+    # required code field, Next, and Resend Code, and no way past.
+    #
+    # This catches mail rather than delivering it. Nothing leaves the laptop, and
+    # a .invalid address could not be delivered to anyway. Open the web interface
+    # on ORO_MAIL_PORT and the code is the newest message. A deployment points
+    # the identity service at the lab's real server instead, which is a step in
+    # docs/runbooks/deploy-beside-the-legacy-system.md.
+    #
+    # Pinned by digest as well as tag. mailpit v1.27.11, digest read from Docker
+    # Hub on 2026-08-31. The index carries linux/amd64 and linux/arm64.
+    image: axllent/mailpit:v1.27.11@sha256:e22dce5b36f93c77082e204a3942fb6b283b7896e057458400a4c88344c3df68
+    restart: unless-stopped
+    environment:
+      # It holds invented codes for invented people and it is on loopback, so
+      # there is nothing here worth a password.
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    ports:
+      # The web interface, on loopback. Nothing off this machine reads a laptop's
+      # mail. The SMTP port is not published: the identity service reaches it
+      # over the compose network by name.
+      - "127.0.0.1:${ORO_MAIL_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   mock:
     # The members API contract, served as a mock. It answered /v1 on the portal's
     # origin until 2026-08-30, when the real service took that prefix, and it now

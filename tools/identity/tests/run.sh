@@ -9,15 +9,18 @@
 # already running is neither read nor touched, and no .env has to exist. Leaves
 # nothing behind. Exit code is 1 if any check failed.
 #
-# Five suites. check_api_refusals.py needs nothing running and goes first, so a
-# fault in how a refusal is read is reported before anything is started.
+# Seven suites. check_api_refusals.py and check_sign_ins.py need nothing
+# running and go first, so a fault in how a refusal is read, or in a command
+# that can remove somebody's account, is reported before anything is started.
 # check_identity.py is part (a) of the phase 2 password proof:
 # hashes the lab already holds, imported and signed in with. check_configuration.py
 # is what configure.py registered, and one whole sign in through the hosted
 # screens ending in a refresh token that rotates. check_reconfiguration.py is
 # what a second run of configure.py does to all of that. check_legacy_import.py
 # takes hashes written by a replica of the legacy application and signs in with
-# the passwords that produced them.
+# the passwords that produced them. check_making_a_sign_in.py runs
+# make_a_sign_in.py against the stack and against the members schema, which is
+# why this suite applies that schema and the four before it do not need it.
 #
 # Part (b) of the password proof is ten real members signing in to staging with
 # the password they already use. It needs the production hashes and volunteers,
@@ -34,6 +37,7 @@ export ORO_HTTPS_PORT=8447
 export ORO_IDENTITY_PORT=8184
 # Nothing here starts the mock, and compose still reads the variable.
 export ORO_MOCK_PORT=4013
+export ORO_MAIL_PORT=8028
 # Invented, used by nothing outside this run, and removed with the volumes when
 # it exits. Rule 13: nothing here resembles a credential anybody holds.
 export ORO_DB_PASSWORD="throwaway-$$"
@@ -49,6 +53,11 @@ export ORO_IDENTITY_ADMIN_PASSWORD="Fixture-Handover-1!"
 compose() { docker compose -p "$PROJECT" -f "$ROOT/compose.yaml" \
                            -f "$ROOT/compose.development.yaml" "$@"; }
 
+# make_a_sign_in.py reaches the members database the way make psql does,
+# through the psql inside the container, because compose.yaml publishes no port
+# for it. This is that command pointed at the throwaway project above.
+export ORO_PSQL="docker compose -p $PROJECT -f $ROOT/compose.yaml exec -T db psql -U postgres -d oro"
+
 cleanup() { compose down --volumes >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
@@ -62,6 +71,12 @@ python3 "$ROOT/tools/identity/tests/check_api_refusals.py" || {
 }
 echo
 
+python3 "$ROOT/tools/identity/tests/check_sign_ins.py" || {
+  echo "make_a_sign_in.py does not refuse what it says it refuses, so nothing was started." >&2
+  exit 1
+}
+echo
+
 # Only the two services this needs. Caddy and the mock have nothing to do with
 # a password, and starting them would make this suite wait on them.
 echo "Bringing up the identity service on port $ORO_IDENTITY_PORT"
@@ -70,6 +85,18 @@ compose up --detach --wait --wait-timeout 300 db identity >/dev/null || {
   compose logs identity 2>&1 | tail -30 >&2
   exit 1
 }
+echo
+
+# The stack's own database is empty by design, which is what make up says and
+# means. check_making_a_sign_in.py points a member row at a replacement
+# account, so the schema that holds one has to be there first.
+for f in "$ROOT"/db/migrations/*.sql "$ROOT"/db/seed/*.sql; do
+  $ORO_PSQL -v ON_ERROR_STOP=1 -q < "$f" >/dev/null || {
+    echo "$(basename "$f") did not apply, so nothing was checked." >&2
+    exit 1
+  }
+done
+echo "the schema and the seed data are applied"
 echo
 
 # The bootstrap token sits in a named volume, out of the working tree where a
@@ -137,4 +164,6 @@ echo
 python3 "$ROOT/tools/identity/tests/check_reconfiguration.py" || FAILED=1
 echo
 python3 "$ROOT/tools/identity/tests/check_legacy_import.py" || FAILED=1
+echo
+python3 "$ROOT/tools/identity/tests/check_making_a_sign_in.py" || FAILED=1
 exit "${FAILED:-0}"

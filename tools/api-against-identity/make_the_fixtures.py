@@ -29,6 +29,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "identity"))
 
 import api                       # noqa: E402, after the path insert above
+import clients                   # noqa: E402
 import configure                 # noqa: E402
 import registrations             # noqa: E402
 
@@ -112,7 +113,7 @@ def make_the_other_project(organisation: str, token: str) -> None:
         "projectId": OTHER_PROJECT_ID,
         "applicationId": OTHER_APP_ID,
         "name": OTHER_APP,
-        "oidcConfiguration": configure.public_client(ORIGIN),
+        "oidcConfiguration": clients.public_client(ORIGIN),
     }, token)
     if added.status != 200:
         raise SystemExit(f"could not create {OTHER_APP}: "
