@@ -9,9 +9,8 @@ way in one sitting. Paste everything below the line.
 ---
 
 You are implementing Project ORO, the members and door access system for HeatSync
-Labs. Nothing is deployed and nothing in production has been touched. The work is
-on the branch `ci-stack-contract-and-door-port`, open as pull request 1, and CI is
-green on it.
+Labs. Nothing is deployed and nothing in production has been touched. The work
+is on `main` and both CI workflows are green on it.
 
 ## Prove it is green before you change it
 
@@ -20,9 +19,19 @@ git config core.hooksPath .githooks
 make check
 ```
 
-That runs every suite: the database, the door port, the theme, the prose gate,
-the contract mock, both stack shapes, and the members portal. If any of it is
-red, stop and say so. Do not build on top of a red suite.
+That runs twenty suites: the database, the door port, the theme, the prose
+gate, the ceilings, the undefined names, the import boundaries, the
+attributions, the contract mock, both stack shapes, the members portal, the
+identity service, the legacy import, the first three admins, the restore drill,
+the members API, and the members API against a real token. If any of it is red,
+stop and say so. Do not build on top of a red suite.
+
+Two checks are outside it, on purpose, and both are worth running once.
+`npx @redocly/cli@2.49.0 lint docs/api/members-v1.yaml` needs Node.
+`make browser-checks` drives a stack somebody else started, so bring one up
+with `make development` first. That second one was red for a day against a
+portal that was working correctly, because it is in no CI workflow. Do not
+trust it to have been run.
 
 ## Read these first, in this order
 
@@ -51,12 +60,17 @@ plan and there is a reason for each position.
 
 Each of these cost real time in this repository. They are not general advice.
 
-**Borrow before you build.** Rule 8 says the bespoke code here should be the door
-service and nothing else. Today the door service is 1,231 lines and the bespoke
-tooling around it is 2,369. That gap is a defect, not an achievement. Before you
-write a parser, a checker, or a harness, price an existing one and write the ADR
-that rule 8 asks for. Three ADRs exist for tools that were borrowed and none for
-anything that was built, which is exactly backwards.
+**Borrow before you build.** Rule 8 says the bespoke code here should be the
+door service and nothing else. Measured on 2026-08-31: the door service is
+1,231 lines and the Python and shell under `tools/` is 13,564. That gap is a
+defect, not an achievement, and it grows every time somebody reaches for a new
+harness. Before you write a parser, a checker, or a harness, price an existing
+one and write the ADR that rule 8 asks for.
+
+The counterweight, and it is real: `tools/names/` was added on 2026-08-31 and
+paid for itself on its first run. The test is whether an existing tool already
+does it. That one is nine lines of shell around a ruff rule, which is
+borrowing. A hand written import graph would not have been.
 
 **Never derive one setting from another to save a line.** Caddy once picked its
 route file out of `COMPOSE_PROFILES` so that one variable did two jobs. It left
@@ -82,7 +96,16 @@ the code found ten false claims, including two files contradicting themselves.
 Every number you write down should come from a command you just ran.
 
 **Update `HANDOFF.md` section 2 in the same change.** It is the single place the
-state is tracked, and it goes stale every single time something lands.
+state is tracked, and it goes stale every single time something lands. An audit
+on 2026-08-31 found eleven wrong rows and four missing ones in a file that had
+been current a week earlier.
+
+**A gate that only ever ran green proves nothing, and neither does one that
+asserts a default.** Two registration checks here passed against an instance the
+configuration step had never touched, because the value they assert is what a
+fresh Zitadel ships with. Deleting the step turned none of them red. Before
+trusting a check, ask what state it would have to be in for the check to fail,
+and put it in that state.
 
 ## How to run this as an orchestrated session
 
@@ -113,6 +136,11 @@ Scale to the work. A schema change wants one careful agent, not five.
 - **Adding cleverness.** Every indirection you add is a file somebody has to
   open at 2am to answer a simple question.
 - **Reporting green from inference.** Run it. Paste the output.
+- **Writing for a developer on a page a member reads.** This portal replaces
+  members.heatsynclabs.org. A member has no terminal, so no error copy names a
+  make target, a script, or an HTTP method, and `check_portal.py` and
+  `check_sign_in.py` now refuse one that does. What a member can do is try
+  again and tell an admin.
 - **Naming an LLM as an author anywhere.** The commit hook and CI both reject it.
 - **Em dashes, en dashes, emoji, or a spaced hyphen standing in for a dash.**
   The prose gate rejects those in commit messages and code comments too.

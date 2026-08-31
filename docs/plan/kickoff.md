@@ -29,10 +29,17 @@ production has been touched.
 
 ```sh
 git config core.hooksPath .githooks
+make check
+```
+
+That is twenty suites and takes a while. If you only want the fast half while
+you read:
+
+```sh
 ./db/tests/run.sh
-python3 tools/voice-check/test_voice_check.py
-python3 tools/voice-check/test_regressions.py
-python3 tools/voice-check/test_behaviour.py
+./tools/ceilings/run.sh
+./tools/names/run.sh
+./tools/ci/voice-gate.sh
 ```
 
 All of it should be green. If it is not, stop and say so rather than building on
@@ -57,7 +64,12 @@ Work out which step that is and say which one you picked before you start.
   without a refusal test is untested.
 - **`db/migrations/` is the authority for the schema.** `docs/plan/data-model.md`
   explains it and deliberately holds no DDL. Do not put schema in the prose.
-- **No file over 300 lines**, no function over 50, complexity under 10.
+- **No file over 300 lines**, no function over 50, complexity under 10. This
+  binds a Makefile and a workflow file too, and all of them have hit it. Split
+  on the seam the file already has rather than trimming a comment to fit.
+- **The members portal is read by members, not by developers.** No error copy
+  names a make target, a script, or an HTTP method. What a member can do is try
+  again and tell an admin.
 
 **How to know you are done with a step:** the exit criterion in the plan is met,
 with the evidence it names. Paste the output. If a test fails, say so and show it.
