@@ -10,7 +10,7 @@
 DEV = docker compose -f compose.yaml -f compose.development.yaml
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure bootstrap-admins migration-test ceilings backup restore backup-test api-test import-boundaries
+.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure bootstrap-admins migration-test ceilings backup restore backup-test api-test api-identity-test import-boundaries attributions attributions-check
 
 help:
 	@echo "make up                start the stack in the background"
@@ -34,6 +34,9 @@ help:
 	@echo "make restore FILE=...  restore one. It refuses over a database that holds members"
 	@echo "make backup-test       run the restore drill: back up, destroy, restore, check"
 	@echo "make api-test          prove the members API against a real Postgres and the real policies"
+	@echo "make api-identity-test prove the members API accepts a token the identity service issued"
+	@echo "make attributions      regenerate the dependency tables in ATTRIBUTIONS.md from the lockfiles"
+	@echo "make attributions-check say what those tables would become, and write nothing"
 	@echo ""
 	@echo "The database this stack starts is empty. make test applies"
 	@echo "db/migrations to a throwaway container, never to this stack."
@@ -84,6 +87,7 @@ check:
 	./tools/ci/voice-gate.sh
 	./tools/ceilings/run.sh
 	./tools/import-boundaries/run.sh
+	python3 tools/attributions/test_attributions.py
 	./tools/mock/tests/run.sh
 	./tools/development/tests/run.sh
 	./tools/members-portal/tests/run.sh
@@ -92,6 +96,7 @@ check:
 	./tools/bootstrap/tests/run.sh
 	./tools/backup/tests/run.sh
 	./services/api/tests/run.sh
+	./tools/api-against-identity/run.sh
 	@echo
 	@echo "every suite passed"
 
@@ -194,6 +199,27 @@ ceilings:
 import-boundaries:
 	./tools/import-boundaries/run.sh
 
+# Rule 9, over the two Python lockfiles. It builds the image each lock installs
+# into and reads every package's own metadata out of it, so a licence claim in
+# ATTRIBUTIONS.md traces to the package rather than to an index summary. It
+# rewrites only what sits between the two marker comments in that file.
+#
+# Deliberately not in make check, which is why there are two targets here. Not
+# over the network: make api-test and make import-boundaries already build
+# images that install from PyPI. It is out because it rewrites a tracked file,
+# and because the check below compares the date the metadata was read, so as a
+# gate it would go red the day after every run. What make check runs is the
+# generator's own suite, which needs neither docker nor the network. Run this
+# when a lockfile changes. ADR 0012 carries the reasoning.
+attributions:
+	./tools/attributions/run.sh
+
+# The same thing with nothing written. The read date in each section moves
+# whenever the metadata is read again, so on a later day this reports that line
+# even when no package changed. That is the record of when somebody last looked.
+attributions-check:
+	./tools/attributions/run.sh --check
+
 # Gate 1 of rule 12: a verified, restorable backup of the members database.
 # Two files land in $ORO_BACKUP_DIR, which defaults to $HOME/oro-backups and is
 # never allowed to be inside this working tree. A dump is member data, and rule
@@ -240,3 +266,13 @@ backup-test:
 # ahead of the order on purpose and its README says so.
 api-test:
 	./services/api/tests/run.sh
+
+# The two halves of a sign in put together: a member signs in on the hosted
+# screens, and the members API accepts the token that comes back and answers
+# with that member's own record. Its own compose project on its own ports.
+#
+# api-test above verifies tokens this repository minted with a key of its own,
+# so it cannot see anything about what the provider actually issues. This one
+# found ORO_API_TOKEN_AUDIENCE documented as a value nothing issues.
+api-identity-test:
+	./tools/api-against-identity/run.sh

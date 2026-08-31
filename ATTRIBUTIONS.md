@@ -7,10 +7,10 @@ Rule 9 of `CLAUDE.md`.
 
 Two halves. The **prior work** table is hand maintained and covers designs,
 schemas, protocols, and code taken from named projects. The **dependencies**
-table is to be generated from the lockfiles by `tools/attributions/generate.py`,
-which is still not written. There is now a lockfile for it to read,
-`services/api/requirements.txt`, so the table below is hand maintained from that
-file until somebody writes the generator.
+table is generated from the lockfiles by `tools/attributions/generate.py`, which
+builds the image each lock installs into and reads every package's own metadata
+out of it. There are two locks, `services/api/requirements.txt` and
+`tools/import-boundaries/requirements.txt`.
 
 Every licence claim below was read from the repository at the commit named. Where
 a repository has no licence, that is recorded as a fact and as an action item,
@@ -68,7 +68,7 @@ moving tag, so a tag repointed at different code cannot change what runs.
 
 | Tool | Pinned to | Licence | Used for |
 |---|---|---|---|
-| [actions/checkout](https://github.com/actions/checkout) v7.0.1 | commit `3d3c42e5aac5ba805825da76410c181273ba90b1` | MIT, GitHub | Checking out the repository in every job in `.github/workflows/ci.yml`. Version, tag commit and licence read from the GitHub API on 2026-08-27 |
+| [actions/checkout](https://github.com/actions/checkout) v7.0.1 | commit `3d3c42e5aac5ba805825da76410c181273ba90b1` | MIT, GitHub | Checking out the repository in every job in `.github/workflows/ci.yml` and `.github/workflows/ci-stacks.yml`. Version, tag commit and licence read from the GitHub API on 2026-08-27 |
 | [Redocly CLI](https://github.com/Redocly/redocly-cli) 2.49.0 | the npm version, in the workflow and in `HANDOFF.md` | MIT, Redocly Inc. | Validating `docs/api/members-v1.yaml`, in CI and by hand. Chosen in [ADR 0001](./docs/decisions/0001-openapi-toolchain.md), which records how the version and licence were read |
 | [Prism](https://github.com/stoplightio/prism) 5.15.10 | image digest `sha256:586d1f0f94f8d0eaf20b26b8b41f985f2a2d494bea297bd3988c3de3eb87094e`, in `compose.development.yaml` | Apache 2.0, Stoplight | Serving the contract as a mock, for the members portal and for CI. Chosen in [ADR 0002](./docs/decisions/0002-mock-server.md) |
 | [Zitadel](https://github.com/zitadel/zitadel) 4.17.1 | image digest `sha256:3ac6910685d48f32481f01f45e3e6215efe5a9df2c069591b481e9a101712db5`, in `compose.yaml` | **AGPL-3.0**, Zitadel. Read from the GitHub API on 2026-08-28, and see the note below | The identity service. Chosen in [ADR 0004](./docs/decisions/0004-identity-service.md) |
@@ -128,64 +128,80 @@ citation only when it names the parts.
 
 ## Dependencies
 
-Hand maintained, and it should not be. `tools/attributions/generate.py` does not
-exist, and writing it against the file below is the way this section stops being
-somebody's job. The generator replaces everything between the two markers.
+Generated. `tools/attributions/generate.py` replaces everything between the two
+markers and touches nothing else on this page, so anything a person writes about
+these packages belongs above the first marker. Run it when a lockfile changes,
+in the same sitting that recompiles that lock. It needs docker and the network,
+because it builds the image the lock installs into.
+
+The four direct dependencies of the members API are chosen in
+[ADR 0012](./docs/decisions/0012-python-dependencies.md), which also carries the
+copyleft check on psycopg. Nothing the import boundary gate installs is
+copyleft, and none of it reaches a deployment: that image is built to read the
+source tree and is never shipped.
 
 <!-- BEGIN GENERATED DEPENDENCIES -->
 
 ### `services/api`, from `services/api/requirements.txt`
 
-Every version below was read from that lock, and every licence from the
-installed package's own metadata inside the built image on 2026-08-28, with
-`importlib.metadata`. Four were asked for and the rest came with them. The four
-are chosen in [ADR 0012](./docs/decisions/0012-python-dependencies.md), which
-also carries the copyleft check on psycopg.
+Read on 2026-08-30, out of an image built from `services/api/Dockerfile`. 21
+packages: 4 named in `services/api/requirements.in`, and 17 that arrived with
+one of those.
 
-| Package | Version | Licence | Asked for, or brought in by |
-|---|---|---|---|
-| annotated-doc | 0.0.5 | MIT | fastapi |
-| annotated-types | 0.8.0 | MIT | pydantic |
-| anyio | 4.14.2 | MIT | starlette |
-| cffi | 2.1.1 | MIT-0 | cryptography |
-| click | 8.5.0 | BSD-3-Clause | uvicorn |
-| cryptography | 50.0.1 | Apache-2.0 OR BSD-3-Clause | pyjwt[crypto] |
-| fastapi | 0.141.1 | MIT | asked for |
-| h11 | 0.16.0 | MIT | uvicorn |
-| idna | 3.19 | BSD-3-Clause | anyio |
-| psycopg | 3.3.4 | **LGPL-3.0-only** | asked for |
-| psycopg-binary | 3.3.4 | **LGPL-3.0-only** | psycopg[binary] |
-| psycopg-pool | 3.3.1 | **LGPL-3.0-only** | psycopg[pool] |
-| pycparser | 3.0 | BSD-3-Clause | cffi |
-| pydantic | 2.13.5 | MIT | fastapi |
-| pydantic-core | 2.46.5 | MIT | pydantic |
-| PyJWT | 2.13.0 | MIT | asked for |
-| starlette | 1.6.0 | BSD-3-Clause | fastapi |
-| typing-extensions | 4.16.0 | PSF-2.0 | fastapi, pydantic |
-| typing-inspection | 0.4.4 | MIT | pydantic |
-| tzdata | 2026.3 | Apache-2.0 | psycopg, on Windows only. Never installed here |
-| uvicorn | 0.52.4 | BSD-3-Clause | asked for |
+Every version is the one the lock pins. Every licence was read with
+`importlib.metadata` out of the installed package's own metadata, and the
+fourth column names the field it came from. A licence in bold wants the check
+rule 9 asks for before the dependency lands.
+
+tzdata is in the lock and not in this image. The lock is compiled `--universal`
+and an image is one platform, so a package another platform needs is pinned
+here and installed elsewhere. No licence was read for it.
+
+| Package | Version | Licence | Where the licence was read | Asked for, or brought in by |
+|---|---|---|---|---|
+| annotated-doc | 0.0.5 | MIT | License-Expression | fastapi |
+| annotated-types | 0.8.0 | MIT | License-Expression | pydantic |
+| anyio | 4.14.2 | MIT | License-Expression | starlette |
+| cffi | 2.1.1 | MIT-0 | License-Expression | cryptography |
+| click | 8.5.0 | BSD-3-Clause | License-Expression | uvicorn |
+| cryptography | 50.0.1 | Apache-2.0 OR BSD-3-Clause | License-Expression | pyjwt[crypto] |
+| fastapi | 0.141.1 | MIT | License-Expression | asked for |
+| h11 | 0.16.0 | MIT | License | uvicorn |
+| idna | 3.19 | BSD-3-Clause | License-Expression | anyio |
+| psycopg | 3.3.4 | **LGPL-3.0-only** | License-Expression | asked for |
+| psycopg-binary | 3.3.4 | **LGPL-3.0-only** | License-Expression | psycopg[binary] |
+| psycopg-pool | 3.3.1 | **LGPL-3.0-only** | License-Expression | psycopg[pool] |
+| pycparser | 3.0 | BSD-3-Clause | License-Expression | cffi |
+| pydantic | 2.13.5 | MIT | License-Expression | fastapi |
+| pydantic-core | 2.46.5 | MIT | License-Expression | pydantic |
+| pyjwt | 2.13.0 | MIT | License-Expression | asked for |
+| starlette | 1.6.0 | BSD-3-Clause | License-Expression | fastapi |
+| typing-extensions | 4.16.0 | PSF-2.0 | License-Expression | fastapi, psycopg-pool, pydantic, pydantic-core, typing-inspection |
+| typing-inspection | 0.4.4 | MIT | License-Expression | fastapi, pydantic |
+| tzdata | 2026.3 | not read: only where `sys_platform == 'win32'` | not installed here | psycopg |
+| uvicorn | 0.52.4 | BSD-3-Clause | License-Expression | asked for |
 
 ### `tools/import-boundaries`, from `tools/import-boundaries/requirements.txt`
 
-Two were asked for and the rest came with them. Every version below was read
-from that lock, and every licence from the installed package's own metadata
-inside the built image on 2026-08-29, with `importlib.metadata`, the same way
-the table above was read. Where a package records no licence field, the licence
-below is its own `License :: OSI Approved` classifier.
+Read on 2026-08-30, out of an image built from
+`tools/import-boundaries/Dockerfile`. 8 packages: 2 named in
+`tools/import-boundaries/requirements.in`, and 6 that arrived with one of
+those.
 
-Nothing here is copyleft and nothing here reaches a deployment. This image is
-built to read the source tree and is never shipped.
+Every version is the one the lock pins. Every licence was read with
+`importlib.metadata` out of the installed package's own metadata, and the
+fourth column names the field it came from. A licence in bold wants the check
+rule 9 asks for before the dependency lands.
 
-| Package | Version | Licence | Asked for, or brought in by |
-|---|---|---|---|
-| click | 8.5.0 | BSD-3-Clause | import-linter |
-| grimp | 3.16 | BSD-2-Clause | asked for |
-| import-linter | 2.14 | BSD-2-Clause | asked for |
-| markdown-it-py | 4.2.0 | MIT | rich |
-| mdurl | 0.1.2 | MIT | markdown-it-py |
-| Pygments | 2.21.0 | BSD-2-Clause | rich |
-| rich | 15.0.0 | MIT | import-linter |
-| typing-extensions | 4.16.0 | PSF-2.0 | import-linter |
+| Package | Version | Licence | Where the licence was read | Asked for, or brought in by |
+|---|---|---|---|---|
+| click | 8.5.0 | BSD-3-Clause | License-Expression | import-linter |
+| grimp | 3.16 | BSD 2-Clause License | License | asked for |
+| import-linter | 2.14 | BSD 2-Clause License | License | asked for |
+| markdown-it-py | 4.2.0 | MIT | classifier | rich |
+| mdurl | 0.1.2 | MIT | classifier | markdown-it-py |
+| pygments | 2.21.0 | BSD-2-Clause | License-Expression | rich |
+| rich | 15.0.0 | MIT | License | import-linter |
+| typing-extensions | 4.16.0 | PSF-2.0 | License-Expression | import-linter |
 
 <!-- END GENERATED DEPENDENCIES -->
