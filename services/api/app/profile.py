@@ -39,11 +39,22 @@ class MemberSelfUpdate(BaseModel):
     Every field is optional and absence is what a PATCH turns on: the request
     carries what is changing and nothing else, so `model_fields_set` is the
     difference between "set this to null" and "leave this alone".
+
+    Four of them are not nullable, and the contract types none of the four that
+    way either. `members.name`, `email_visible`, `phone_visible` and
+    `listed_in_directory` are NOT NULL in db/migrations/001_schema.sql, so a
+    null used to pass this model, reach the UPDATE, and come back as the
+    database's NotNullViolation, which the sentence below turned into "Send a
+    name" whichever column it was about. A member who cleared their directory
+    listing was told to send a name. Declaring them without `| None` refuses
+    the null here and names the field it was on. The default stays None
+    because `exclude_unset` is what reads absence, and pydantic does not
+    validate a default.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    name: Typed | None = None
+    name: Typed = None
     display_name: str | None = None
     pronouns: str | None = None
     email: str | None = None
@@ -60,9 +71,9 @@ class MemberSelfUpdate(BaseModel):
     facebook_url: str | None = None
     github_url: str | None = None
     website_url: str | None = None
-    email_visible: bool | None = None
-    phone_visible: bool | None = None
-    listed_in_directory: bool | None = None
+    email_visible: bool = None
+    phone_visible: bool = None
+    listed_in_directory: bool = None
 
 
 # Which field a member should look at when a constraint refuses. This decides
@@ -76,9 +87,12 @@ TIER_CONSTRAINT = "members_tier_id_fkey"
 A_LINK = "A link starts with http:// or https://"
 A_TIER = ("That is not one of the lab's membership tiers, so nothing was "
           "saved. Ask for the list of tiers and send the id of one of them.")
-NOT_EMPTY = ("This is the one field a member record cannot be without, so "
-             "nothing was saved. Send a name, or leave the field out to keep "
-             "the one that is there.")
+# Reachable only for a column the model above does not already refuse a null
+# on, which today is none of them. It stays because the model and the schema
+# are two lists and the day they disagree is the day a member reads this.
+NOT_EMPTY = ("This field cannot be empty on a member record, so nothing was "
+             "saved. Send a value, or leave the field out to keep the one "
+             "that is there.")
 
 
 def write_the_change(connection, asked: MemberSelfUpdate) -> None:

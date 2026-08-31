@@ -421,8 +421,19 @@ members mixed in with everyone else and the response cannot tell them apart.
 
 Elsewhere the schema is careful about this: `current_member_id`, `is_admin`,
 `admin_count` and `member_directory` were all amended to read `deleted_at`
-(migrations 011 and 012). The admin list is the one place it is still open, and
-the contract is where it would be decided.
+(migrations 011 and 012). The admin list is one place it is still open, and the
+contract is where it would be decided.
+
+**The second place was found by the audit of 2026-08-31, and this note said
+there was only one, which was false.** `link_or_create_member` reads
+`deleted_at IS NULL` on its subject branch, so a removed member fell past it to
+the `INSERT` at the bottom, and `members.identity_subject` is `UNIQUE` over
+removed rows too. Every read answered `no-member-record` and named `POST /me`;
+that operation answered 500, and did so every time it was tried. The member was
+in a loop with no way out. `db/migrations/015_removed_records_sign_in.sql`
+raises a sentence there instead, and the service answers 409
+`record-was-removed`, which names the way back. `GET /admin/members` is what is
+left.
 
 ## 14. Email verification has an exit and no entrance
 

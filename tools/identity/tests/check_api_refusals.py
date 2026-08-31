@@ -83,6 +83,36 @@ def a_server_fault_is_refused_too():
     assert "500" in refusal, f"the status is not in the message: {refusal}"
 
 
+def a_service_that_is_not_there_is_a_refusal_and_not_a_traceback():
+    """Rule 7 over the shape a laptop is nearly always in.
+
+    ORO_IDENTITY_URL defaults to https://id.<ORO_HOSTNAME>, which on a laptop
+    is https://id.localhost and resolves nowhere. Before api._send caught it,
+    make bootstrap-admins ended in a urllib traceback naming neither the URL it
+    tried nor the setting that fixes it.
+    """
+    was = api.BASE
+    api.BASE = "http://localhost:1"      # nothing has ever listened here
+    try:
+        api.get("/admin/v1/policies/login", "any-token")
+    except api.Refused as refused:
+        message = str(refused)
+    except Exception as raw:             # noqa: BLE001
+        raise AssertionError(
+            f"a service that is not there raised {type(raw).__name__} rather "
+            f"than a refusal a command can print: {raw}")
+    else:
+        raise AssertionError("an unreachable service answered")
+    finally:
+        api.BASE = was
+
+    assert "http://localhost:1" in message, (
+        "the refusal does not name the URL it tried: " + message)
+    assert "ORO_IDENTITY_URL" in message, (
+        "the refusal does not name the setting that fixes it: " + message)
+    assert "Nothing was read or changed" in message, message
+
+
 CHECKS = [
     ("a search that found nothing is empty", a_search_that_found_nothing_is_empty),
     ("a search that found something returns it", a_search_that_found_something_returns_it),
@@ -90,6 +120,7 @@ CHECKS = [
     ("a revoked token is a refusal, not an empty result", a_revoked_token_is_a_refusal_and_not_an_empty_result),
     ("the refusal says what happened", the_refusal_says_what_happened_and_what_to_do),
     ("a server fault is refused too", a_server_fault_is_refused_too),
+    ("a service that is not there is a refusal", a_service_that_is_not_there_is_a_refusal_and_not_a_traceback),
 ]
 
 

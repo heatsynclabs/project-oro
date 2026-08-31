@@ -156,17 +156,25 @@ def test_a_token_from_another_issuer_is_refused():
 
 
 def test_a_verified_token_with_no_member_row_says_so():
-    """The sentence changed on 2026-08-30 and the check changed with it.
+    """The first thing a new member ever reads, so it says a way out in words.
 
-    It used to send the reader to an admin, because nothing in the contract
-    could join a sign in to a record. POST /me can, so the sentence names it
-    and this asserts on the way out rather than on the old dead end.
+    It sent the reader to an admin until 2026-08-30, because nothing in the
+    contract could join a sign in to a record. Then it named `POST /me`, an
+    HTTP method, shown to a person who has just signed up. The portal puts a
+    button under this sentence and the sentence says so.
+
+    That the way out works is check_members_first_sign_in.py, which writes and
+    cleans up after itself. This file writes nothing.
     """
     refused = fetch("/me", mint("sub-c-nobody-at-all"))
     assert refused.status == 401, refused.body
     problem = refused.json()
     assert problem["type"].endswith("/no-member-record"), problem
-    assert "POST /me" in problem["detail"], problem
+    for jargon in ("POST", "GET", "PATCH", "/me", "endpoint"):
+        assert jargon not in problem["detail"], (
+            f"the refusal a new member reads first says {jargon!r}: "
+            + problem["detail"])
+    assert "admin" in problem["detail"], problem
 
 
 def test_an_identity_does_not_survive_on_a_pooled_connection():

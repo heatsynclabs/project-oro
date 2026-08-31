@@ -66,6 +66,21 @@ def _send(request: urllib.request.Request) -> Answer:
             return Answer(answer.status, json.load(answer))
     except urllib.error.HTTPError as refused:
         return Answer(refused.code, json.loads(refused.read().decode()))
+    except urllib.error.URLError as unreachable:
+        # Rule 7: an error says what happened and what the reader does next.
+        # Without this the two commands that seat admins and configure the
+        # instance end in a urllib traceback. The default ORO_IDENTITY_URL is
+        # built from ORO_HOSTNAME as https://id.<host>, which on a laptop is
+        # https://id.localhost and resolves nowhere, and that is the shape this
+        # is nearly always in. Measured on 2026-08-31 by running
+        # make bootstrap-admins on a laptop with the shipped .env.
+        raise Refused(
+            f"{BASE} could not be reached: {unreachable.reason}. Nothing was "
+            "read or changed. On a laptop the identity service is published on "
+            "a port rather than at a name, so set ORO_IDENTITY_URL to "
+            "http://localhost: and the port in ORO_IDENTITY_PORT. On a "
+            "deployment, check that ORO_HOSTNAME in .env is the name the "
+            "certificate is for and that the stack is up.") from unreachable
 
 
 def import_member(login: str, hashed_password: str, token: str) -> Answer:
@@ -191,12 +206,6 @@ def search(path: str, token: str) -> list:
 
 def token_from_environment() -> str:
     return os.environ.get("ORO_IDENTITY_TOKEN", "")
-
-
-# The GANTRY palette on the hosted screens, every value read from
-# packages/gantry-tokens/tokens.css and named beside it so a change there can be
-# followed here. Zitadel keeps one light set and one dark set and picks by the
-# viewer's preference, which is the same thing [data-theme] does in the portal.
 
 
 def post_form(path: str, fields: dict) -> Answer:

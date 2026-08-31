@@ -33,6 +33,10 @@ ok   a member an admin created has no identity yet
 ok   signing in claims that row
 ok   and creates no duplicate
 ok   signing in again is idempotent
+--   a sign in whose record was removed is told so, not duplicated
+ok   signing in after removal does not write a second record
+ok   and no second record was written
+ok   restoring the record lets that sign in work again
 --   migrations are an operator action, not something the app can touch
 ok   the app role cannot read the migration log
 ok   nor forge an entry in it

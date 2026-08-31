@@ -35,7 +35,7 @@ EXEMPTIONS = pathlib.Path(__file__).resolve().parent / "exemptions.txt"
 # db/migrations, which rule 6 exempts by name.
 SOURCE_SUFFIXES = {".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".vue",
                    ".css", ".html", ".sql", ".sh",
-                   ".yaml", ".yml", ".toml", ".caddyfile"}
+                   ".yaml", ".yml", ".toml", ".caddyfile", ".mk"}
 SOURCE_NAMES = {"Makefile", "Caddyfile", "commit-msg"}
 EXEMPT_DIRECTORIES = ("db/migrations/",)
 

@@ -9,8 +9,12 @@ Two halves. The **prior work** table is hand maintained and covers designs,
 schemas, protocols, and code taken from named projects. The **dependencies**
 table is generated from the lockfiles by `tools/attributions/generate.py`, which
 builds the image each lock installs into and reads every package's own metadata
-out of it. There are two locks, `services/api/requirements.txt` and
-`tools/import-boundaries/requirements.txt`.
+out of it. It covers two of the three locks in this repository,
+`services/api/requirements.txt` and `tools/import-boundaries/requirements.txt`.
+The third, `tools/browser-checks/requirements.txt`, is pinned by hand in the
+tooling table below and is not generated. `tools/attributions/generate.py` names
+the locks it reads in a tuple, so a fourth lock would be missed the same way the
+third was.
 
 Every licence claim below was read from the repository at the commit named. Where
 a repository has no licence, that is recorded as a fact and as an action item,
@@ -78,10 +82,12 @@ moving tag, so a tag repointed at different code cannot change what runs.
 | [uv](https://github.com/astral-sh/uv) 0.12.7 | the PyPI version, named in the header of `services/api/requirements.txt` | `MIT OR Apache-2.0` on PyPI, Apache-2.0 on the GitHub repository record, Astral. Both read on 2026-08-28 | Compiling `services/api/requirements.in` and `tools/import-boundaries/requirements.in` into locks carrying a hash for every wheel on every platform. It runs when a dependency changes and is not in any image. Chosen in [ADR 0012](./docs/decisions/0012-python-dependencies.md) |
 | [python](https://hub.docker.com/_/python) 3.13.15 slim | image digest `sha256:7ce4b6dfe35e55397b7cda544f8a13f191b7ae28dc5aad71fe664dbc9bc2623f`, in `services/api/Dockerfile` and in `tools/import-boundaries/Dockerfile` | Python Software Foundation licence for Python itself, on a Debian trixie base. Digest read from `docker buildx imagetools inspect` on 2026-08-28 and read again unchanged on 2026-08-29 | The base of the members API image, the JWKS server its suite runs, and the image the import boundary gate runs in |
 
-Every other image the stack runs is named by tag: `postgres:18` and
-`caddy:2-alpine`. Neither is vendored and neither is modified. `ruby:3.3-alpine`
-is not one of them: nothing deploys it, and it is run by hand only when somebody
-regenerates the identity fixtures.
+Two more images are pinned by digest and neither is vendored or modified:
+`axllent/mailpit:v1.27.11` in `compose.development.yaml`, which catches mail on
+a laptop, and `mcr.microsoft.com/playwright/python:v1.62.0-noble` in
+`tools/browser-checks/Dockerfile`. Two are named by tag: `postgres:18` and
+`caddy:2-alpine`. `ruby:3.3-alpine` is none of them: nothing deploys it, and it
+is run by hand only when somebody regenerates the identity fixtures.
 
 **On the AGPL.** Zitadel is run as a published container, unmodified, as a
 separate process the stack talks to over HTTP. Nothing in this repository links

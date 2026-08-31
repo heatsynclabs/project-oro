@@ -141,8 +141,9 @@ because every other check reads a configuration that was right on the first run.
 
 ## What state an account can be in, and which of them wait on a message
 
-No mail server is configured anywhere in this repository, and the identity
-service does not say so. It accepts the call, answers 200, and writes
+The development stack runs a mail catcher and `tools/identity/mail.py` points
+the identity service at it. Configured with no mail server, the service does not
+say so. It accepts the call, answers 200, and writes
 `could not create email channel ... Errors.SMTPConfig.NotFound` in its own log.
 The screens are worse: the reset password screen answers `Password Reset Link
 Sent. Check your email to reset your password.` while nothing is sent.
@@ -218,8 +219,19 @@ subject afterwards. Left unrepointed, the row is unclaimable:
 `link_or_create_member` matches on the subject first, falls through to the
 email branch, and refuses with `That email already belongs to another account.`
 
-`configure.py` turns the Register button off through `login_policy.py` for this
-reason. A sign up that cannot be finished is worse than no sign up.
+`configure.py` turns the Register button **on** through `login_policy.py`, and
+`mail.py` gives the code somewhere to come from. It was off for one day, on the
+reasoning that a sign up nobody can finish is worse than no sign up. The dead
+end was real and taking the button away was the wrong end of it: this members
+site replaces one that has a sign up, so a person who has never been here needs
+a way in that is not asking an admin. The mail server is the fix.
+
+`mail.py` can only ever write a provider with no username, no password and TLS
+off, which is the catcher `compose.development.yaml` runs and nothing a real
+relay would accept. A lab relay is configured once by hand, and `point_at`
+refuses rather than replacing a provider it did not write: activating one
+deactivates whichever was active, so the laptop default reaching a deployment
+would otherwise take the relay offline and report success.
 
 ### What configuring a mail server would take
 

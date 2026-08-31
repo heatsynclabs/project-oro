@@ -53,8 +53,9 @@ services:
     # password and a changed address all end in a code that arrives by mail, and
     # without a server to take it a person who registers is stopped on a screen
     # asking for a code nobody can send. Measured on 2026-08-31: the account is
-    # created ACTIVE, and the E-Mail Verification screen after the password has a
-    # required code field, Next, and Resend Code, and no way past.
+    # created USER_STATE_INITIAL, and the Activate User screen after the
+    # password has a required code field, Next, and Resend Code, and no way
+    # past. tools/identity/README.md has why that state is the worst one.
     #
     # This catches mail rather than delivering it. Nothing leaves the laptop, and
     # a .invalid address could not be delivered to anyway. Open the web interface

@@ -252,10 +252,12 @@ h2 {
 	margin: 0 0 var(--space-5);
 }
 
-/* Announced, never shown. A screen reader needs to be told that a view finished
-   loading, because nothing else says so when the content arrives after the page.
-   A sighted member can see that it arrived and does not need a line reading
-   "Your cards, loaded." under every heading. */
+/* Announced, never shown. A screen reader needs to be told when a view changes
+   under it, because nothing else says so when the content arrives after the
+   page. A sighted member can see that it arrived and does not need a line under
+   every heading. What it says is a count rather than the word loaded, because
+   this is the one line in the portal that some members cannot skip. render.js
+   has the rest of that. */
 .status {
 	position: absolute;
 	width: 1px;

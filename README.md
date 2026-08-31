@@ -13,9 +13,11 @@ whole thing on a laptop today, with invented data.
 
 ![The members portal, your cards](docs/images/members-portal-cards.jpg)
 
-Those are real screenshots of `make development` on a laptop. The amber band is
-there because the portal is reading a mock of the API contract, not a database.
-The API service exists as a first slice, and the portal does not read it yet: wiring the two together needs a sign in, which is the rest of phase 3.
+Those are real screenshots of `make development` on a laptop, taken on
+2026-08-29, when the portal read a mock of the API contract and said so in an
+amber band. It reads the members API against a real database now, and the band
+says what it actually found on every load. The pages have moved on since and
+these have not been retaken.
 
 ---
 
@@ -37,17 +39,34 @@ make development
 to 8080 before `make development`, or open the port you chose instead of the one
 below.
 
-Open `http://localhost:8080`. That is the members portal.
+Open `http://localhost:8080`. That is the members portal, signed out.
 
-The identity service is on `http://localhost:8180`. Register the apps against it
-once:
+Nothing can sign in until the apps are registered against the identity service,
+which is one step and is safe to run again:
 
 ```sh
+ORO_IDENTITY_TOKEN="$(docker compose -f compose.yaml -f compose.development.yaml \
+  cp identity:/bootstrap/pat - | tar -xO)" \
 ORO_IDENTITY_URL=http://localhost:8180 python3 tools/identity/configure.py \
   --members-origin http://localhost:8080 \
   --admin-origin   http://localhost:8081 \
-  --door-origin    http://localhost:8082
+  --door-origin    http://localhost:8082 \
+  --mail-host      mail:1025
 ```
+
+Three things about that command, each of which cost somebody an hour.
+
+The token is written once, into a volume, by the identity service's own first
+setup. `docker cp` is the only way to read it: that image is distroless and has
+no shell to run `cat` in.
+
+`ORO_IDENTITY_URL` has to be passed. The default is built from `ORO_HOSTNAME` as
+`https://id.<host>`, which is what a deployment serves and which resolves
+nowhere on a laptop.
+
+`--mail-host` is the catcher `make development` runs. Without it the Register
+button on the sign in screens leads to a code nothing sent, and so does a
+forgotten password. Read the mail at `http://localhost:8025`.
 
 Stop it with `make down`. The database volume is kept.
 
@@ -59,11 +78,14 @@ grants are allowed to carry no approval, once. This is the command that spends
 them:
 
 ```sh
-make bootstrap-admins \
+ORO_IDENTITY_URL=http://localhost:8180 make bootstrap-admins \
   ADMIN1="Ada Byron <ada@example.org>" \
   ADMIN2="Grace Hopper <grace@example.org>" \
   ADMIN3="Katherine Johnson <katherine@example.org>"
 ```
+
+`ORO_IDENTITY_URL` for the same reason as above. A deployment leaves it off and
+the target builds the right name from `.env`.
 
 Run it from a terminal. Each person gets an account, a member record and the
 admin role. Their first sign in password is printed on that terminal and written
@@ -112,9 +134,10 @@ One override file is the whole difference.
 | Scheme | plain HTTP, nothing redirects | HTTPS, and plain HTTP redirects to it |
 | Certificate | none, so nothing to click through | from `ORO_TLS`, either Caddy's local authority or Let's Encrypt |
 | The root serves | the members portal | a 404 saying no application is deployed here yet |
-| `/v1/*` | the contract mock | nothing yet. `services/api` is built but not wired into either shape |
+| `/v1/*` | the members API | the members API |
 | Identity service | `localhost:8180`, loopback only | `id.YOURHOST`, through Caddy |
-| The mock | running | absent. It never reaches a deployment |
+| Mail | a catcher on `localhost:8025`, holding what would have been sent | the lab's own server, configured once by hand |
+| The mock | running on `ORO_MOCK_PORT`, with no route of its own | absent. It never reaches a deployment |
 
 A laptop serves plain HTTP on purpose. Under a local certificate authority Chrome
 shows an interstitial that no automation can click through, and a volunteer gets
@@ -188,12 +211,16 @@ not start while the roles it needs have no names against them.
 
 **Phase 3, member management.**
 
-- [x] The members portal, read only, against the contract mock
+- [x] The members portal: sign in through the identity service, your record and
+      the profile fields you own, your cards, waiver, certifications and the
+      directory, against the members API
 - [x] The legacy import: members, cards, roles and waivers, with every card at
       the slot it had
-- [x] `services/api`, first slice: your own record and the directory, with the
-      database policies deciding every answer. Built ahead of the order and not
-      yet wired into the stack, so the portal still reads the mock
+- [x] `services/api`, ten of the contract's twenty four operations: your own
+      record and how you change it, your cards, waiver, certifications and card
+      eligibility, the directory, and the door events you are allowed to see.
+      Wired into both shapes under `/v1`, with the database policies deciding
+      every answer
 - [ ] Certifications, payments and door events carried across
 
 **Phase 4, admin.** Blocked on a vote at Hack Your Hackerspace.
@@ -240,7 +267,8 @@ make help               # every target, with a line each
 | `make api-identity-test` | the members API accepts a token the real identity service issued, and refuses four kinds it should not | no, own project |
 | `make attributions-check` | the dependency tables in ATTRIBUTIONS.md still match the two lockfiles | no, builds two images |
 | `make import-boundaries` | the layers only import downward, over the Python in `services/` | no |
-| `make api-test` | the first three operations of the members API, against a real Postgres and the real policies | no, own project |
+| `make api-test` | ten operations of the members API, including the two writes, against a real Postgres and the real policies | no, own project |
+| `make names` | every name a Python module uses exists | no |
 | `./tools/ci/voice-gate.sh` | the writing rules, over every tracked file | no |
 | `python3 tools/voice-check/test_voice_check.py` | every ban in rules 1 and 11, on copy that must fail and copy that must pass | no, python only |
 | `python3 tools/voice-check/test_regressions.py` | that the defects the prose gate has already had stay fixed | no, python only |

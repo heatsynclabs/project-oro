@@ -2,9 +2,8 @@
 // per rule 5 of CLAUDE.md: fetching does not render.
 //
 // Every path is relative, so the portal calls the same origin it was served
-// from. Caddy strips /v1 and proxies to the contract mock today, and proxies to
-// services/api when that is wired in. Neither this file nor any page names a
-// host.
+// from. Caddy strips /v1 and proxies to services/api, in both stack shapes.
+// Neither this file nor any page names a host.
 //
 // The access token comes from identity.js, which is the only file that holds
 // one. It is asked for on every call rather than read once, because a token

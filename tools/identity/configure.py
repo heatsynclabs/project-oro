@@ -6,7 +6,8 @@ from the compose file plus a database dump, with no console click that is not
 also in configuration. The compose file creates the instance, its admin and a
 machine account. This creates everything above that: the project, the four
 clients docs/plan/api-design.md section 2 specifies, the GANTRY branding on the
-hosted screens, and self registration turned off on those screens.
+hosted screens, self registration turned on, and the mail server the codes those
+screens ask for are sent through.
 
     tools/identity/configure.py --members-origin http://localhost:8080 \\
       --admin-origin http://localhost:8081 --door-origin http://localhost:8082
@@ -56,12 +57,6 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 # of searching by name and hoping one thing came back.
 PROJECT_ID = "oro-project"
 
-# What an instance configured before this step chose its own identifiers looks
-# like. Adopting what is there beats registering a second one beside it: the
-# portals carry the client ids the first run gave them.
-_GENERATED_INSTEAD = ("held under an identifier the service generated, which is "
-                      "what the older version of this step left behind. Using")
-
 # The project and the clients are registered through the v2 services and the
 # branding through the v1 management API, which is not an inconsistency anybody
 # gets to fix. Every management method this step used to call is marked
@@ -97,7 +92,7 @@ def ensure_project(organisation: str, token: str) -> str:
 
     older = registrations.project_named(PROJECT, token)
     if older is not None:
-        print(f"project {PROJECT}: {_GENERATED_INSTEAD} {older['projectId']}")
+        print(f"project {PROJECT}: {clients.GENERATED_INSTEAD} {older['projectId']}")
         return older["projectId"]
 
     answer = registrations.project_call("CreateProject", {

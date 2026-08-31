@@ -9,8 +9,8 @@
 // this file would be refused by the API and caught by that check.
 //
 // The two sentences this shows are attributes on the form, for the same reason
-// every view carries data-loading and data-loaded: a check with no browser can
-// read the copy where it cannot run the code.
+// every view carries data-loading: a check with no browser can read the copy
+// where it cannot run the code.
 
 "use strict";
 

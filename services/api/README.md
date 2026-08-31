@@ -228,7 +228,7 @@ provider actually issues. `tools/api-against-identity/` is the suite that does:
 it signs a member in on the hosted screens and hands the token that comes back
 to this service. Run it with `make api-identity-test`.
 
-Four ways to make it go red, each of which was run:
+Eleven ways to make it go red, each of which was run:
 
 | Break | What goes red |
 |---|---|

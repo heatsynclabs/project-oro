@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""One check, through a real browser: the members portal loads and its first
-view renders.
+"""One check, through a real browser: the members portal loads and a person
+arriving signed out gets the landing.
 
     ORO_PORTAL_URL=http://localhost:8080 python3 check_first_view.py
 
 Run it through tools/browser-checks/run.sh, which supplies the browser.
 
-Why one check and not a suite. Everything the portal shows past this point
-comes from the contract mock, and the service that will replace the mock is
-being wired now, so a suite written today would be written against something
-about to move. What this proves is the harness: a real browser, on the real
-page, running the real script, with a picture of what it saw.
+Why one check and not a suite. Everything past this point needs a sign in, and
+signing in means a real identity service, a client registered against it, and a
+password. That is a suite worth having and it is not this one. What this proves
+is the harness: a real browser, on the real page, running the real script, with
+a picture of what it saw.
 
 What the no browser suite next door cannot do, and this can. The portal renders
 its views in the browser. Every section in apps/members/index.html arrives
@@ -22,10 +22,14 @@ person gets. The last assertion below is that difference, read twice off the
 same address: the document Caddy served, and then the page in front of a
 person.
 
-What this deliberately does not assert is whether the first view's request
-answered. A signed out visitor gets a panel saying so, that panel is the
-portal's own design, and whether the API on this origin answers is what
-make mock-test and make api-test are for.
+What this deliberately does not assert is anything behind a sign in. A signed
+out visitor gets the landing, which is one page with a way in, because every
+view is about the reader's own things and somebody who has never been here has
+none. Whether the API on this origin answers is what make api-test is for.
+
+It went red on 2026-08-31 and nothing noticed, because the landing arrived the
+day after this file did and make browser-checks is in no CI workflow. HANDOFF.md
+section 2 carries that gap.
 """
 from __future__ import annotations
 
@@ -34,10 +38,10 @@ import sys
 
 from harness import PORTAL_URL, portal_page, run, screenshot
 
-# The route the portal opens on when nobody has asked for anything else. An
-# empty fragment finds no section in apps/members/main.js, so show() falls back
-# to the first one in the document, and that one is /me.
-FIRST_VIEW = "/me"
+# What a person who has never signed in is shown. Not a view: the views are all
+# about the reader's own things, so apps/members/render.js hides every one of
+# them and unhides this instead.
+LANDING_HEADING = "Your membership at HeatSync Labs"
 
 # What a browser tab has to say for a person to know which page they are on.
 TITLE_STARTS = "Members portal"
@@ -59,8 +63,13 @@ def reads(text: str) -> str:
 
 
 def visible_views(page) -> list[str]:
-    """The data-route of every view section a person can currently see."""
-    sections = page.locator("section.view")
+    """The data-route of every view section a person can currently see.
+
+    The landing is a section.view as well, so that it inherits the same
+    spacing, and it carries no data-route because it is not a route. Selecting
+    on the attribute is what keeps it out of this list.
+    """
+    sections = page.locator("section.view[data-route]")
     return [sections.nth(index).get_attribute("data-route")
             for index in range(sections.count())
             if sections.nth(index).is_visible()]
@@ -84,11 +93,11 @@ def views_the_document_shows(page, url: str) -> list[str]:
             if "hidden" not in tag]
 
 
-def test_the_first_view_renders_for_a_person() -> None:
+def test_the_landing_renders_for_a_person_who_is_signed_out() -> None:
     with portal_page() as page:
         # Before the assertions, so a red run still leaves the picture that
         # says why. Half the value of a browser check is the screenshot.
-        path = screenshot(page, "first-view")
+        path = screenshot(page, "landing")
         print(f"Screenshot: {path}")
 
         # The start of the title rather than the whole of it. What follows it
@@ -102,17 +111,28 @@ def test_the_first_view_renders_for_a_person() -> None:
             "address, or apps/members/index.html changed and this check did "
             "not.")
 
-        showing = visible_views(page)
-        assert showing == [FIRST_VIEW], (
-            f"The portal opened showing {showing}, and a person arriving at "
-            f"{PORTAL_URL} should see exactly {[FIRST_VIEW]}. If the list is "
-            "empty, the script did not run or it stopped before it chose a "
-            "route, and the screenshot above shows which.")
+        landing = page.locator("section.view.landing")
+        assert landing.is_visible(), (
+            f"A person arriving signed out at {PORTAL_URL} was shown no "
+            "landing. Either the script did not run, or it decided this "
+            "browser is signed in, and the screenshot above shows which.")
 
-        view = page.locator(f"section.view[data-route='{FIRST_VIEW}']")
-        heading = view.locator("h2").first.inner_text()
-        assert reads(heading) == reads("Your record"), (
-            f"The first view is headed {heading!r} rather than 'Your record'.")
+        heading = landing.locator("h2").first.inner_text()
+        assert reads(heading) == reads(LANDING_HEADING), (
+            f"The landing is headed {heading!r} rather than {LANDING_HEADING!r}.")
+
+        showing = visible_views(page)
+        assert showing == [], (
+            f"The portal opened showing {showing} beside the landing. Every "
+            "view is about the reader's own things and a person who has never "
+            "signed in has none, so a signed out arrival shows none of them.")
+
+        for control, what in ((landing.locator("[data-join]"), "a way to join"),
+                              (landing.locator("[data-sign-in]"),
+                               "a way in for somebody who already has an account")):
+            assert control.is_visible(), (
+                f"The landing offers no {what}. A page with nothing to read and "
+                "no way forward is why the landing exists.")
 
         served = views_the_document_shows(page, PORTAL_URL)
         assert served == [], (

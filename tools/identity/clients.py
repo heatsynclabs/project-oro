@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Registering the three portal clients, and correcting one that has drifted.
 
-Split out of configure.py, which reached the 300 line ceiling in rule 6. That
-file is now the order the steps run in; this one is what a client is.
+Split out of configure.py under the 300 line ceiling in rule 6. That file is
+now the order the steps run in; this one is what a client is.
 """
 from __future__ import annotations
 
@@ -29,6 +29,18 @@ PORTALS = (
 # credentials, because nothing about it involves a person at a browser.
 DOOR_SERVICE = "door-service"
 DOOR_SERVICE_ID = "oro-door-service"
+
+# What an instance configured before this step chose its own identifiers looks
+# like. Adopting what is there beats registering a second one beside it: the
+# portals carry the client ids the first run gave them.
+#
+# Here rather than in configure.py, where it was defined and where the project
+# branch still reads it. The split left this file using the name and the
+# definition behind it, and the one branch that reads it runs only against an
+# instance an older version of this tool configured. tools/names is the gate
+# that now refuses that.
+GENERATED_INSTEAD = ("held under an identifier the service generated, which is "
+                     "what the older version of this step left behind. Using")
 
 
 def public_client(origin: str) -> dict:
@@ -64,7 +76,7 @@ def held_application(project: str, portal: Portal, token: str) -> dict | None:
                           "Nothing was created or changed.")
     older = registrations.application_named(project, portal.name, token)
     if older is not None:
-        print(f"{portal.name}: {_GENERATED_INSTEAD} {older['applicationId']}")
+        print(f"{portal.name}: {GENERATED_INSTEAD} {older['applicationId']}")
     return older
 
 

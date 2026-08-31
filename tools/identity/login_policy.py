@@ -2,8 +2,8 @@
 
 tools/identity/configure.py applies this beside the clients and the branding,
 so one idempotent step decides what a member is offered when they arrive. Its
-own file rather than a section of api.py, which is at 253 of the 300 lines rule
-6 allows, and this has a subject of its own.
+own file rather than a section of api.py, which is calls to the identity
+service and has no business holding a policy.
 
 The Register button is the whole reason this exists. It is on, because this site
 replaces one that has a sign up. It needs a mail server behind it: the screens

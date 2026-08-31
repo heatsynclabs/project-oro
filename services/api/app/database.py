@@ -34,6 +34,12 @@ from psycopg_pool import ConnectionPool
 # rather than a 500, and logs that the database is what refused.
 NO_IDENTITY_REFUSAL = "No identity set on this transaction"
 
+# The sentence link_or_create_member raises when the subject on the token
+# belongs to a member record that was soft deleted. A substring of it, so the
+# database goes on owning the wording and this only has to recognise it.
+# db/migrations/015_removed_records_sign_in.sql is where it is raised.
+REMOVED_RECORD_REFUSAL = "member record that was removed"
+
 # The constraint db/migrations/001_schema.sql gives members.email. psycopg
 # reports it on the diagnostics of a UniqueViolation, and app/main.py turns
 # that one constraint into the contract's 409 and every other into a 500,

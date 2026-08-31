@@ -44,6 +44,11 @@ async def refused_by_the_database(request: Request, refusal: Exception):
         return problems.problem_response(
             problems.UNAUTHENTICATED, request.url.path
         )
+    if database.REMOVED_RECORD_REFUSAL in message:
+        _log.info("refused by the database: %s", message)
+        return problems.problem_response(
+            problems.RECORD_WAS_REMOVED, request.url.path
+        )
     _log.warning("the database refused this request: %s", message)
     return problems.problem_response(problems.UNEXPECTED, request.url.path)
 
@@ -110,9 +115,12 @@ async def refused_before_the_endpoint(request: Request,
 # Pydantic's sentence for a field an operation does not take is "Extra inputs
 # are not permitted", which reads as a machine talking about itself. The rest
 # of its messages name the value and are worth passing on as they are.
-NOT_A_FIELD_HERE = ("This operation does not take a field by that name, so "
-                    "nothing was saved. docs/api/members-v1.yaml lists what it "
-                    "does take, and an admin sets the rest.")
+# Read by a person as often as by a client, because the members portal shows
+# each field's message beside the box it is about. So it says what to do first
+# and where the full list is second.
+NOT_A_FIELD_HERE = ("This does not change that, so nothing was saved. An admin "
+                    "sets it. docs/api/members-v1.yaml lists what this "
+                    "operation does take.")
 
 
 def _readable(named: dict) -> str:

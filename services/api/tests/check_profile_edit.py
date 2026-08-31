@@ -158,6 +158,23 @@ def test_a_change_carrying_nothing_reads_the_record_back():
     assert answer.json()["name"] == "Fen", answer.json()
 
 
+def test_a_null_on_a_field_that_cannot_be_null_is_refused_by_name():
+    """Four columns are NOT NULL and the contract types none of them nullable.
+
+    A null used to pass the model, reach the UPDATE, and come back as the
+    database's NotNullViolation turned into one sentence: "Send a name". So a
+    member who cleared their directory listing was told to send a name. The
+    model refuses it now, and names the field the null was on.
+    """
+    for field in ("name", "listed_in_directory", "email_visible",
+                  "phone_visible"):
+        refused = change(FEN, {field: None})
+        assert refused.status == 422, f"{field}: {refused.status} {refused.body}"
+        errors = refused.json()["errors"]
+        assert [named["field"] for named in errors] == [field], (
+            f"a null on {field} was reported against {errors}")
+
+
 def test_a_sign_in_with_no_member_record_cannot_change_a_profile():
     refused = change("sub-c-nobody-editing", {"name": "Nobody"})
     assert refused.status == 401, f"{refused.status}: {refused.body}"

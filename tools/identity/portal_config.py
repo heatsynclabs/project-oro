@@ -14,12 +14,13 @@ import json
 import pathlib
 
 import api
+import clients
 
 # The checkout, so the document lands beside the portal whatever the cwd is.
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
-def write_configuration(portal: Portal, application: dict, origin: str) -> None:
+def write_configuration(portal: clients.Portal, application: dict, origin: str) -> None:
     """Put the client id where the portal that signs in with it can read it.
 
     Zitadel generates one per instance, so no portal can carry a client id in

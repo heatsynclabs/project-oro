@@ -55,8 +55,8 @@ INVALID_REQUEST = Problem(
     status=422,
     title="That request could not be applied",
     detail=(
-        "One field in this request is not usable, so nothing was saved. The "
-        "errors list says which one and what it expects."
+        "One field in this request is not usable, so nothing was saved. "
+        "Every field it could not use is named below with what it expects."
     ),
 )
 
@@ -76,9 +76,9 @@ NO_MEMBER_RECORD = Problem(
     title="This sign in is not linked to a member record",
     detail=(
         "The lab knows this sign in and has no member record joined to it, so "
-        "there was nothing to read. Sending POST /me with your name writes "
-        "one, which is what the members portal does on a first sign in. If the "
-        "lab already has a record for you, an admin joins it to this sign in."
+        "there was nothing to read. Writing one is the next thing to do, and "
+        "the members portal offers it as a button. If the lab already has a "
+        "record for you, an admin joins it to this sign in."
     ),
 )
 
@@ -108,6 +108,28 @@ EMAIL_ALREADY_KNOWN = Problem(
         "An email address identifies one member, and another member record "
         "already carries this one, so nothing was saved. An admin can find "
         "that record and merge the two."
+    ),
+)
+
+# Raised by link_or_create_member in db/migrations/015_removed_records_sign_in.sql,
+# never by a check here. A member whose record was removed reads as no member
+# at all, so every read sends them to POST /me, and before 015 that operation
+# fell through to an INSERT that hit members_identity_subject_key and answered
+# 500 every time, forever.
+#
+# 409 rather than 404, because the record is there and the state it is in is
+# what refuses the request, and because POST /me already declares 409 in
+# docs/api/members-v1.yaml. Removal is reversible by design, per the deleted_at
+# comment in db/migrations/001_schema.sql, so the sentence names the way back.
+RECORD_WAS_REMOVED = Problem(
+    slug="record-was-removed",
+    status=409,
+    title="Your member record was removed",
+    detail=(
+        "This sign in belongs to a member record the lab removed, so nothing "
+        "was read or written. Removing a record is reversible and an admin "
+        "restores it. Signing up again would leave a second record beside the "
+        "first, so this refuses instead."
     ),
 )
 

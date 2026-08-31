@@ -287,11 +287,17 @@ and `items`.
 
 `api.js` fetches and never touches the DOM. `identity.js` talks to the identity
 service and never touches the DOM either, and `session.js` under it holds what
-comes back and calls nothing. `render.js` and `profile.js` write to the DOM and
-never fetch. `main.js` is the only file that does both, which is what a
-composition root is for.
+comes back and calls nothing. `render.js`, `chrome.js` and `profile.js` write to
+the DOM and never fetch. `main.js` is the only file that does both, which is
+what a composition root is for.
 
-Six files rather than three because each ran past the 300 line ceiling in rule
+`render.js` puts a record on a screen. `chrome.js` decides what the screen is:
+who is signed in, the band under the masthead, and which of the portal's two
+shapes a person is looking at. Signed in it is a set of views with a nav above
+them; signed out it is the landing, one page with a way in, because every view
+is about the reader's own things and somebody who has never been here has none.
+
+Eight files rather than three because each ran past the 300 line ceiling in rule
 6 as one. There is no `import` statement anywhere in this tree, deliberately:
 ADR 0006 makes the first one the condition that brings `eslint-plugin-boundaries`
 in, and with it a lockfile and a hundred packages. These are classic scripts and
@@ -308,8 +314,8 @@ app that wants a card is what should move them.
 Every sentence a reader sees is in `index.html`, the error blocks and the two
 words a save reports included. The blocks are templates the renderer clones, and
 those two words are attributes on the form, the way every view carries
-`data-loading` and `data-loaded`. That is what lets a check with no browser read
-the copy.
+`data-loading` and, where it holds a list, `data-one` and `data-many`. That is
+what lets a check with no browser read the copy.
 
 `index.html` is the one file in this app past the 300 line ceiling, listed in
 `tools/ceilings/exemptions.txt` with that as the reason: splitting it takes a
@@ -367,6 +373,8 @@ matter to anybody reading that suite.
   `github_url` are fields nothing on this page shows, and a box that changes
   something a member cannot then read is a box whose effect nobody can check.
   Both wait on a decision rather than on code.
+- One browser check exists, `tools/browser-checks/check_first_view.py`, and it
+  is in no CI workflow. Nothing else here has been driven through a browser.
 - The entries view reads one page and offers no way to the next. The contract
   answers `next_cursor` and nothing here sends it back.
 - No theme switch. Bare `:root` in `packages/gantry-tokens` carries the paper

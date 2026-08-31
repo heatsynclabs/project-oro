@@ -162,7 +162,11 @@ paths:
         Card access is decided by a vote of cardholders.
 
         Changing your `email` clears its verified date, and you cannot set that
-        date yourself. Losing that date costs the member nothing: an unconfirmed
+        date yourself. The trigger that clears it,
+        `enforce_profile_self_edit` in `db/migrations/004_security.sql`,
+        returns early for a caller holding admin, so an admin changing their
+        own address here keeps the date. That is a carve out nobody decided on
+        purpose and it is written down here until somebody does. Losing that date costs the member nothing: an unconfirmed
         address is a valid state and no operation here refuses anybody for it.
         An address that already belongs to another member is refused, because one
         address identifies one member.
@@ -263,7 +267,26 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Member' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
-        '409': { $ref: '#/components/responses/EmailAlreadyKnown' }
+        '409':
+          description: >-
+            Two refusals share this status on this operation. The address in
+            the body belongs to another member record, which is
+            `email-already-known`, or this sign in belongs to a member record
+            the lab removed, which is `record-was-removed`. The `type` on the
+            problem detail is what tells them apart, and neither wrote
+            anything.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetail' }
+              example:
+                type: https://oro.heatsynclabs.org/errors/record-was-removed
+                title: Your member record was removed
+                status: 409
+                detail: >-
+                  This sign in belongs to a member record the lab removed, so
+                  nothing was read or written. Removing a record is reversible
+                  and an admin restores it. Signing up again would leave a
+                  second record beside the first, so this refuses instead.
         '422': { $ref: '#/components/responses/Invalid' }
 
   /me/cards:
@@ -1253,6 +1276,32 @@ components:
               already carries this one, so nothing was saved. An admin can find
               that record and merge the two.
 
+    RecordWasRemoved:
+      description: >-
+        This sign in belongs to a member record the lab removed. A removed
+        record reads as no member at all, so `GET /me` answers
+        `no-member-record` and names `POST /me`, and this is what that
+        operation answers rather than writing a second record beside the first.
+        Removal is reversible and an admin restores it.
+
+        Referenced by no operation, the way `NoSuchPath` is not, and for a
+        different reason. The 409 on `POST /me` carries two slugs and OpenAPI
+        allows one response per status, so that operation declares the pair
+        inline and this is here to be read.
+        `docs/api/contract-review-notes.md` is where that came up.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetail' }
+          example:
+            type: https://oro.heatsynclabs.org/errors/record-was-removed
+            title: Your member record was removed
+            status: 409
+            detail: >-
+              This sign in belongs to a member record the lab removed, so
+              nothing was read or written. Removing a record is reversible and
+              an admin restores it. Signing up again would leave a second
+              record beside the first, so this refuses instead.
+
     NoSuchPath:
       description: >-
         Nothing is served at that path. Referenced by no operation, because a
@@ -1303,7 +1352,8 @@ components:
             status: 422
             detail: >-
               One field in this request is not usable, so nothing was saved.
-              The errors list says which one and what it expects.
+              Every field it could not use is named below with what it
+              expects.
             errors:
               - field: website_url
                 detail: A link starts with http:// or https://

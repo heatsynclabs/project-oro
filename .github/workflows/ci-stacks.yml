@@ -122,6 +122,22 @@ jobs:
       - name: Every ceiling in rule 6
         run: ./tools/ceilings/run.sh
 
+  names:
+    name: Undefined names
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # One bug built this. clients.py was split out of configure.py carrying a
+      # use of a constant that stayed behind, and the branch that reads it runs
+      # only against an instance an older version of the tool configured, which
+      # is the deployment case and the one no suite reaches. The whole identity
+      # suite was green with a NameError in the file. ruff reads it with F821,
+      # and the gate's own six checks plant one broken name at a time and
+      # require each reported.
+      - name: Every name a Python module uses exists
+        run: ./tools/names/run.sh
+
   boundaries:
     name: Import boundaries
     runs-on: ubuntu-latest
@@ -196,9 +212,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      # The first slice of the members API, three of the contract's twenty
-      # three operations, against a real Postgres carrying the real migrations
-      # rather than a stubbed query builder. The suite builds its own database,
+      # Ten of the contract's twenty four operations, wired into both stack
+      # shapes, against a real Postgres carrying the real migrations rather
+      # than a stubbed query builder. The suite builds its own database,
       # its own RSA key, its own JWKS server and the service image, all named
       # after its own process id, and removes every one of them.
       #
@@ -213,7 +229,7 @@ jobs:
       # Docker, python3, openssl and curl are all on the runner image, so this
       # job installs nothing. The build pulls from PyPI, which is the one thing
       # here that reaches the network for something other than an image.
-      - name: Three operations, against the real policies
+      - name: Ten operations, against the real policies
         run: ./services/api/tests/run.sh
 
   api_identity:

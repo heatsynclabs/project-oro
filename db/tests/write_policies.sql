@@ -120,6 +120,18 @@ CALL t.must_query('signing in again is idempotent',
   $$SELECT link_or_create_member('sub-win','win@example.test','Walk In Win') =
            (SELECT id FROM members WHERE email='win@example.test')$$, 'true');
 
+CALL t.note('a sign in whose record was removed is told so, not duplicated');
+UPDATE members SET deleted_at = now() WHERE email='win@example.test';
+CALL t.must_fail('signing in after removal does not write a second record',
+  $$SELECT link_or_create_member('sub-win', NULL::citext, 'Walk In Win')$$,
+  'was removed');
+CALL t.must_query('and no second record was written',
+  $$SELECT count(*) FROM members WHERE identity_subject='sub-win'$$, '1');
+UPDATE members SET deleted_at = NULL WHERE email='win@example.test';
+CALL t.must_query('restoring the record lets that sign in work again',
+  $$SELECT link_or_create_member('sub-win', NULL::citext, 'Walk In Win') =
+           (SELECT id FROM members WHERE email='win@example.test')$$, 'true');
+
 CALL t.note('migrations are an operator action, not something the app can touch');
 SET ROLE oro_api;
 CALL t.must_fail('the app role cannot read the migration log',

@@ -1,10 +1,12 @@
 """Turning a verified sign in into a member record. The only write here.
 
 `link_or_create_member` in db/migrations/008_system_paths.sql is the one path
-in this system that writes a member without an admin, and until POST /me
-existed nothing called it: a person the identity service knew and the members
-database did not was answered 401 and told to find an admin. Finding 5 of
-docs/api/contract-review-notes.md is that gap from the contract's side.
+in this system that writes a member without an admin.
+tools/bootstrap/seat_one_admin.sql calls it to seat the first three admins, and
+until POST /me existed that was its only caller: a person the identity service
+knew and the members database did not was answered 401 and told to find an
+admin. Finding 5 of docs/api/contract-review-notes.md is that gap from the
+contract's side.
 
 **No address from the request reaches that function**, and everything below
 turns on it. The function claims an existing record when the address matches

@@ -2,15 +2,18 @@
 # service.
 #
 # Copy .env.example to .env before the first run. Everything here is a thin
-# wrapper over docker compose, so any of it can be run by hand when make is in
-# the way.
+# wrapper, so any of it can be run by hand when make is in the way.
 
 # A laptop adds the mock, points Caddy at the development routes, and publishes
 # the identity service on a port a browser can open.
 DEV = docker compose -f compose.yaml -f compose.development.yaml
 
+# The identity service's three targets, which are one subject and were the part
+# of this file that took it past the ceiling in rule 6.
+include make/identity.mk
+
 .DEFAULT_GOAL := help
-.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure bootstrap-admins migration-test ceilings backup restore backup-test api-test api-identity-test import-boundaries attributions attributions-check browser-checks
+.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure bootstrap-admins migration-test ceilings names backup restore backup-test api-test api-identity-test import-boundaries attributions attributions-check browser-checks
 
 help:
 	@echo "make up                start the stack in the background"
@@ -23,13 +26,14 @@ help:
 	@echo "make mock-test         prove the mock serves docs/api/members-v1.yaml"
 	@echo "make development       start the stack with the portal and the mock too, on plain HTTP"
 	@echo "make development-test  prove the portal and the mock share one origin"
-	@echo "make portal-test       prove the members portal against the contract mock"
+	@echo "make portal-test       prove the members portal, through Caddy, with no browser"
 	@echo "make browser-checks    open the portal in a real browser. Needs a stack already up"
 	@echo "make identity-test     prove the identity service holds the lab's existing passwords"
 	@echo "make identity-configure  register the project, the clients and the branding"
 	@echo "make bootstrap-admins  seat the first three admins, who can then administer everything"
 	@echo "make migration-test    prove the legacy import, and prove it refuses dirty data"
 	@echo "make ceilings          check every file and function against the ceilings in rule 6"
+	@echo "make names             check that every name a Python module uses exists"
 	@echo "make import-boundaries check that the layers in rule 5 only import downward"
 	@echo "make backup            write a backup of the members database outside this repository"
 	@echo "make restore FILE=...  restore one. It refuses over a database that holds members"
@@ -50,12 +54,9 @@ help:
 # not there. HANDOFF.md section 7, "pg_isready lies".
 #
 # It also waits for identity_bootstrap to have exited, because that one runs to
-# completion rather than staying up.
-#
-# 300 seconds because the identity service is the slow one on a first run: it
-# applies its own schema and seeds an instance before it answers. The database
-# behind it can take 80 seconds to give up on its own, and pulling the images
-# happens before the wait starts at all.
+# completion rather than staying up. 300 seconds because the identity service
+# applies its own schema and seeds an instance on a first run before it answers,
+# and pulling the images happens before the wait starts at all.
 up:
 	@test -f .env || { echo "No .env file, so nothing was started. Copy .env.example to .env, set the values in it, and run make up again." >&2; exit 1; }
 	docker compose up --detach --wait --wait-timeout 300 || { echo "The stack did not come up, and the error above says why. If it names a variable, fix that line in .env. If it names a service, make logs shows what that service printed. If it says db is unhealthy on a machine where this stack used to work, read the header of db/init/001_identity_role.sql: that file runs only against an empty data directory, so a volume older than it has no identity database and the healthcheck now asks for one." >&2; exit 1; }
@@ -88,6 +89,7 @@ check:
 	python3 tools/voice-check/test_behaviour.py
 	./tools/ci/voice-gate.sh
 	./tools/ceilings/run.sh
+	./tools/names/run.sh
 	./tools/import-boundaries/run.sh
 	python3 tools/attributions/test_attributions.py
 	./tools/mock/tests/run.sh
@@ -106,21 +108,15 @@ mock-test:
 	./tools/mock/tests/run.sh
 
 # The stack a person can open in a browser: the portal at the root and the
-# contract mock under /v1, both behind Caddy on one origin, over plain HTTP.
-# Plain because a certificate from Caddy's local authority costs a volunteer an
-# administrator password and a root certificate in their trust store before a
-# browser will open a local page. ADR 0003.
+# members API under /v1, on one origin, over plain HTTP. Plain because a
+# certificate from Caddy's local authority costs a volunteer an administrator
+# password and a root certificate in their trust store first. ADR 0003.
 #
 # The mock lives in compose.development.yaml, an override rather than a profile,
 # so make up is unchanged and a deployment never carries it. An override has one
-# way to ask for it. The profile had two that disagreed, and one of them started
-# the mock while leaving Caddy serving the deployment 404 in front of it. It has
-# had no route since the members API took /v1, and make mock-test reaches it on
-# its own port the way it always has.
-#
-# The same 300 seconds make up allows, and this shape needs more of it: the mock
-# reads the whole contract before it answers, and slower still on a machine that
-# has to emulate linux/amd64 to run it.
+# way to ask for it; the profile had two that disagreed. The mock has had no
+# route since the members API took /v1, and make mock-test reaches it on its own
+# port. The same 300 seconds make up allows, and this shape needs more of them.
 development:
 	@test -f .env || { echo "No .env file, so nothing was started. Copy .env.example to .env, set the values in it, and run make development again." >&2; exit 1; }
 	@$(DEV) up --detach --wait --wait-timeout 300 || { echo "The development stack did not come up, and the error above says why. If it names a variable, fix that line in .env. If it names a service, make logs shows what that service printed. If it says db is unhealthy on a machine where this stack used to work, see the note under make up." >&2; exit 1; }
@@ -138,69 +134,15 @@ portal-test:
 # has run rather than the document Caddy served. One check, and a screenshot
 # every time, red or green. ADR 0015 chose the driver.
 #
-# Deliberately not in make check, and it is the only target here that is not in
-# it for this reason: it checks a stack somebody else started rather than
-# bringing up its own. Start one first:
+# The only target here that is not in make check, because it drives a stack
+# somebody else started rather than bringing up its own. Start one first with
+# make development. That cost something once: the check went red for a day
+# against a portal that was working, and nothing noticed.
 #
-#   make development
-#   make browser-checks
-#
-# It reads ORO_PORTAL_URL, default http://localhost:8080, so a laptop serving
-# on another ORO_HTTP_PORT passes its own. Screenshots land in ORO_SHOT_DIR,
-# default $$HOME/oro-screenshots, which is outside the working tree on purpose.
+# ORO_PORTAL_URL defaults to http://localhost:8080 and ORO_SHOT_DIR to
+# $$HOME/oro-screenshots, which is outside the working tree on purpose.
 browser-checks:
 	./tools/browser-checks/run.sh
-
-# The synthetic half of the phase 2 password proof: hashes written by the
-# library the legacy application uses, imported, and signed in with. Its own
-# stack on its own ports, and it is the slowest suite here because the identity
-# service applies its own schema on first start.
-identity-test:
-	./tools/identity/tests/run.sh
-
-# Register the project, the four clients and the GANTRY branding against a
-# running stack. Idempotent, so it is safe to run again after changing an
-# origin. It reads the bootstrap token out of the container, which is the only
-# way to read it: that image is distroless and has no shell.
-#
-# The origins are the deployment's, from .env. A laptop passes its own:
-#
-#   tools/identity/configure.py --members-origin http://localhost:8080 #     --admin-origin http://localhost:8081 --door-origin http://localhost:8082
-identity-configure:
-	@test -f .env || { echo "No .env file. Copy .env.example to .env and set the values in it." >&2; exit 1; }
-	@ORO_IDENTITY_TOKEN="$$(docker compose cp identity:/bootstrap/pat - 2>/dev/null | tar -xO)" 	 ORO_IDENTITY_URL="https://id.$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)" 	 python3 tools/identity/configure.py 	   --members-origin "https://$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)" 	   --admin-origin "https://admin.$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)" 	   --door-origin "https://door.$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)" \
-	   $$(grep -q '^ORO_MAIL_HOST=' .env && echo --mail-host "$$(grep '^ORO_MAIL_HOST=' .env | cut -d= -f2)")
-
-# The first three admins. Nothing else in this repository can make one: the
-# database allows three admin grants with no approval behind them, and after
-# that a grant needs a second admin to approve it. Three rather than two so the
-# lab has a spare, per docs/plan/people-and-custody.md section 1.
-#
-#   make bootstrap-admins ADMIN1="Ada Byron <ada@example.org>" \
-#     ADMIN2="Grace Hopper <grace@example.org>" \
-#     ADMIN3="Katherine Johnson <katherine@example.org>"
-#
-# Run it from a terminal. Each new admin gets a password that is printed there
-# and written to no file, and the command refuses rather than seating people
-# whose passwords nobody can read. Safe to run again: it reports what is already
-# seated and changes nothing.
-#
-# The origins are the deployment's, from .env, the same way identity-configure
-# reads them. A laptop passes its own ORO_IDENTITY_URL:
-#
-#   ORO_IDENTITY_URL=http://localhost:8180 make bootstrap-admins ADMIN1=...
-bootstrap-admins:
-	@test -f .env || { echo "No .env file. Copy .env.example to .env and set the values in it." >&2; exit 1; }
-	@if [ -z "$(ADMIN1)" ] || [ -z "$(ADMIN2)" ] || [ -z "$(ADMIN3)" ]; then \
-	  echo 'Name three people, each as a name and an address:' >&2; \
-	  echo '  make bootstrap-admins ADMIN1="Ada Byron <ada@example.org>" ADMIN2=... ADMIN3=...' >&2; \
-	  echo 'For any other number of people, tools/bootstrap/seat_admins.py takes --admin as many times as you name it.' >&2; \
-	  exit 1; \
-	fi
-	@ORO_IDENTITY_TOKEN="$$(docker compose cp identity:/bootstrap/pat - 2>/dev/null | tar -xO)" \
-	 ORO_IDENTITY_URL="$${ORO_IDENTITY_URL:-https://id.$$(grep '^ORO_HOSTNAME=' .env | cut -d= -f2)}" \
-	 python3 tools/bootstrap/seat_admins.py \
-	   --admin "$(ADMIN1)" --admin "$(ADMIN2)" --admin "$(ADMIN3)"
 
 # The legacy import, eleven cases. Ten import the same fixture: three carry it
 # and seven are refused, each for a reason the suite checks by name. The
@@ -218,6 +160,12 @@ ceilings:
 # graph, so a violation one import deep is caught the same way a direct one is.
 # ADR 0006 chose the tool. ADR 0011 records how it arrives, which is an image
 # this repository builds, because nobody publishes one.
+# Every name a Python module uses has to exist. ruff reads it with F821, out of
+# pyflakes, in the same pinned image the ceilings gate uses. tools/names/run.sh
+# carries the bug it was built for.
+names:
+	./tools/names/run.sh
+
 import-boundaries:
 	./tools/import-boundaries/run.sh
 
@@ -263,9 +211,8 @@ backup:
 #
 # The confirmation has to be typed on the command line. make imports the
 # environment into its own variables, so a plain $(OVERWRITE) would read an
-# exported OVERWRITE too, and one export would arm every later restore in that
-# shell with nothing on the command line to see. The whole argument for naming
-# the count is that the command carries it. $(origin) is how make tells a
+# exported one too, and a single export would arm every later restore in that
+# shell with nothing on the command line to see. $(origin) is how make tells a
 # command line variable from an inherited one.
 restore:
 	@test -f .env || { echo "No .env file, so docker compose cannot read compose.yaml and nothing was restored. Copy .env.example to .env and run make restore again." >&2; exit 1; }

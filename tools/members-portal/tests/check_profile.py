@@ -184,8 +184,8 @@ def test_the_three_kinds_of_field_are_grouped_and_each_group_says_what_it_is():
 def test_the_page_says_what_happened_when_a_member_saves():
     """A save that reports nothing reads as a save that did not happen. Both
     sentences are attributes on the form rather than strings in a script, for
-    the same reason every view carries data-loading and data-loaded: it is what
-    lets this check read the copy without running the page."""
+    the same reason every view carries data-loading: it is what lets this check
+    read the copy without running the page."""
     form = FORMS[0]
     for said in ("data-saving", "data-saved"):
         assert form.get(said), f"the form carries no {said} sentence"
@@ -197,6 +197,24 @@ def test_the_page_says_what_happened_when_a_member_saves():
     assert page.carrying(HTML, "data-save-error"), \
         "the form has nowhere to show a refusal, so it would take the form off " \
         "the screen along with what the member had typed"
+
+
+def test_a_refusal_is_announced_and_not_only_shown():
+    """The success path had a live region and the refusal path did not.
+
+    profile.js clears the status region and writes the refusal into a plain
+    block underneath, so a member using a screen reader pressed Save, heard
+    nothing at all, and the sentence sat under the button unread. Every view
+    level error block had the same shape, and the first sign in panel is one of
+    them. role=alert is what makes them announce.
+    """
+    for attribute in ("data-save-error", "data-error"):
+        blocks = page.carrying(HTML, attribute)
+        assert blocks, f"the page has no {attribute} block"
+        silent = [block for block in blocks if block.get("role") != "alert"]
+        assert not silent, (
+            f"{len(silent)} of the {len(blocks)} {attribute} blocks carry no "
+            "role, so a refusal written into one is announced to nobody")
 
 
 def test_a_refusal_that_names_a_field_is_shown_against_that_field():

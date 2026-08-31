@@ -34,9 +34,9 @@ from harness import (MISSING, PORTAL, ROOT, contract,  # noqa: E402
 HTML = fetch("/").body
 VIEWS = page.carrying(HTML, "data-source")
 
-# Every command the page tells a reader to run, taken out of the copy rather
-# than listed again here. A sentence that names a target nobody kept is the
-# defect these are checked against.
+# Every command the page tells a reader to run. It used to be checked against
+# the Makefile's targets; since 2026-08-31 the list has to be empty, because
+# this is a members site. check_sign_in.py holds the reason.
 NAMED_TARGETS = sorted(set(re.findall(r"<code>make ([a-z-]+)</code>", HTML)))
 
 
@@ -103,33 +103,35 @@ def test_a_reader_with_no_javascript_is_told_so():
 def test_the_error_copy_a_reader_sees_is_in_the_page():
     """The renderer clones these, so the sentences ship with the document and
     this check can read them. An error names what happened, what the system did,
-    and what to do next."""
+    and what the reader does next."""
     for identifier in ("api-unreachable", "api-problem"):
         assert f'id="{identifier}"' in HTML, f"no template with id {identifier}"
     assert "did not answer" in HTML, "nothing tells a reader the API was silent"
-    assert "make development" in HTML, "nothing tells a reader how to start the mock"
+    assert "Nothing was read or changed" in HTML, \
+        "nothing tells a reader that the failed request left their record alone"
 
 
-def test_every_command_the_error_copy_names_is_a_target_that_exists():
-    """A sentence that sends a volunteer to a command nobody kept wastes the
-    one minute they have, at the hour they have least of it."""
-    assert NAMED_TARGETS, "the page names no command, so it tells a reader nothing to run"
-    makefile = (ROOT / "Makefile").read_text()
-    for target in NAMED_TARGETS:
-        assert re.search(rf"^{target}:", makefile, re.M), \
-            f"the page sends a reader to make {target}, which the Makefile does not define"
+def test_the_error_copy_asks_a_member_to_do_something_a_member_can_do():
+    """It used to send them to make development and make logs.
+
+    That was honest while this was a developer's page and became wrong the day
+    it became a members site. A member has two moves: try again, and tell
+    somebody. Both have to be on the page, and no command may be.
+    """
+    assert NAMED_TARGETS == [], (
+        f"the page tells a member to run {NAMED_TARGETS}, and a member at "
+        "members.heatsynclabs.org has no terminal. An operator reads "
+        "docs/runbooks/ instead.")
+    assert "Try again" in HTML, "the error copy never offers the obvious move"
+    assert "tell an admin" in HTML, \
+        "the error copy names nobody to go to when trying again does not work"
 
 
-def test_the_logs_target_the_page_names_reaches_the_mock():
-    """The page sends a reader to make logs to find out why nothing answered,
-    and the mock is the thing that did not answer. Compose omits a service it
-    was not told about, so a target that reads only compose.yaml prints caddy
-    and db and leaves out the one the reader came for.
-
-    This asserts what the reader is shown, not how. The mechanism has already
-    changed once, from a profile wildcard to the override file, and what the
-    reader needs did not change with it."""
-    assert "logs" in NAMED_TARGETS, "the page sends nobody to the logs"
+def test_the_stack_under_test_carries_the_mock():
+    """Compose omits a service it was not told about, so a suite that reads
+    only compose.yaml brings up caddy and db and leaves out the one several
+    checks below reach for. The page used to be what proved this, by naming
+    make logs; it no longer names anything, so this asks compose directly."""
     printed = harness.compose_logs()
     assert "mock" in printed, \
         f"the logs of project {harness.PROJECT} carry nothing from the mock. " \

@@ -31,41 +31,44 @@ This table is the single place this is tracked. Update it as things land.
 | Thing | State |
 |---|---|
 | `db/migrations/` schema, rules, RLS, immutability | **Built.** Applies clean from nothing |
-| `db/tests/` and `db/tests/run.sh` | **Built.** 186 assertions, deterministic |
+| `db/tests/` and `db/tests/run.sh` | **Built.** 189 assertions across ten files, deterministic |
 | `db/seed/001_reference.sql` | **Built.** Tiers, roles, governance parameters |
 | `tools/voice-check/` prose gate | **Built.** 77 tests |
 | `tools/mock/` mock server for the API contract | **Built.** `make mock-test`, 14 checks, run by CI. This row said 13 until 2026-08-29, when the suite printed 14/14 and nobody had changed it |
-| `tools/development/tests/run.sh` | **Built.** 23 checks over both stack shapes, `make development-test`. It reads the deployment's certificate issuer, asserts a laptop answers plain HTTP with no redirect, and calls the identity service under `id.` on the deployment and on its own port on a laptop. In CI |
+| `tools/development/tests/run.sh` | **Built.** 33 checks over both stack shapes, `make development-test`. It reads the deployment's certificate issuer, asserts a laptop answers plain HTTP with no redirect, calls the identity service under `id.` on the deployment and on its own port on a laptop, and asserts that neither shape serves a contract mock under `/v1`. In CI |
 | `.githooks/commit-msg` | **Built.** Install it, see section 3 |
 | The plan documents | **Written.** Reviewed adversarially twice |
 | The identity service, in the stack | **Built.** Zitadel 4.17.1 in `compose.yaml` with its own database and login on the existing Postgres server, ten minute access tokens, and a first instance created from configuration with no console click. Reached at `id.HOSTNAME` on a deployment and on `ORO_IDENTITY_PORT` on a laptop. [ADR 0004](docs/decisions/0004-identity-service.md) |
-| `tools/identity/` password proof | **Built.** 16 checks, part of `make identity-test`, in CI. A further 6 checks in `check_api_refusals.py` need nothing running and go first: they hold `api.search` to reporting a refused search as a refusal, which it did not do until 2026-08-28, and to raising something a check suite can catch. Part (a) of the phase 2 proof: hashes written by bcrypt-ruby at cost 10 with no pepper, imported and signed in with. It found a real defect, in `tools/identity/README.md` |
+| `tools/identity/` password proof | **Built.** 16 checks, part of `make identity-test`, in CI. Part (a) of the phase 2 proof: hashes written by bcrypt-ruby at cost 10 with no pepper, imported and signed in with. It found a real defect, in `tools/identity/README.md`. Two suites beside it need nothing running and go first, so a fault in how a refusal is read, or in the command that can remove somebody's account, is reported before a container starts: 7 checks in `check_api_refusals.py`, which hold `api.search` to reporting a refused search as a refusal rather than as an empty result and hold an unreachable service to a sentence rather than a traceback, and 12 in `check_sign_ins.py` |
 | `tools/backup/` backup and the restore drill | **Built.** `make backup`, `make restore`, `make backup-test`, in CI. Gate one of rule 12, which is the first thing above every phase. A backup is two files: the database archive and a roles file, because `oro_api` and `door_reader` are cluster roles that a database archive does not carry, and the archive is full of `GRANT ... TO oro_api`, so a restore without them dies on the first grant. An earlier version of this row, and the commit message that introduced it, said every policy names one of those roles. That is false and was measured: no policy in `db/migrations` names a role at all, every one of them defaults to PUBLIC. The grants are the reason, not the policies. The drill backs up a migrated database, destroys the cluster, restores, and compares 95 things including every card's slot, then makes eight further attempts that have to be refused or to change exactly what they claim. A restore over a database holding members is refused until the caller names how many they are destroying, on the command line: an exported variable is refused outright, because make imports the environment and that would arm every later restore in the shell.
 
 Stopping a restore stops it. `docker exec` does not forward a signal, so an earlier version went on and committed while the operator's terminal had stopped printing; the connection is named and terminated now, and a test kills a restore part way and requires the database not to have moved. `kill -9` is still a limit and is written down in three places rather than fixed, because nothing catches it. The archive is streamed onto the container's `/dev/shm` so no copy of the members database lands on a disk, which is why `compose.yaml` now sets `shm_size: 256mb`: the Docker default is 64MB and a restore refuses an archive that does not fit. That 256 carries an assumption about the size of the real dump, stated where it is set. Also here: `roles_the_archive_needs.sh`, `tests/checks.sh` and `tests/what_a_restore_changes.sh` **It proves the mechanism, not the lab's data**: phase 0 still needs a shell on hsl-web. No timer and no offsite copy, so a fire in the lab takes the backups with the server |
 | `COMMENT ON` for every table and column | **Built.** `db/migrations/014_column_comments.sql` writes the 147 that were missing, and `db/tests/comments.sql` is the gate rule 10 names, widened from tables to columns. Measured on 2026-08-29 against a database built from the migrations and the seed: 17 relations, 16 tables and the `member_directory` view, and 159 columns between them, of which 12 carried a comment. An earlier version of this row said 12 of 150, which came from parsing `db/migrations` rather than from a database and missed the view's 8 columns and one more. Two comments say that nothing reads the column: `tiers.notes` is set by no seed row, selected by nothing, and absent from the `Tier` object in the contract, and `certifications.legacy_id` has no legacy table behind it. **Four passes have been over these comments and the fourth is the one worth knowing about.** The first wrote them, the second verified them and found 55 defects, the third audited them and found 36 more. The fourth read what actually reached the database rather than what the file says, and found that applying the third's corrections had garbled 25 of the 147: SQL string literal syntax pasted into the prose, a sentence written twice, and one full stop spliced onto a comma. Every one of them passed the gate, because the gate read comments for absent text and for banned characters and never for coherence. It reads for coherence now. The gate asks five questions and watches each one fail against a table it makes and drops: a relation or column with no comment, a comment of nothing but whitespace of any kind, a comment carrying a character rule 11 bans, quoting that leaked out of the migration, a sentence written twice, and a full stop followed by a comma. The dash question reads table and view comments as well as column comments, which it did not until the fourth audit measured an em dash and an emoji sitting in a table comment while the gate said none. One consequence for anybody adding a comment: no standalone quote character, so the file says at time zone UTC rather than quoting it |
-| `docs/runbooks/` | **Started.** One file, the restore runbook, which is what created the directory. Eight numbered steps with the output each one prints |
-| `tools/bootstrap/` seat the first three admins | **Built.** `make bootstrap-admins`, in CI. The only path from an empty database to somebody who can administer it, and it spends the escape `013_bootstrap_three_admins.sql` opens. Per person: an identity account, then `link_or_create_member`, then the role, in that order because a member row holding a role is not claimable afterwards. The handover password goes to the terminal and to no file. Safe to run twice, and the fourth admin is refused by the database rather than by the script |
+| `docs/runbooks/` | **Two files.** `restore-the-members-database.md`, ten numbered steps with the output each one prints, which is what created the directory. `deploy-beside-the-legacy-system.md`, eleven steps for standing this up beside the legacy system on hsl-web, with a rollback and its own gaps section. **The deploy runbook has no step that registers the clients.** It names `tools/identity/configure.py` in passing and never runs it, so a deployment that follows it end to end has no project, no clients and no branding, and no token it issues can carry the audience `compose.api.yaml` gives the API. That is the first thing to fix in it |
+| `tools/bootstrap/` seat the first three admins | **Built.** `make bootstrap-admins`, in CI, 23 checks. A laptop passes its own `ORO_IDENTITY_URL` for the same reason `make identity-configure` needs one. The only path from an empty database to somebody who can administer it, and it spends the escape `013_bootstrap_three_admins.sql` opens. Per person: an identity account, then `link_or_create_member`, then the role, in that order because a member row holding a role is not claimable afterwards. The handover password goes to the terminal and to no file. Safe to run twice, and the fourth admin is refused by the database rather than by the script |
 | `tools/migration/` the legacy import | **Built.** `make migration-test`, in CI. Members, cards, the `admin` and `accountant` booleans as roles, and the waiver date as a pointer to where the document is kept. A preflight refuses to start while anything needs a person and names the rows. Eleven cases: ten imports of the same fixture, three that carry and seven that must be refused, plus one that runs the role step alone. Every refusal is checked by its text and not only its exit code. The fixture was written by a replica of the legacy application through its own models |
-| `tools/identity/configure.py`, the four clients and the branding | **Built.** `make identity-configure`. The project, three public PKCE clients with no secret, the door service machine account, and the GANTRY palette on the hosted screens, set and activated. Idempotent, and the 6 checks in `check_reconfiguration.py` run it twice to prove that. Those 6 are the ones the count in section 3 used to leave out: `make identity-test` prints 45 across five files, 6 then 16 then 11 then 6 then 6 |
+| `tools/identity/configure.py`, the clients, the branding, the sign up and the mail | **Built.** `make identity-configure`. The project, three public PKCE clients with no secret, the door service machine account, the GANTRY palette on the hosted screens set and activated, self registration turned on through `login_policy.py`, and the mail server the codes go through when `--mail-host` is passed. Idempotent, and `check_reconfiguration.py` runs it twice to prove that. `make identity-test` prints 75 across nine files: 7, 12, 16, 11, 6, 5, 6, 8, 4. It is six modules rather than one because the file passed the 300 line ceiling: `api.py` is how to call the service, `registrations.py` what it holds, `clients.py` what a client is, `branding.py` the label policy and its three uploads, `login_policy.py` the Register button, `mail.py` the SMTP provider, `portal_config.py` the one file it writes. A laptop has to pass `ORO_IDENTITY_URL`: the default is built from `ORO_HOSTNAME` as `https://id.<host>` and nothing resolves at `id.localhost` |
 | Legacy members signing in | **Demonstrated with invented accounts.** 6 checks in `make identity-test` take hashes the legacy application wrote and sign in with the passwords that produced them. Nine of eleven succeed and the two that do not are over the bcrypt limit. This is not part (b) of the phase 2 proof: every password in it was chosen by whoever wrote the replica |
 | `.github/workflows/deploy.yml` | **Written, never run.** Dormant until a server exists and four secrets are set. One step, `make up` over SSH. [ADR 0008](docs/decisions/0008-deploying-from-actions.md), which supersedes what `architecture.md` said about CI never holding a deploy credential |
 | Ten minute tokens with rotating refresh | **Built and demonstrated.** 11 further checks in `make identity-test` sign a member in through the real hosted screens, read the access token lifetime off the token, use the refresh token, and prove the previous one stops working |
 | The hosted login screens | **Built.** [ADR 0007](docs/decisions/0007-hosted-login-screens.md). The default in 4.17.1 sends a member to a page this image does not serve, so a check asserts the page really carries a login field |
-| `services/api/` | **First slice built, and ahead of the order.** Three of the contract's twenty three operations, against a real Postgres with the real migrations, with the policies deciding every answer. It logs in as `oro_api_login`, a NOINHERIT role that holds nothing until the transaction runs `SET LOCAL ROLE oro_api`, because five places in the schema branch on `current_user` being `oro_api` and an inheriting role would fire every one of those carve outs. The identity is set with `set_config(..., true)`, which is SET LOCAL, and one test proves an identity does not survive on a pooled connection. Nothing in the service decides who may see what. 34 checks across three files, `make api-test`, in CI: 19 over the endpoints, 12 over identity isolation including the token refusals, and 3 over the signing key clock. **It has now been run against the real identity service**, which it never had been: that suite serves its own key set from its own key, so until 2026-08-30 nobody had shown this service accepts a token Zitadel issues. It did not. `services/api/README.md` documented `ORO_API_TOKEN_AUDIENCE` as `oro-members-api` and nothing issues that. A real access token carries an `aud` list of every client id under the project plus the project's own identifier, and the client ids are generated per instance, so `oro-project` is the only entry a container can be given ahead of time. The fix was a value and no code changed. `make api-identity-test` holds it. **Still not wired into compose or Caddy**: `make up` and `make development` are unchanged and the portal still reads the mock. Phase 1 has not exited, so the contract underneath may still move |
+| `services/api/` | **Built, and wired into both stack shapes.** Ten of the contract's twenty four operations, against a real Postgres with the real migrations, with the policies deciding every answer. It logs in as `oro_api_login`, a NOINHERIT role that holds nothing until the transaction runs `SET LOCAL ROLE oro_api`, because five places in the schema branch on `current_user` being `oro_api` and an inheriting role would fire every one of those carve outs. The identity is set with `set_config(..., true)`, which is SET LOCAL, and one test proves an identity does not survive on a pooled connection. Nothing in the service decides who may see what. 96 checks across seven files, `make api-test`, in CI: 19 over the endpoints, 23 over the self service reads, 14 over the door events page, 13 over profile edits, 12 over identity isolation including the seven token refusals, 12 over the first sign in, and 3 over the signing key clock. Plus one refusal proved in `run.sh` itself before the container starts. **It has now been run against the real identity service**, which it never had been: that suite serves its own key set from its own key, so until 2026-08-30 nobody had shown this service accepts a token Zitadel issues. It did not. `services/api/README.md` documented `ORO_API_TOKEN_AUDIENCE` as `oro-members-api` and nothing issues that. A real access token carries an `aud` list of every client id under the project plus the project's own identifier, and the client ids are generated per instance, so `oro-project` is the only entry a container can be given ahead of time. The fix was a value and no code changed. `make api-identity-test` holds it, and the audience is `oro-project`. `compose.yaml` includes `compose.api.yaml`, a separate file only because `compose.yaml` was at 291 of the 300 lines rule 6 allows, and both Caddy route files carry `handle_path /v1/* { reverse_proxy api:8000 }`, so the portal reads this service in both shapes and the mock has no route at all. Phase 1 has not exited, so the contract underneath may still move |
 | `services/door/` port, fake, conformance suite | **Built.** 104 tests, `services/door/tests/run.sh` |
 | `services/door/` HTTP API, reconcile loop, real socket against hardware | Not started. Phase 5 |
-| `apps/members/` | **Built against the contract mock.** The six self service views, read only, no sign in. `docs/plan/api-design.md` section 7 step 2, not phase 3. See its README |
-| `tools/members-portal/tests/` | **Built.** 33 checks over the portal through Caddy, 22 of behaviour and 11 of appearance, `make portal-test`, split across two files because one runs past the 300 line ceiling. No browser, so it does not see the rendered document: what it can do is read what the document says, and it refuses an EEPROM slot number, the wrong card access wording, and any use of the ink token that fails contrast. In CI |
+| `apps/members/` | **Built, signing in, against the members API.** A landing for somebody signed out, with a Join that opens Registration on the hosted screens and a way in for somebody who already has an account. Then seven views: your record, your cards, entries, certifications, waiver, card access and the directory. The profile is editable, which is the one write a member makes besides the first sign in, and every field it offers is a field of `MemberSelfUpdate`. Sign in is authorization code with PKCE, written as classic scripts with no `import` statement anywhere, deliberately: ADR 0006 makes the first one the condition that brings a lockfile and a hundred packages in. Eight files, each of them under the ceiling after three splits. See its README |
+| `tools/members-portal/tests/` | **Built.** 58 checks over the portal through Caddy, `make portal-test`, across five files because each ran past the 300 line ceiling as one: 21 of the page against the contract, 11 of appearance, 7 of what it ships and where it reads its client id, 5 of what it claims about the API behind it, and 14 of the profile form. No browser, so it does not see the rendered document: what it can do is read what the document says, and it refuses an EEPROM slot number, the wrong card access wording, and any use of the ink token that fails contrast. In CI |
 | `apps/` admin, door | Not started. Phase 3 onward |
 | `packages/gantry-tokens` | **Built.** The token layer, the two measured defects fixed, and the contrast checker over the theme by ground cross product. 69 tests plus 112 measured pairs, `packages/gantry-tokens/tests/run.sh`. Sixteen pairs are triaged in `validator/known-failures.txt`, four of them a real `--g-ink-3` defect held open on a brand colour decision |
 | `packages/gantry-css`, `gantry-vue` | Not started. Later in phase 1 and after |
 | `compose.yaml`, `compose.development.yaml`, `Makefile`, `.env.example`, `caddy/`, `db/init/` | **Built.** Postgres, Caddy and the identity service. The override file adds the mock, points Caddy at the development routes and publishes the identity service on a port, so the portal and the mock share one origin over plain HTTP and a browser can open a login screen. `make up` on a clean machine, proven |
 | `docs/api/members-v1.yaml` | **Written.** OpenAPI 3.1.1, validates clean. Still needs the review by somebody who did not write it that phase 1 asks for |
-| `.github/workflows/ci.yml`, `.github/workflows/ci-stacks.yml` and `tools/ci/` | **Built, and split in two on 2026-08-30.** Seventeen jobs. `ci.yml` keeps the five that start no container, the door suite, the theme, the contract lint, the prose gate and the commit message check, and is 119 lines. `ci-stacks.yml` holds the twelve that do and is 237. The split happened because `ci.yml` had reached 299 lines against the 300 in rule 6 and the next job would have failed the build, and the seam is the one section 3 already named. Every job kept its name and its pinned checkout, so nothing that refers to a job by name has moved. Both were green on their first run after the split, runs 33346731057 and 33346731067 on 2026-08-31, and the two workflows start together: CI took 20 seconds and CI stacks 52. Measured on those two runs: first three admins 49s, identity 48s, legacy import 46s, members API against the identity service 45s, members API 44s, development stack and restore drill 40s each, database 27s, members portal 21s, import boundaries 18s, mock 17s, contract 16s, ceilings 14s, prose 9s, door 8s, theme 6s. The lead moves around, so re-measure rather than quoting this: the migration job has held it twice and is third here. One earlier run, 33287156971, was red, and it is worth knowing why: the import boundaries suite passed fourteen of fourteen on a laptop and eleven of them failed on the runner over a directory mode. Section 7 carries it. Twelve of the seventeen start containers, counted by grepping for docker in the script each job runs, and they are exactly the twelve in `ci-stacks.yml`, which is what makes the split a real seam rather than a line drawn to fit. The attributions check is deliberately in neither workflow: it needs the network to build two images and it rewrites a tracked file. A separate workflow, the deploy, is dormant and runs only on `workflow_dispatch` with the hostname typed in |
+| `.github/workflows/ci.yml`, `.github/workflows/ci-stacks.yml` and `tools/ci/` | **Built, and split in two on 2026-08-30.** Eighteen jobs. `ci.yml` keeps the five that start no container, the door suite, the theme, the contract lint, the prose gate and the commit message check, and is 119 lines. `ci-stacks.yml` holds the thirteen that do and is 253. The split happened because `ci.yml` had reached 299 lines against the 300 in rule 6 and the next job would have failed the build, and the seam is the one section 3 already named. Every job kept its name and its pinned checkout, so nothing that refers to a job by name has moved. Both were green on their first run after the split, runs 33346731057 and 33346731067 on 2026-08-31, and the two workflows start together: CI took 20 seconds and CI stacks 52. Measured on those two runs: first three admins 49s, identity 48s, legacy import 46s, members API against the identity service 45s, members API 44s, development stack and restore drill 40s each, database 27s, members portal 21s, import boundaries 18s, mock 17s, contract 16s, ceilings 14s, prose 9s, door 8s, theme 6s. The lead moves around, so re-measure rather than quoting this: the migration job has held it twice and is third here. One earlier run, 33287156971, was red, and it is worth knowing why: the import boundaries suite passed fourteen of fourteen on a laptop and eleven of them failed on the runner over a directory mode. Section 7 carries it. Thirteen of the eighteen start containers, counted by grepping for docker in the script each job runs, and they are exactly the thirteen in `ci-stacks.yml`, which is what makes the split a real seam rather than a line drawn to fit. The attributions check is deliberately in neither workflow: it needs the network to build two images and it rewrites a tracked file. A separate workflow, the deploy, is dormant and runs only on `workflow_dispatch` with the hostname typed in |
 | File and function ceiling linting | **Built.** `make ceilings`, in CI, with 8 tests of its own over a throwaway repository: five put one violation in it and assert the checker catches it, three put something that is not a violation in it and assert the checker stays quiet. Ruff in a pinned container for complexity, parameters and nesting depth, and `tools/ceilings/check_ceilings.py` for the two ceilings no tool measures. [ADR 0005](docs/decisions/0005-file-and-function-ceilings.md). Two files are exempt with a reason, and an exemption that stops being needed fails the check |
-| Import boundary linting | **Built on the Python half.** `make import-boundaries`, in CI, with 18 checks of its own over a throwaway tree. Two contracts in `tools/import-boundaries/contracts.ini`, the members API and the door service not importing each other and the door service's domain not importing its adapters, over a graph of 23 files and 34 dependencies which is clean. [ADR 0011](docs/decisions/0011-import-linter-arrives.md) settles how import-linter arrives: nobody publishes an image for it, so this repository builds one from a digest pinned python:3.13-slim and a hashed lock, and 3.13 is deliberate because grimp's only cp314 macOS arm64 wheel is for the free threaded build. Three blind spots have been found by planting violations rather than by reading, and all three are closed by `tools/import-boundaries/check_root_packages.py` beside the contracts. import-linter only sees what `root_packages` reaches, so a module beside the root packages was invisible, and so was a directory inside one with no `__init__.py`, which Python imports through as a namespace package and grimp does not walk into. The third is an import written as a string: `importlib.import_module` or `__import__` with a literal naming a root package loads the door service into the members API while both contracts report kept. A computed name is not findable at all and that limit is written down rather than papered over. Every one of the three is in the suite as an assertion, so the day import-linter stops needing help is the day they go red. The TypeScript half is still genuinely unowed: there is no TypeScript |
-| `tools/attributions/generate.py` | Not started. Needs a lockfile first |
+| Import boundary linting | **Built on the Python half.** `make import-boundaries`, in CI, with 18 checks of its own over a throwaway tree. Two contracts in `tools/import-boundaries/contracts.ini`, the members API and the door service not importing each other and the door service's domain not importing its adapters, over a graph of 28 files and 41 dependencies which is clean. [ADR 0011](docs/decisions/0011-import-linter-arrives.md) settles how import-linter arrives: nobody publishes an image for it, so this repository builds one from a digest pinned python:3.13-slim and a hashed lock, and 3.13 is deliberate because grimp's only cp314 macOS arm64 wheel is for the free threaded build. Three blind spots have been found by planting violations rather than by reading, and all three are closed by `tools/import-boundaries/check_root_packages.py` beside the contracts. import-linter only sees what `root_packages` reaches, so a module beside the root packages was invisible, and so was a directory inside one with no `__init__.py`, which Python imports through as a namespace package and grimp does not walk into. The third is an import written as a string: `importlib.import_module` or `__import__` with a literal naming a root package loads the door service into the members API while both contracts report kept. A computed name is not findable at all and that limit is written down rather than papered over. Every one of the three is in the suite as an assertion, so the day import-linter stops needing help is the day they go red. The TypeScript half is still genuinely unowed: there is no TypeScript |
+| `tools/attributions/generate.py` | **Built.** `make attributions`, `make attributions-check`, with 18 self tests. It builds the image each lock installs into and reads every package's own metadata out of it rather than guessing a licence from a name. Deliberately in no CI workflow: it needs the network to build two images and it rewrites a tracked file. **It reads two of the three locks in this repository.** The list is a tuple in `generate.py`, so `tools/browser-checks/requirements.txt` landed and `make attributions-check` reported green over it. That is a hole in rule 9 and it is open |
+| `tools/names/` | **Built.** `make names`, in `make check`, in CI. Every name a Python module uses has to exist, read by ruff with F821, F811 and F822 in the same pinned image the ceilings gate uses, with `--isolated` so `ruff.toml` goes on being rule 6's numbers and nothing else. Six self tests plant one broken name at a time. It exists because of one bug: `clients.py` was split out of `configure.py` carrying a use of a constant that stayed behind, and the branch that reads it runs only against an instance an older version of the tool configured, which is the deployment case and the one no suite reaches. `make identity-configure` died on a `NameError` on the one machine that mattered while 70 identity checks were green. It found a second on its first run |
+| `tools/browser-checks/` | **Built, and in no CI workflow.** One check that opens the portal in a pinned chromium, lets the page's own script run, and asserts a signed out arrival gets the landing and no view. It writes a screenshot every time, red or green. [ADR 0015](docs/decisions/0015-a-browser-driver.md) chose Playwright. It drives a stack somebody else started rather than bringing up its own, which is why it is not in `make check`, and that cost something: the landing arrived the day after this check did, the check went red against a portal that was working correctly, and nothing noticed for a day |
+| The mail catcher, and what needs it | **Built for a laptop.** `compose.development.yaml` runs Mailpit, pinned by digest, loopback only on `ORO_MAIL_PORT`. Registering, a forgotten password and a changed address all end in a code that arrives by mail, and without a server every one of them is a screen asking for a code that can never come. Measured on 2026-08-31 against 4.17.1: an account created through Register lands in `USER_STATE_INITIAL`, the screens show Activate User, and that screen carries a required code field, Next and Resend Code and no way past. `tools/identity/mail.py` writes the provider and activates it, which is the half that cost a day: a provider is created inactive and sends nothing. **It can only ever configure a catcher.** What it writes has no username, no password and TLS off, so a lab relay is configured once by hand and `point_at` refuses rather than replacing a provider it did not write. Activating one deactivates whichever was active, so before that refusal existed the shipped `ORO_MAIL_HOST=mail:1025` reaching a deployment would have taken the relay offline and printed success |
 | `CODEOWNERS`, `.sops.yaml` | Not started. Created with the first real name and the first secret |
 
 ## 3. Run everything
@@ -75,7 +78,7 @@ git config core.hooksPath .githooks      # once per clone, enables the commit ga
 
 make check                               # every suite below, in one command
 
-./db/tests/run.sh                        # rebuilds the schema from nothing, runs 186 assertions
+./db/tests/run.sh                        # rebuilds the schema from nothing, runs 189 assertions
 ./db/tests/run.sh --update               # regenerate expected output, deliberately
 
 python3 tools/voice-check/test_voice_check.py
@@ -88,15 +91,20 @@ python3 tools/voice-check/test_behaviour.py
 make mock-test                           # the API contract mock, started, called, removed
 
 make development                         # portal at /, contract mock under /v1, one origin, plain HTTP
-make development-test                    # 23 checks over both stack shapes, throwaway project
-make portal-test                         # 33 checks over the members portal, likewise
-make identity-test                       # 45 checks over the phase 2 identity work, likewise
+make development-test                    # 33 checks over both stack shapes, throwaway project
+make portal-test                         # 58 checks over the members portal, likewise
+make identity-test                       # 75 checks over the phase 2 identity work, likewise
 make migration-test                      # eleven cases, ten of them imports: three carried and seven refused
 make identity-configure                  # the project, the clients and the branding, against a running stack
 
 make ceilings                            # rule 6, in a pinned ruff and a line counter
+make names                               # every name a Python module uses exists
+make api-test                            # ten operations against a real Postgres and the real policies
+make backup-test                         # back up, destroy the database, restore, compare
+./tools/bootstrap/tests/run.sh           # the first three admins seated, and the fourth refused
+make browser-checks                      # the portal in a real chromium. Needs a stack already up
 make api-identity-test                   # the members API against a real token from the real identity service
-make attributions-check                  # ATTRIBUTIONS.md against the two lockfiles
+make attributions-check                  # ATTRIBUTIONS.md against two of the three lockfiles
 make import-boundaries                   # rule 5, over the Python in services/
 
 ./tools/ci/voice-gate.sh                 # the prose gate over every tracked file
@@ -106,28 +114,31 @@ make import-boundaries                   # rule 5, over the Python in services/
 npx @redocly/cli@2.49.0 lint docs/api/members-v1.yaml   # the API contract
 ```
 
-Five lines in that block have no CI job and none of them could have one. Three
-are not checks at all: `git config core.hooksPath` sets up a clone,
-`make development` starts a stack and leaves it running, and
-`make identity-configure` registers clients against a stack that is already up.
-`--update` rewrites the expected files. `make check` is the others in one
-command, and CI runs them separately so a failure names the suite. Every check
-in the block has a job.
+Seven lines in that block have no CI job. Four are not checks at all:
+`git config core.hooksPath` sets up a clone, `make development` starts a stack
+and leaves it running, `make identity-configure` registers clients against a
+stack that is already up, and `--update` rewrites the expected files. `make
+check` is the others in one command, and CI runs them separately so a failure
+names the suite. Two are checks with no job and it is worth knowing which.
+`make attributions-check` has none on purpose: it needs the network to build two
+images and it rewrites a tracked file. `make browser-checks` has none because it
+drives a stack somebody else started, and that is open rather than settled: it
+was red for a day against a portal that was working and nothing noticed.
 
-Twelve of those jobs start containers: the database, the mock, the development
-stack, the portal, the identity service, the ceilings, the import boundaries,
-the migration, the first three admins, the restore drill, the members API and
-the members API against the identity service. They are the twelve in
-`ci-stacks.yml`.
-Counted on 2026-08-29 by grepping for docker in the script each job runs, which
-is also where the count in section 2 comes from. This paragraph said seven until
-then, and it had been wrong since the bootstrap, backup and API jobs landed.
+Thirteen of those jobs start containers: the database, the mock, the development
+stack, the portal, the identity service, the ceilings, the undefined names, the
+import boundaries, the migration, the first three admins, the restore drill, the
+members API and the members API against the identity service. They are the
+thirteen in `ci-stacks.yml`.
+Counted by grepping for docker in the script each job runs, which is also where
+the count in section 2 comes from. This paragraph said seven until 2026-08-29,
+and it had been wrong since the bootstrap, backup and API jobs landed.
 
 Starting a container does not make a job slow. The ceilings one came in at 4
 seconds on run 33236264196. The import boundaries one builds its image the first
-time and then reads a graph of 23 files, and the reading is 0.40, 0.41 and 0.45
-seconds over three runs on a laptop with the image already built. It has not run
-in CI yet.
+time and then reads a graph of 28 files, and the reading is under half a second
+on a laptop with the image already built. In CI it took 18 seconds on run
+33346731067, most of it the build.
 The identity one applies its own schema and seeds an instance before it answers
 anything, and the migration one builds eleven databases, which is what makes it
 the slowest on run 33228017933 at 58 seconds. On run 33236264196 it came third at 48, behind the development stack and identity at 54 each.
@@ -137,14 +148,19 @@ same script a person runs rather than a copy of it that drifts. The contract lin
 reports five warnings and that is expected;
 `docs/decisions/0001-openapi-toolchain.md` says which and why.
 
-`make check` runs the nineteen suites in this repository in one command, which
-is what a person wants at 2am, and each still works on its own. It leaves out the contract
-lint, which is the last line of the block above: that one needs Node, and
-everything else here needs only Docker and python3. CI runs it as its own job.
+`make check` runs twenty suites in one command, which is what a person wants at
+2am, and each still works on its own. It leaves out two. The contract lint needs
+Node, and CI runs it as its own job. `make browser-checks` drives a stack
+somebody else started rather than bringing up its own, and the Makefile says so
+where the target is. Everything in `make check` needs Docker and python3, and
+`services/api/tests/run.sh` needs openssl and curl as well, both of which are on
+a mac and on the runner image.
 
-`make up` starts Postgres, Caddy and the identity service, and runs one
-container that exists only to hand the identity service a volume it can write
-to, which is why `make ps` shows something exited and healthy at the same time.
+`make up` starts Postgres, Caddy, the identity service and the members API, and
+runs two containers that exit and stay exited: one hands the identity service a
+volume it can write to, and one applies the migrations. That is why `make ps`
+shows something exited and healthy at the same time. `compose.yaml` includes
+`compose.api.yaml`, so the API is in both shapes.
 Copy `.env.example` to `.env` and set every value in it first: nothing there has a default, and `make up` refuses rather than
 starting on a value nobody chose.
 
@@ -154,8 +170,18 @@ test file in a transaction that rolls back, and removes the container. It leaves
 nothing behind. Expect about ten seconds once the `postgres:18` image is
 local, and a first run that pulls it takes longer.
 
-Everything should be green. If it is not, that is a real failure: the suite has
-been run more than twenty times consecutively without a flake.
+Everything should be green. One flake has been seen, once, and never
+reproduced: `test_a_changed_origin_is_applied_and_can_be_put_back` in
+`check_reconfiguration.py` failed on a busy machine and passed on the same tree.
+The identity service answers that read from a projection it updates after the
+write, which `login_policy.py` documents for the neighbouring one, so a
+projection lag is the likely cause and nothing has been changed on a guess.
+
+Two suites hard code their ports, `tools/identity/tests/run.sh` and
+`tools/members-portal/tests/run.sh`. Each brings up its own compose project, so
+neither disturbs a stack somebody is looking at, which is what their headers
+promise. Two copies of the same suite at once will collide, which nothing
+promised and nobody has needed.
 
 ## 4. Decisions already made
 
@@ -423,6 +449,98 @@ phases at once.
     with anything below them, so neither tree has a contract.
     `eslint-plugin-boundaries` still waits on its own flip condition, which is
     the first `import` statement in either tree.
+
+### What the audit of 2026-08-31 left open
+
+Six lanes read the range `9d35357..HEAD` against the running system, each with
+its own throwaway stack. Most of what they found is fixed and is in the rows
+above. These are the ones that are not, in the order they cost something.
+
+18. **The deploy runbook never registers the clients.** It names
+    `tools/identity/configure.py` twice, in passing, and never runs it. A
+    deployment that follows it end to end has no project, no clients, no
+    branding, and no token that can carry the audience `compose.api.yaml` gives
+    the members API, while its step 7 hands people sign ins that can sign in to
+    nothing. The step goes between 5 and 6 and calls `configure.py` directly
+    rather than `make identity-configure`, because that target builds the three
+    origins from `ORO_HOSTNAME` with no port and step 4 chooses a port.
+
+19. **The runbook's no mail branch has no way to close the sign up.** The
+    Register button is on, which is right for a site that replaces one with a
+    sign up. Without a mail server a person who presses it is stranded in
+    `USER_STATE_INITIAL`, which is the one state no admin can repair. An
+    operator taking that branch needs the write that turns it off: the whole of
+    `PUT /admin/v1/policies/login` with `allowRegister` false and every other
+    field read back and handed straight in, per the warning in
+    `tools/identity/login_policy.py`.
+
+20. **An admin changing their own address keeps its verified date.**
+    `enforce_profile_self_edit` returns early for a caller holding admin, above
+    the branch that clears `email_verified_at`. The contract now says so, which
+    makes it honest rather than fixed. Decide whether the carve out is wanted;
+    if it is not, the early return moves below the email branch and a check
+    seats an admin. Nothing today can catch it: the profile edit check runs as
+    a member.
+
+21. **Nothing ever writes `email_verified_at`.** The only writers anywhere are
+    two fixtures and the trigger that clears it, so a member who has just typed
+    a code out of the lab's own mail is told their address is not confirmed.
+    The chip says "Confirmation not recorded" now rather than promising a state
+    nobody can reach. The real fix is `first_sign_in.py` writing the date when
+    the token asserts a verified address, and that needs a claim the token does
+    not carry, which is a change to what the portal asks for and to what the
+    identity service asserts.
+
+22. **The first message a new member gets is the vendor's.** "This user was
+    created in Zitadel. Use the username ... to finish the initialization
+    process." `branding.py` sets the colours, the mark and the sender, and
+    nothing sets message text. It is `InitCode` on the message text policy,
+    beside the label policy that is already written.
+
+23. **`make browser-checks` is in no workflow.** It drives a stack somebody
+    else started, which is why it is not in `make check`, and it was red for a
+    day against a portal that was working correctly because the landing arrived
+    after the check did. A CI job that brings up `make development` and then
+    runs it would close that.
+
+24. **The attributions generator reads two of the three locks.** The list is a
+    tuple in `generate.py`, so `tools/browser-checks/requirements.txt` landed
+    and `make attributions-check` reported green over it. Either add it or have
+    the tool find every `requirements.txt` and fail on one it does not cover.
+    Rule 9 says every dependency, not every dependency somebody remembered.
+
+25. **The lockup generator has no gate.**
+    `packages/gantry-tokens/brand/build-the-lockup.py` exists so a second copy
+    of the logo cannot drift from the masthead, and nothing runs it: no target,
+    no job, no suite. As written it rewrites on mismatch, which is wrong for
+    CI, so it wants a `--check` flag and a step in
+    `packages/gantry-tokens/tests/run.sh`. While that is open,
+    `packages/gantry-tokens/README.md` is wrong to say the package is one file
+    and no build step.
+
+26. **`branding.py` uploads the light lockup into the dark slots.** Contrast of
+    that ink on that ground is about 1.06 to 1. Latent only while `themeMode`
+    is pinned to light. The generator already takes the ink as a parameter, so
+    a dark variant is a small change; the alternative is to say in the comment
+    that the dark slots are deliberately the light file.
+
+27. **Line citations in `docs/api/contract-review-notes.md` drift.** Six were
+    adrift on 2026-08-31 and every contract edit moves more. That file's own
+    preamble says a citation landing in the wrong place is a defect. The
+    structural answer is a check that reads each citation and asserts the
+    anchor, rather than another pass of hand correction.
+
+28. **Smaller, each verified.** The Roles card renders a heading over nothing
+    when a member holds no roles, unlike every other view. The directory note
+    describes the state the reader is not in, because the box above it is
+    ticked by default. A link a member entered is shown as text rather than as
+    a link. `configure.py` writes `apps/members/identity.json` into the working
+    tree on every run, including from a throwaway suite, which repeatedly
+    repointed a live portal at a dead instance during the audit; a guard in
+    `portal_config.py` that skips the write when the origin does not match
+    would close it. The triad warning in `tools/voice-check/checks.py` requires
+    an Oxford comma and this repository never writes one, so it cannot fire on
+    its own subject.
 
 ### The build that is actually left
 
@@ -836,7 +954,7 @@ returned `answer.body.get("result") or []` with no status check, and a refusal
 carries no result list, so a 401 and an empty result were the same value. The
 visible symptom was `configure.py` reporting `could not create the project: 401`
 after the bootstrap token was revoked, which names the wrong operation: the
-project existed, the token did not work. Fixed, with five checks in
+project existed, the token did not work. Fixed, with checks in
 `tools/identity/tests/check_api_refusals.py` that need nothing running. The
 general shape is worth remembering: any API wrapper that reads a field out of a
 body without looking at the status turns every refusal into a plausible answer.
@@ -931,6 +1049,22 @@ and 2166 at `9780c3f`, and `git show 9780c3f -- docs/api/members-v1.yaml`
 carries eight `@@` headers. What the sentence goes on to conclude, that every
 line citation in the review notes moved, holds.
 
+`801c83f` describes the portal's signed out front door, the `prompt=create`
+join, the PKCE helpers split out of `identity.js` and the landing rules in the
+component sheet. None of that is in its diff. `git show --name-only 801c83f`
+names no file under `apps/`, and the file it says it added arrived in `c6f6e80`
+seventeen seconds earlier, whose own message does not mention any of it. What
+`801c83f` carries is the mail server, the branding, the lockup and the
+`configure.py` splits. Two messages were written in the wrong order and pushed
+that way.
+
+`801c83f` says that after activation "the next screen is the members portal".
+Two walks through the real screens on 2026-08-31 got a 2-Factor Setup screen
+first, offering an authenticator app, a device factor, Skip and Next, and
+reached the portal only after Skip. Section 6 item 7 already holds the multi
+factor prompt as an open question, and this is the same thing measured from the
+member's side.
+
 `f2b9e47` says of the mock suite "The suite prints 14 and nobody had changed
 it". The suite is what changed. `bd55232` added
 `test_a_member_is_never_handed_a_door_controller_address`, taking
@@ -988,13 +1122,20 @@ find both, on a table it makes and drops, and it assembles those two offending
 comments with `chr()` rather than typing them, because typing either one would
 put it in a file the prose gate reads.
 
-**`.github/workflows/ci.yml` is one line under the ceiling.** It measures 299
-against the 300 in rule 6, counted the way `tools/ceilings/check_ceilings.py`
-counts. The import boundaries job took the rest of the headroom, and the checker
-fails the build at 301. The next job added has to make room. Trimming a comment
-to fit is the wrong trade, because the comments are why anybody can read that
-file at 2am. The seam to split on is already named in section 3: eleven of the
-sixteen jobs start a container and five do not.
+**A workflow file, a Makefile and a portal script are all subject to rule 6,
+and all three have hit it.** `.github/workflows/ci.yml` reached 299 of the 300
+lines and was split on the seam section 3 already named: the five jobs that
+start no container stayed, the rest moved to `ci-stacks.yml`. `Makefile`
+reached 301 and the three identity targets moved to `make/identity.mk`, which
+`include` pulls back in, and `.mk` was added to the suffixes
+`tools/ceilings/check_ceilings.py` counts so that split is a split rather than
+a dodge. `apps/members/render.js` reached 321 and the page around the views
+moved to `chrome.js`.
+
+Trimming a comment to fit is the wrong trade in all three cases, because the
+comments are why anybody can read those files at 2am. Look for the seam the
+file already has: each of these three had a divider comment sitting exactly
+where the split belonged.
 
 **A legacy role flag on somebody who left is a security finding, not a data
 error.** The legacy system recorded a departure in `exit_reason` and never
@@ -1050,3 +1191,16 @@ So the next person knows what "green" is worth.
 - Every trigger claim in this file about the role import was taken from a real
   Postgres 18 rather than read off the SQL, including the four admin refusal,
   the lock the disable takes, and that it rolls back with its transaction.
+- On 2026-08-31 six lanes audited the range `9d35357..HEAD`, each on its own
+  throwaway stack, none touching the one somebody had open. Between them they
+  stood the system up from an empty clone, registered through the real screens
+  and read the code out of the catcher, drove the portal in a real browser, and
+  ran every suite in the repository. What they found that mattered most was not
+  a wrong number. `POST /me` answered 500 forever to a member whose record had
+  been removed, so the read told them to write a record and the write broke,
+  every time, with no way out. `tools/identity/mail.py` would have deactivated
+  a lab's working relay and printed success. And `make identity-configure`
+  died on a `NameError` on the one instance shape only a deployment has, while
+  seventy identity checks were green, which is what `tools/names/` now exists to
+  refuse. Every finding this file records was reproduced against a running
+  system before it was written down, and the ones still open are in section 6.

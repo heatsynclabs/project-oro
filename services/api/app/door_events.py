@@ -43,7 +43,14 @@ CURSOR_IS_NOT_ONE = ("A cursor is the next_cursor a page came back with, and "
 
 
 class CursorIsNotOne(Exception):
-    """What the endpoint turns into the contract's 422 naming `cursor`."""
+    """What the endpoint turns into a 422 naming `cursor`.
+
+    Not the contract's. listMyDoorEvents in docs/api/members-v1.yaml declares
+    200 and 401 and nothing else, so this status is a gap in the contract
+    rather than something it asks for. The same gap sits on ?fields= against
+    the directory, where finding 2 of docs/api/contract-review-notes.md
+    records it.
+    """
 
 
 def read_page(connection, limit: int, cursor: str | None) -> dict:

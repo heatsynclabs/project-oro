@@ -38,9 +38,8 @@
 <svg class="notice-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2 23 21H1Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v6M12 17.5v.5" stroke="currentColor" stroke-width="2"/></svg>
 <p data-behind="unknown">Nothing has answered the members API yet, so this page cannot say whose records these are.</p>
 <p data-behind="mock" hidden>These records come from the contract mock. No real member data is here, and nothing you change is saved.</p>
-<p data-behind="service" hidden>These records come from the members API, so they are what the lab holds about you.</p>
-<p data-signing-in="unconfigured" hidden>Signing in is not set up here. Run <code>tools/identity/configure.py</code> against this stack and reload.</p>
-<p data-signing-in="wrong-origin" hidden>The sign in configuration beside this page names a different address than the one you are reading it on, so a sign in would never come back here. Run <code>tools/identity/configure.py</code> again, naming this origin.</p>
+<p data-signing-in="unconfigured" hidden>Signing in is not set up on this site yet, so there is nothing you can do here. Tell an admin.</p>
+<p data-signing-in="wrong-origin" hidden>This site is set up to sign people in at a different address, so a sign in would never come back here. Tell an admin.</p>
 <p data-signing-in="sign-in-failed" hidden>You came back from the identity service and this page could not finish signing you in. Try again.</p>
 <p data-signing-in="insecure-origin" hidden>This browser does not treat this address as secure, so a sign in cannot start here. Open the portal as localhost, or serve it over HTTPS.</p>
 </div>
@@ -69,10 +68,10 @@
 <p class="landing-note">Joining takes a name, an address and a password. The lab emails you a code to confirm the address.</p>
 </section>
 
-<section class="view" id="view-me" data-route="/me" data-source="/me" data-loading="Reading your record." data-loaded="Your record, loaded." hidden>
+<section class="view" id="view-me" data-route="/me" data-source="/me" data-loading="Reading your record." hidden>
 <h2 tabindex="-1">Your record</h2>
 <p class="lede">What the lab holds about you.</p>
-<p class="status" role="status" data-status></p><div class="error" data-error hidden></div>
+<p class="status" role="status" data-status></p><div class="error" role="alert" data-error hidden></div>
 <div class="grid2" data-target hidden>
 
 <article class="card">
@@ -107,13 +106,13 @@
 <p class="field"><label for="edit-name">Name</label><input id="edit-name" type="text" data-edit="name" required></p>
 <p class="field"><label for="edit-display-name">Display name</label><input id="edit-display-name" type="text" data-edit="display_name"></p>
 <p class="field"><label for="edit-pronouns">Pronouns</label><input id="edit-pronouns" type="text" data-edit="pronouns"></p>
-<p class="field"><label for="edit-email">Email</label><input id="edit-email" type="email" data-edit="email"> <span class="chip" data-chip="present" data-field="email_verified_at" data-format="confirmed" data-fallback="Email not confirmed yet"></span></p>
+<p class="field"><label for="edit-email">Email</label><input id="edit-email" type="email" data-edit="email"> <span class="chip" data-chip="present" data-field="email_verified_at" data-format="confirmed" data-fallback="Confirmation not recorded"></span></p>
 <p class="field"><label for="edit-phone">Phone</label><input id="edit-phone" type="tel" data-edit="phone"></p>
 <p class="field"><label for="edit-postal-code">Postal code</label><input id="edit-postal-code" type="text" data-edit="postal_code"></p>
 <p class="field"><label for="edit-current-skills">Skills you have</label><textarea id="edit-current-skills" rows="2" data-edit="current_skills"></textarea></p>
 <p class="field"><label for="edit-desired-skills">Skills you want</label><textarea id="edit-desired-skills" rows="2" data-edit="desired_skills"></textarea></p>
 <p class="field"><label for="edit-website">Website</label><input id="edit-website" type="url" data-edit="website_url"></p>
-<p class="note">Confirming your email is how the lab reaches you. It unlocks nothing, and changing your address clears the confirmation.</p>
+<p class="note">Changing your address clears its confirmation. An unconfirmed address costs you nothing here.</p>
 </fieldset>
 <fieldset data-fields="directory">
 <legend>What the directory shows</legend>
@@ -129,7 +128,7 @@
 <p class="field"><label for="edit-emergency-email">Email</label><input id="edit-emergency-email" type="email" data-edit="emergency_email"></p>
 </fieldset>
 <p class="save"><button type="submit" class="action" data-save>Save changes</button> <span class="saved" role="status" data-save-status></span></p>
-<div class="error" data-save-error hidden></div>
+<div class="error" role="alert" data-save-error hidden></div>
 </form>
 
 </div>
@@ -146,10 +145,10 @@
 </template>
 </section>
 
-<section class="view" id="view-cards" data-route="/cards" data-source="/me/cards" data-loading="Reading your cards." data-loaded="Your cards, loaded." hidden>
+<section class="view" id="view-cards" data-route="/cards" data-source="/me/cards" data-loading="Reading your cards." data-one="card" data-many="cards" hidden>
 <h2 tabindex="-1">Your cards</h2>
 <p class="lede">Your cards, each shown by the last four characters of its tag number.</p>
-<p class="status" role="status" data-status></p><div class="error" data-error hidden></div>
+<p class="status" role="status" data-status></p><div class="error" role="alert" data-error hidden></div>
 <p class="empty" data-empty hidden>No card is recorded for you. The card access view says what being nominated involves.</p>
 <div class="sheet-scroll">
 <table class="sheet">
@@ -169,10 +168,10 @@
 <p class="note">If you lose a card, tell an admin and they revoke it.</p>
 </section>
 
-<section class="view" id="view-entries" data-route="/entries" data-source="/me/door-events" data-list-in="items" data-loading="Reading your entries." data-loaded="Your entries, loaded." hidden>
+<section class="view" id="view-entries" data-route="/entries" data-source="/me/door-events" data-list-in="items" data-loading="Reading your entries." data-one="entry" data-many="entries" hidden>
 <h2 tabindex="-1">Entries</h2>
 <p class="lede">What the door recorded about you, most recent first. You and an admin can read this, and nobody else can.</p>
-<p class="status" role="status" data-status></p><div class="error" data-error hidden></div>
+<p class="status" role="status" data-status></p><div class="error" role="alert" data-error hidden></div>
 <p class="empty" data-empty hidden>No entry is recorded for you.</p>
 <div class="sheet-scroll">
 <table class="sheet">
@@ -189,10 +188,10 @@
 </template>
 </section>
 
-<section class="view" id="view-certifications" data-route="/certifications" data-source="/me/certifications" data-loading="Reading your certifications." data-loaded="Your certifications, loaded." hidden>
+<section class="view" id="view-certifications" data-route="/certifications" data-source="/me/certifications" data-loading="Reading your certifications." data-one="certification" data-many="certifications" hidden>
 <h2 tabindex="-1">Certifications</h2>
 <p class="lede">A certification is per tool, and it is required before you use the tool it covers. A revoked one stays on this list with its date.</p>
-<p class="status" role="status" data-status></p><div class="error" data-error hidden></div>
+<p class="status" role="status" data-status></p><div class="error" role="alert" data-error hidden></div>
 <p class="empty" data-empty hidden>Nothing is recorded for you yet. An instructor records a certification after they have run you through the tool.</p>
 <div class="grid2" data-target hidden></div>
 <template data-item>
@@ -211,10 +210,10 @@
 </template>
 </section>
 
-<section class="view" id="view-waiver" data-route="/waiver" data-source="/me/waiver" data-empty-on="404" data-loading="Reading your waiver record." data-loaded="Your waiver record, loaded." hidden>
+<section class="view" id="view-waiver" data-route="/waiver" data-source="/me/waiver" data-empty-on="404" data-loading="Reading your waiver record." hidden>
 <h2 tabindex="-1">Waiver</h2>
 <p class="lede">That you signed a waiver, when, and where the document is kept. Nothing that is written on the document is held here.</p>
-<p class="status" role="status" data-status></p><div class="error" data-error hidden></div>
+<p class="status" role="status" data-status></p><div class="error" role="alert" data-error hidden></div>
 <p class="empty" data-empty hidden>No waiver is recorded for you. An admin records it once you have signed one.</p>
 <div class="grid2" data-target hidden>
 <article class="card">
@@ -232,10 +231,10 @@
 </div>
 </section>
 
-<section class="view" id="view-eligibility" data-route="/card-eligibility" data-source="/me/card-eligibility" data-loading="Working out where you stand." data-loaded="Your card access standing, loaded." hidden>
+<section class="view" id="view-eligibility" data-route="/card-eligibility" data-source="/me/card-eligibility" data-loading="Working out where you stand." hidden>
 <h2 tabindex="-1">Card access</h2>
 <p class="lede">Whether you can be nominated for card access, and what is missing if you cannot be. Eligibility is not a card: a cardholder nominates you, and card members vote at Hack Your Hackerspace.</p>
-<p class="status" role="status" data-status></p><div class="error" data-error hidden></div>
+<p class="status" role="status" data-status></p><div class="error" role="alert" data-error hidden></div>
 <div class="grid2" data-target hidden>
 <article class="card">
 <p class="card-label">Where you stand</p>
@@ -254,10 +253,10 @@
 </div>
 </section>
 
-<section class="view" id="view-directory" data-route="/directory" data-source="/members" data-loading="Reading the directory." data-loaded="The directory, loaded." hidden>
+<section class="view" id="view-directory" data-route="/directory" data-source="/members" data-loading="Reading the directory." data-one="member" data-many="members" hidden>
 <h2 tabindex="-1">Directory</h2>
 <p class="lede">Members who chose to be listed, showing only what each of them chose to show. Any member can read it, whether or not their orientation has been recorded.</p>
-<p class="status" role="status" data-status></p><div class="error" data-error hidden></div>
+<p class="status" role="status" data-status></p><div class="error" role="alert" data-error hidden></div>
 <p class="empty" data-empty hidden>Nobody has chosen to be listed.</p>
 <div class="grid2" data-target hidden></div>
 <template data-item>
@@ -279,12 +278,12 @@
 </main>
 
 <noscript>
-<p class="noscript">This portal reads the members API in the browser, so with JavaScript turned off it shows you nothing at all rather than an empty record.</p>
+<p class="noscript">This page needs JavaScript. Turn it on and reload.</p>
 </noscript>
 
 <template id="api-unreachable">
 <h3>The members API did not answer</h3>
-<p>Nothing was read or changed, and the door is unaffected. Start the stack with <code>make development</code>, then reload this page. If it was already running, <code>make logs</code> says what each service printed last.</p>
+<p>Nothing was read or changed, and your card still opens the door. Try again in a minute. If it keeps happening, tell an admin.</p>
 </template>
 
 <template id="not-signed-in">
@@ -303,13 +302,14 @@
 <template id="api-problem">
 <h3 data-field="title" data-fallback="That was refused"></h3>
 <p data-field="detail" data-fallback="The API refused it and said nothing more about why."></p>
-<p class="problem-kind">Nothing was read or changed. The API named this refusal <span data-field="type" data-fallback="nothing"></span>.</p>
+<p class="problem-kind">Nothing was read or changed.</p>
 </template>
 
 <script src="/session.js"></script>
 <script src="/pkce.js"></script>
 <script src="/identity.js"></script>
 <script src="/api.js"></script>
+<script src="/chrome.js"></script>
 <script src="/render.js"></script>
 <script src="/profile.js"></script>
 <script src="/main.js"></script>

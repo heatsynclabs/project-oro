@@ -9,18 +9,25 @@
 # already running is neither read nor touched, and no .env has to exist. Leaves
 # nothing behind. Exit code is 1 if any check failed.
 #
-# Seven suites. check_api_refusals.py and check_sign_ins.py need nothing
+# Nine suites. check_api_refusals.py and check_sign_ins.py need nothing
 # running and go first, so a fault in how a refusal is read, or in a command
 # that can remove somebody's account, is reported before anything is started.
 # check_identity.py is part (a) of the phase 2 password proof:
 # hashes the lab already holds, imported and signed in with. check_configuration.py
 # is what configure.py registered, and one whole sign in through the hosted
 # screens ending in a refresh token that rotates. check_reconfiguration.py is
-# what a second run of configure.py does to all of that. check_legacy_import.py
+# what a second run of configure.py does to all of that.
+# check_the_way_in.py is the screens a person meets and the login policy behind
+# them: the wall the administrator account is put behind, the sign up the
+# screens offer, and what the step does to a policy that has it turned off.
+# check_legacy_import.py
 # takes hashes written by a replica of the legacy application and signs in with
 # the passwords that produced them. check_making_a_sign_in.py runs
 # make_a_sign_in.py against the stack and against the members schema, which is
 # why this suite applies that schema and the four before it do not need it.
+# check_mail.py proves the mail step refuses to replace a mail server it did
+# not configure. It needs nothing listening: a provider is configuration, and
+# writing one opens no socket.
 #
 # Part (b) of the password proof is ten real members signing in to staging with
 # the password they already use. It needs the production hashes and volunteers,
@@ -163,7 +170,11 @@ python3 "$ROOT/tools/identity/tests/check_configuration.py" || FAILED=1
 echo
 python3 "$ROOT/tools/identity/tests/check_reconfiguration.py" || FAILED=1
 echo
+python3 "$ROOT/tools/identity/tests/check_the_way_in.py" || FAILED=1
+echo
 python3 "$ROOT/tools/identity/tests/check_legacy_import.py" || FAILED=1
 echo
 python3 "$ROOT/tools/identity/tests/check_making_a_sign_in.py" || FAILED=1
+echo
+python3 "$ROOT/tools/identity/tests/check_mail.py" || FAILED=1
 exit "${FAILED:-0}"

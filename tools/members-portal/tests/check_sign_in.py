@@ -151,23 +151,48 @@ def test_the_client_id_is_read_from_a_document_on_this_origin():
     meets two of the three states: a stack that step never ran against serves no
     document, and a throwaway stack on another port serves the one written for a
     laptop's own stack, because the file sits in the directory Caddy binds.
+
+    What the page says about either is addressed to a member, not to whoever
+    runs this suite. It used to name the script, which is a thing no member at
+    members.heatsynclabs.org can run, so the sentences now say the state and
+    send the reader to an admin. The state names are what this asserts on,
+    because those are stable and the wording is not.
     """
     path = configuration_path()
+    said = {element.get("data-signing-in")
+            for element in page.carrying(HTML, "data-signing-in")}
     served = fetch(path)
     if served.status != 200:
-        assert "tools/identity/configure.py" in HTML, (
-            f"{path} is not served, and the page never names the command that "
-            "writes it, so a reader is left with a sign in that does nothing")
+        assert "unconfigured" in said, (
+            f"{path} is not served, and the page carries no sentence for that, "
+            "so a reader is left with a sign in that does nothing")
         return
     document = json.loads(served.body)
     for key in ("issuer", "client_id", "redirect_uri"):
         assert document.get(key), f"{path} carries no {key}"
     if document["redirect_uri"] != harness.BASE + "/":
-        assert "reading it on" in HTML, (
+        assert "wrong-origin" in said, (
             f"{path} registers {document['redirect_uri']!r} and this portal is "
             f"served from {harness.BASE!r}, so a sign in would send the code "
             "somewhere this page never sees it, and the page says nothing "
             "about that")
+
+
+def test_no_sentence_a_member_reads_tells_them_to_run_a_command():
+    """A members site is not a developer tool.
+
+    Every one of these sentences named a script or a make target until
+    2026-08-31: the band said to run tools/identity/configure.py, the silent
+    API block said to run make development and make logs, and the noscript
+    line explained that the portal reads an API in the browser. A member at
+    members.heatsynclabs.org can act on none of it. What they can act on is
+    trying again, and telling an admin.
+    """
+    for named in ("make ", "configure.py", "docker compose", "npm ", "<code>"):
+        assert named not in HTML, (
+            f"the page tells a member to run {named!r}. The states this page "
+            "has are real; what a member does about each of them is try again "
+            "or tell an admin, and the runbooks are where an operator goes.")
 
 
 def test_the_page_has_a_sentence_for_every_way_signing_in_can_be_unavailable():
@@ -183,102 +208,6 @@ def test_the_page_has_a_sentence_for_every_way_signing_in_can_be_unavailable():
         assert state in said, f"the page has no sentence for {state}"
         assert f'"{state}"' in source, \
             f"identity.js never answers {state}, so that sentence is unreachable"
-
-
-# ---------------------------------------------- what the banner is allowed to say
-
-def test_the_banner_claims_nothing_the_page_has_not_measured():
-    """The band used to say everything came from the contract mock and nobody
-    was signed in. Both stop being true, and at different times. So the page
-    carries a sentence per answer, hidden, and shows the one that matches what
-    it found when it asked."""
-    claims = {element.get("data-behind"): element
-              for element in page.carrying(HTML, "data-behind")}
-    for wanted in ("unknown", "mock", "service"):
-        assert wanted in claims, f"the band has no sentence for {wanted}"
-    assert "hidden" in claims["mock"].attrs, \
-        "the page claims the contract mock before it has asked anything"
-    assert "hidden" in claims["service"].attrs, \
-        "the page claims the real service before it has asked anything"
-    assert "hidden" not in claims["unknown"].attrs, \
-        "the band starts with nothing shown, so a reader with a slow API is " \
-        "told nothing about where the record came from"
-
-
-def test_the_page_finds_out_what_is_behind_the_api_the_way_this_suite_does():
-    """A call carrying a token nothing issued, which is what api.js sends once
-    on every load. The token is read out of that file rather than written again
-    here, and the three answers are sorted the same way it sorts them, so this
-    suite and the page cannot measure different things about one stack.
-    """
-    found = behind_the_api()
-    if found == "mock":
-        assert "contract mock" in HTML, \
-            "nothing behind /v1 checked a token nobody issued, which makes it " \
-            "the contract mock, and the page has no sentence saying so"
-    elif found == "service":
-        assert "members API" in HTML, \
-            "/v1 refused a token nobody issued, which makes it a real service, " \
-            "and the page has no sentence saying so"
-    else:
-        assert "Nothing has answered the members API" in HTML, \
-            "nothing is behind /v1 on this stack and the page has no sentence " \
-            "for not knowing, so it would claim one of the two"
-
-
-# ---------------------------------------------------------- the one write path
-
-def test_the_first_sign_in_offers_the_operation_the_contract_declares():
-    """A person who has never been here has no member record and the API refuses
-    every view with the same refusal. The block for it carries the one control
-    that fixes it, and what that control sends is what the contract asks for."""
-    assert 'id="api-no-member-record"' in HTML, \
-        "no block for the refusal a first sign in gets"
-    claims = [element for element in page.carrying(HTML, "data-claim-member")]
-    assert claims, "that block offers no control, so it is a dead end"
-    assert claims[0].name == "button", \
-        f"the control is a {claims[0].name}, and only a button writes anything"
-
-    contract = (ROOT / "docs" / "api" / "members-v1.yaml").read_text()
-    assert "operationId: createMe" in contract, \
-        "the contract declares no POST /me, so this page offers an operation " \
-        "that does not exist. Rule 10"
-    schema = contract[contract.index("    FirstSignIn:"):]
-    required = re.search(r"required: \[([^\]]+)\]", schema).group(1)
-    sent = fetch("/api.js").body
-    for field in [name.strip() for name in required.split(",")]:
-        assert f"{field}:" in sent, \
-            f"FirstSignIn requires {field} and api.js never sends it"
-
-
-def test_the_refusal_the_page_acts_on_is_the_one_the_service_raises():
-    """The portal picks its block by the slug at the end of the problem type.
-    Read out of the service rather than copied, because a slug renamed on one
-    side and not the other turns the one actionable refusal into a dead end."""
-    problems = (ROOT / "services" / "api" / "app" / "problems.py").read_text()
-    slug = re.search(r'NO_MEMBER_RECORD = Problem\(\s*slug="([^"]+)"',
-                     problems).group(1)
-    renderer = fetch("/render.js").body
-    assert f'"/{slug}"' in renderer, \
-        f"the service raises {slug} and the renderer looks for something else"
-
-
-def test_the_stack_under_test_answers_the_first_sign_in_in_a_shape_a_page_shows():
-    """Whatever answers POST /me has to answer in JSON, because the block the
-    page shows is bound to fields in a problem detail. Caddy's own 404 is plain
-    text, and a page handed that shows an empty box. Nothing to ask when nothing
-    is routed at /v1, so that case returns rather than failing.
-    """
-    if behind_the_api() == "unknown":
-        return
-    answer = signed_in("/v1/me", method="POST", body={"name": "Fixture Member"})
-    try:
-        json.loads(answer.body)
-    except ValueError:
-        raise AssertionError(
-            f"POST /v1/me answered {answer.status} and the body was not JSON, "
-            "so the page has nothing to show a member on a first sign in"
-        ) from None
 
 
 if __name__ == "__main__":

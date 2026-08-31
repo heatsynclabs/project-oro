@@ -724,9 +724,11 @@ these is measured, and `tools/identity/README.md` holds the measurement:
    service.
 2. A member cannot verify a new address after changing it, so the address on
    their account is the one an admin recorded.
-3. The Register button cannot work, because a registration lands in
-   `USER_STATE_INITIAL` waiting for a code. `tools/identity/configure.py`
-   turns that button off for this reason.
+3. The Register button is on and cannot be finished, because a registration
+   lands in `USER_STATE_INITIAL` waiting for a code. The button stays on:
+   this site replaces one that has a sign up. Until a mail server is
+   configured, a person who registers is stuck on Activate User and an admin
+   has to remove that account and make them a sign in, per item 4.
 4. An account that is already in `USER_STATE_INITIAL` cannot be repaired at
    all. Every write to it is refused. The only route is to remove it and make
    a new one, which is what

@@ -50,7 +50,7 @@ function present(section, answer) {
   } else if (answer.outcome === "signed-out") {
     // The chrome as well as the view, because a session that ended part way
     // leaves the app bar naming somebody who is no longer signed in.
-    render.showWho("signed-out", "");
+    chrome.showWho("signed-out", "");
     render.showSignedOut(section);
   } else {
     render.showSilence(section);
@@ -122,7 +122,7 @@ async function sendProfileChanges() {
   } else if (answer.outcome === "refused") {
     profile.showSaveProblem(answer.problem);
   } else if (answer.outcome === "signed-out") {
-    render.showWho("signed-out", "");
+    chrome.showWho("signed-out", "");
     render.showSignedOut(profile.section);
   } else {
     profile.showSaveSilence();
@@ -167,27 +167,27 @@ window.addEventListener("hashchange", () => show(routeInAddress(), true));
 // reader looks at.
 async function start() {
   const state = await identity.begin();
-  render.showWho(state, "");
-  render.showSigningIn(
+  chrome.showWho(state, "");
+  chrome.showSigningIn(
     state === "signed-in" || state === "signed-out" ? "" : state);
   // Started rather than awaited: the views can load while the identity service
   // is asked who this is, and the chip carries a name the moment it answers.
   if (state === "signed-in") {
     identity.whoIsSignedIn().then((who) => {
       person = who;
-      render.showWho(state, who.name);
+      chrome.showWho(state, who.name);
     });
   }
-  api.whatAnswers().then((behind) => render.showBehindTheApi(behind));
+  api.whatAnswers().then((behind) => chrome.showBehindTheApi(behind));
   if (state === "signed-in") {
-    render.showTheViews();
+    chrome.showTheViews();
     show(routeInAddress(), false);
   } else {
     // Every view here is about the reader's own things, and somebody who has
     // never been here has none. Seven tabs each saying "sign in to read this"
     // is a locked door with seven handles, so they get one page with the two
     // things they can actually do.
-    render.showTheLanding();
+    chrome.showTheLanding();
   }
 }
 

@@ -66,9 +66,11 @@ compose_dev up --detach --wait --wait-timeout 300 db caddy mock api >/dev/null |
 }
 echo
 
-# Four suites, all against this one stack. check_portal.py is the page against
+# Five suites, all against this one stack. check_portal.py is the page against
 # the contract underneath it, check_appearance.py is the page itself,
-# check_sign_in.py is what it does about signing in, and check_profile.py is
+# check_sign_in.py is what it ships and where it reads its client id,
+# check_the_band.py is what it claims about the API behind it and the one write
+# it makes, and check_profile.py is
 # what it lets a member change. Split because one file holding them runs past
 # the 300 line ceiling in rule 6.
 #
@@ -76,7 +78,7 @@ echo
 # who broke two wants to see both.
 set +e
 FAILED=0
-for SUITE in check_portal check_appearance check_sign_in check_profile; do
+for SUITE in check_portal check_appearance check_sign_in check_the_band check_profile; do
   ORO_PORTAL_URL="http://$ORO_HOSTNAME:$ORO_HTTP_PORT" ORO_PORTAL_PROJECT="$PROJECT" \
     ORO_MOCK_URL="$ORO_MOCK_URL" \
     python3 "$ROOT/tools/members-portal/tests/$SUITE.py" || FAILED=1

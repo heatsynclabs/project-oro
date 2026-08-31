@@ -124,12 +124,29 @@ function clear(section) {
   return parts;
 }
 
+// What the live region says once a view has something in it.
+//
+// A sighted member never sees this line: members.css clips it to a pixel. A
+// screen reader reads it out on every view change, so it is the one status
+// line in the portal that some members cannot skip, and it used to say
+// "Your cards, loaded." to exactly those members. A live region should say
+// what changed. So a list says how many things are in it and a record says
+// nothing at all, because show() moves focus to the heading and the heading
+// is what gets read.
+function announce(section, parts, count) {
+  const one = section.dataset.one;
+  if (!one) { parts.status.textContent = ""; return; }
+  const many = section.dataset.many;
+  if (count === 0) { parts.status.textContent = "No " + many + "."; return; }
+  parts.status.textContent = count === 1 ? "1 " + one + "." : count + " " + many + ".";
+}
+
 function showRecord(section, record) {
   const parts = clear(section);
   bindFields(parts.target, record);
   bindLists(section, parts.target, record);
   parts.target.hidden = false;
-  parts.status.textContent = section.dataset.loaded;
+  announce(section, parts, null);
 }
 
 function showList(section, items) {
@@ -147,7 +164,7 @@ function showList(section, items) {
   } else {
     parts.target.hidden = false;
   }
-  parts.status.textContent = section.dataset.loaded;
+  announce(section, parts, items.length);
 }
 
 // A block cloned out of the page and shown wherever it was asked for. The
@@ -200,96 +217,25 @@ function showSignedOut(section) {
 }
 
 
-// ---------------------------------------------------------------- the chrome
-
-// Which chip and which controls each state gets. Every sentence in them is in
-// index.html; a member's name is data rather than copy, so it comes from here.
-function showWho(state, name) {
-  const signedIn = state === "signed-in";
-  for (const chip of document.querySelectorAll("[data-who]")) {
-    chip.hidden = chip.dataset.who !== (signedIn ? "signed-in" : "signed-out");
-  }
-  if (signedIn && name) {
-    document.querySelector("[data-name]").textContent = name;
-  }
-  // The app bar's own control only. The landing carries its own pair and is
-  // shown or hidden as a page rather than a control at a time.
-  for (const control of document.querySelectorAll(".appbar [data-sign-in]")) {
-    control.hidden = state !== "signed-out";
-  }
-  document.querySelector("[data-sign-out]").hidden = !signedIn;
-}
-
-// The band under the masthead answers two questions and they are independent:
-// what is behind the members API, and whether signing in can work on this
-// origin at all. Each group holds one sentence per answer and shows one of
-// them, or none when the group has nothing to say.
-function pickOne(attribute, wanted) {
-  for (const element of document.querySelectorAll("[" + attribute + "]")) {
-    element.hidden = element.getAttribute(attribute) !== wanted;
-  }
-}
-
-function showBehindTheApi(which) {
-  pickOne("data-behind", which);
-}
-
-function showSigningIn(which) {
-  pickOne("data-signing-in", which);
-}
-
-function showSilence(section) {
-  showFromTemplate(section, "api-unreachable", null);
-}
-
+// What a view shows before its request answers, and what it shows when nothing
+// answered at all. Both are about one view, so both stayed here when chrome.js
+// took the page around them.
 function showLoading(section) {
   const parts = clear(section);
   parts.status.textContent = section.dataset.loading;
 }
 
 
-// The two shapes this page has. Signed in it is a set of views with a nav above
-// them. Signed out it is one page with a way in, because every view is about the
-// reader's own things and somebody who has never been here has none.
-function showTheLanding() {
-  const landing = document.querySelector("[data-landing]");
-  document.querySelector(".views").hidden = true;
-  for (const section of document.querySelectorAll("[data-source]")) {
-    section.hidden = true;
-  }
-  // What is behind the members API is a true thing to say about records, and
-  // there are none on this page. The band stays for the sentences that are
-  // about signing in, because those are the reason somebody is still here.
-  for (const line of document.querySelectorAll("[data-behind]")) {
-    line.hidden = true;
-  }
-  quietTheBandIfNothingIsLeft();
-  landing.hidden = false;
-  landing.querySelector("h2").focus();
+function showSilence(section) {
+  showFromTemplate(section, "api-unreachable", null);
 }
 
-function quietTheBandIfNothingIsLeft() {
-  const band = document.querySelector(".notice");
-  const showing = Array.from(band.querySelectorAll("p")).some((p) => !p.hidden);
-  band.hidden = !showing;
-}
-
-function showTheViews() {
-  document.querySelector(".views").hidden = false;
-  document.querySelector(".notice").hidden = false;
-  document.querySelector("[data-landing]").hidden = true;
-}
 
 const render = {
-  showTheLanding: showTheLanding,
-  showTheViews: showTheViews,
   showRecord: showRecord,
   showList: showList,
   showProblem: showProblem,
   showSignedOut: showSignedOut,
-  showWho: showWho,
-  showBehindTheApi: showBehindTheApi,
-  showSigningIn: showSigningIn,
   showSilence: showSilence,
   showLoading: showLoading,
   fillFromTemplate: fillFromTemplate,

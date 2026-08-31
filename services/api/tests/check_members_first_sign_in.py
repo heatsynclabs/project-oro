@@ -36,6 +36,8 @@ TWICE = SUBJECT_PREFIX + "twice"
 TAKEN = SUBJECT_PREFIX + "taken-address"
 NAMELESS = SUBJECT_PREFIX + "nameless"
 FORGED = SUBJECT_PREFIX + "forged"
+REMOVED = SUBJECT_PREFIX + "removed"
+RESTORED = SUBJECT_PREFIX + "restored"
 
 # Ida's address, which belongs to a record somebody is already signed in to.
 IDAS_EMAIL = "ida@example.test"
@@ -174,6 +176,50 @@ def test_a_field_this_operation_does_not_take_is_refused():
     assert refused.status == 422, f"{refused.status}: {refused.body}"
     assert "standing" in refused.body, refused.body
     assert records_for(NAMELESS) == 0, "the request wrote a record anyway"
+
+
+def test_a_sign_in_whose_record_was_removed_is_told_so_rather_than_broken():
+    """The loop this closed, which a member could not get out of.
+
+    Reading answers no-member-record and names this operation, because
+    current_member_id skips a removed row. This operation used to skip it too
+    and fall through to an INSERT that hit members_identity_subject_key, and
+    the caller got 500 every time they tried, forever.
+    """
+    first_sign_in(REMOVED, {"name": "Removed Person"})
+    in_the_database("UPDATE members SET deleted_at = now() WHERE "
+                    f"identity_subject = '{REMOVED}'")
+
+    refused = first_sign_in(REMOVED, {"name": "Removed Person"})
+    assert refused.status == 409, f"{refused.status}: {refused.body}"
+    problem = refused.json()
+    assert problem["type"].endswith("/record-was-removed"), problem
+    assert "admin" in problem["detail"], problem
+    assert records_for(REMOVED) == 1, (
+        "the refused request wrote a second record beside the removed one")
+
+    # And again, because the fault this closed was that it never stopped.
+    assert first_sign_in(REMOVED, {"name": "Removed Person"}).status == 409
+
+
+def test_a_sign_in_whose_record_was_restored_works_again():
+    """Removal is reversible by design, so the refusal above has to be too.
+
+    Its own subject rather than the one above, because harness.run calls these
+    in the order their names sort and a check that only passes in the order it
+    was written in is a check that fails the day somebody renames one.
+    """
+    first_sign_in(RESTORED, {"name": "Restored Person"})
+    in_the_database("UPDATE members SET deleted_at = now() WHERE "
+                    f"identity_subject = '{RESTORED}'")
+    assert first_sign_in(RESTORED, {"name": "Restored Person"}).status == 409
+
+    in_the_database("UPDATE members SET deleted_at = NULL WHERE "
+                    f"identity_subject = '{RESTORED}'")
+    answer = first_sign_in(RESTORED, {"name": "Restored Person"})
+    assert answer.status == 200, f"{answer.status}: {answer.body}"
+    assert answer.json()["name"] == "Restored Person", answer.body
+    assert records_for(RESTORED) == 1, records_for(RESTORED)
 
 
 def test_a_first_sign_in_with_no_token_writes_nothing():

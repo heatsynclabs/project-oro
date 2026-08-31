@@ -9,8 +9,11 @@ Activate User, and that screen carries a required code field, Next, and Resend
 Code, and no way past.
 
 On a laptop the server is the catcher compose.development.yaml runs, which holds
-mail rather than delivering it. On a deployment it is whatever the lab uses, and
-docs/runbooks/deploy-beside-the-legacy-system.md is where that gets decided.
+mail rather than delivering it. That is the only thing this file can configure:
+it writes a provider with no username, no password and TLS off. A deployment
+relay is set up by hand once, per step 7 of
+docs/runbooks/deploy-beside-the-legacy-system.md, and point_at refuses to touch
+an instance that is already sending through a host it was not asked for.
 
 Configuring is not enough on its own, and that is the half worth knowing. A
 provider is created inactive: the first one written here was
@@ -52,40 +55,94 @@ def matching(providers: list, host: str) -> dict | None:
     return None
 
 
+def sending(providers: list) -> dict | None:
+    """The one provider mail actually leaves through, if there is one.
+
+    Activating a provider deactivates whichever one was active, which the
+    identity service does not warn about and which is the whole reason the
+    refusal below exists.
+    """
+    for provider in providers:
+        if provider.get("state") == "SMTP_CONFIG_ACTIVE":
+            return provider
+    return None
+
+
 def point_at(host: str, token: str) -> None:
     """Make `host` the server this instance sends through, and activate it.
 
-    Idempotent. A second run with the same host reports it already set rather
+    Only ever the catcher. What this can build is a provider with no username,
+    no password and TLS off, which is a mail catcher on a compose network and
+    nothing that would be accepted by a real relay. A lab relay is configured by
+    hand, once, per step 7 of docs/runbooks/deploy-beside-the-legacy-system.md.
+
+    So this refuses rather than writes when the instance is already sending
+    through a host it was not asked for. Activating deactivates the one that was
+    active, measured on 2026-08-31 against 4.17.1, so the shipped default of
+    ORO_MAIL_HOST=mail:1025 reaching a deployment would otherwise take the lab
+    relay offline, point mail at a host that does not exist there, and print
+    "mail: activated" on the way out.
+
+    Idempotent. A second run against the host already sending reports it rather
     than stacking a second provider beside the first, because a provider list
     with two entries in it is a question nobody wants at 2am.
     """
     providers = held(token)
+    active = sending(providers)
+    if active is not None and active.get("host") != host:
+        raise Refused(
+            f"this instance is already sending through {active.get('host')}, "
+            f"and was asked to send through {host} instead. Nothing was "
+            "changed. Activating a provider deactivates the one that was "
+            "active, and what this step can build carries no username, no "
+            "password and no TLS, so it would replace a working relay with "
+            "one that cannot send. Set ORO_MAIL_HOST to the host already "
+            "there, or leave --mail-host off and keep the relay somebody "
+            "configured by hand.")
+    if active is not None:
+        print(f"mail: already sending through {host}")
+        return
+
     already = matching(providers, host)
     if already is None:
-        answer = api.call(PROVIDERS, {
-            "senderAddress": SENDER,
-            "senderName": SENDER_NAME,
-            "host": host,
-            "user": "",
-            "password": "",
-            # The catcher takes plain SMTP on the compose network and nothing
-            # leaves the machine. A deployment sending over the internet wants
-            # this on, and the runbook step says so where the host is chosen.
-            "tls": False,
-        }, token)
-        if answer.status != 200:
-            raise Refused(f"the mail server could not be set: {answer.status} "
-                          f"{answer.message()}. Registering and a forgotten "
-                          "password both end in a code that cannot be sent "
-                          "until it is.")
-        already = {"id": answer.body["id"], "state": "SMTP_CONFIG_INACTIVE"}
+        already = write_the_catcher(host, token)
         print(f"mail: sending through {host}")
     else:
-        print(f"mail: already sending through {host}")
+        print(f"mail: set for {host} and not sending, which is the state a "
+              "provider is created in")
+    activate(already["id"], token)
 
-    if already.get("state") == "SMTP_CONFIG_ACTIVE":
-        return
-    turned_on = api.call(f"{PROVIDERS}/{already['id']}/_activate", {}, token)
+
+def write_the_catcher(host: str, token: str) -> dict:
+    """Register the provider, which is not yet sending. activate does that."""
+    answer = api.call(PROVIDERS, {
+        "senderAddress": SENDER,
+        "senderName": SENDER_NAME,
+        "host": host,
+        "user": "",
+        "password": "",
+        # The catcher takes plain SMTP on the compose network and nothing
+        # leaves the machine. Nothing sending over the internet would accept
+        # this, which is why point_at refuses rather than taking a flag: a
+        # relay is set up by hand and this stays away from it.
+        "tls": False,
+    }, token)
+    if answer.status != 200:
+        raise Refused(f"the mail server could not be set: {answer.status} "
+                      f"{answer.message()}. Registering and a forgotten "
+                      "password both end in a code that cannot be sent "
+                      "until it is.")
+    return {"id": answer.body["id"]}
+
+
+def activate(provider_id: str, token: str) -> None:
+    """The half that was missed, and it cost a day.
+
+    A provider is created SMTP_CONFIG_INACTIVE. The first one written here was
+    left that way, a registration sent nothing, and the catcher held nothing.
+    Activated, the same registration put an Initialize User message in it.
+    """
+    turned_on = api.call(f"{PROVIDERS}/{provider_id}/_activate", {}, token)
     if turned_on.status != 200 and "not been changed" not in turned_on.message():
         raise Refused(f"the mail server was set and could not be activated: "
                       f"{turned_on.status} {turned_on.message()}. A provider "
