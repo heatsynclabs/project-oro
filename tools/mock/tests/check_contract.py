@@ -130,13 +130,20 @@ def test_the_public_endpoint_is_served_from_the_members_hostname_path():
 
 def test_card_eligibility_answers_this_documents_own_example():
     """The date and the tenure sentence appear in members-v1.yaml and nowhere
-    else, so an answer carrying them came from this file."""
+    else, so an answer carrying them came from this file.
+
+    It read the `requirements` array until 2026-08-30. That array left the
+    contract: `card_eligibility` in db/migrations/012_close_remaining.sql
+    returns one sentence naming the first rule that failed, and nothing could
+    fill a per rule breakdown without deciding eligibility a second time.
+    Finding 6 of docs/api/contract-review-notes.md carries it."""
     answer = signed_in("GET", "/me/card-eligibility")
     assert answer.status == 200, f"got {answer.status}: {answer.body[:200]}"
     eligibility = answer.json()
     assert eligibility["eligible_on"] == "2026-10-14", answer.body[:300]
-    rules = [requirement["rule"] for requirement in eligibility["requirements"]]
-    assert "tenure" in rules, answer.body[:300]
+    assert eligibility["reason"] == "Card access needs 2 months at this tier.", \
+        answer.body[:300]
+    assert "requirements" not in eligibility, answer.body[:300]
 
 
 BROKEN_CYCLE = {"$ref": None}

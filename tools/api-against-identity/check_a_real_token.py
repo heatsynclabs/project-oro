@@ -10,10 +10,11 @@ refused are.
 
     tools/api-against-identity/run.sh
 
-Three sign ins happen before any check runs, each one all the way through the
+Four sign ins happen before any check runs, each one all the way through the
 screens a member is served. Two of them are the same person, differing only in
 which client they arrived through, so a check about the audience changes one
-thing and nothing else.
+thing and nothing else. The fourth is the person POST /me is for: a real
+account the members database has never met.
 
 The minting the harness does here is only ever forgery. Both key settings it
 reads name the same stranger's key, because nothing this suite signs is meant
@@ -184,6 +185,42 @@ def test_a_stranger_signature_under_the_provider_key_id_is_refused():
     assert body["type"] == ERRORS + "unauthenticated", body
 
 
+def test_a_first_sign_in_writes_a_member_record_for_a_real_sign_in():
+    """POST /me, with a subject the members database has genuinely never met.
+
+    This suite is the only place that subject exists. The one in
+    services/api/tests mints its own tokens, so a check there proves the
+    operation and not that the person on the other end of it is real.
+    """
+    held = signed_in()
+    made = harness.fetch("/me", held["newcomer_token"], method="POST",
+                         body={"name": make_the_fixtures.NEWCOMER["name"],
+                               "email": make_the_fixtures.NEWCOMER["login"]})
+    assert made.status == 201, f"{made.status}: {made.body}"
+    assert made.json()["name"] == make_the_fixtures.NEWCOMER["name"], made.body
+    STATE["newcomer_member_id"] = made.json()["id"]
+
+    read = harness.fetch("/me", held["newcomer_token"])
+    assert read.status == 200, f"{read.status}: {read.body}"
+    assert read.json()["id"] == STATE["newcomer_member_id"], read.body
+
+
+def test_a_second_first_sign_in_answers_the_same_record():
+    """Idempotent, which is what lets a portal send it on every sign in.
+
+    It runs after the check above, because the names sort that way, and it
+    depends on that: the record has to exist for the second call to be a
+    second call.
+    """
+    held = signed_in()
+    again = harness.fetch("/me", held["newcomer_token"], method="POST",
+                          body={"name": "Somebody Else Entirely"})
+    assert again.status == 200, f"{again.status}: {again.body}"
+    assert again.json()["id"] == STATE["newcomer_member_id"], again.body
+    assert again.json()["name"] == make_the_fixtures.NEWCOMER["name"], (
+        f"the second call rewrote the name: {again.body}")
+
+
 def test_a_sign_in_that_matches_no_member_row_is_told_so():
     """A real token, verified, for somebody the members database has never met.
 
@@ -209,7 +246,7 @@ def sign_in(person: dict, application: str) -> str:
 
 
 def sign_everybody_in() -> None:
-    """Three whole sign ins, before any check reads anything.
+    """Four whole sign ins, before any check reads anything.
 
     Done once rather than per check, because each one drives three screens and
     a suite that signed in eight times would spend most of its run there.
@@ -220,6 +257,7 @@ def sign_everybody_in() -> None:
     STATE["another_project_token"] = sign_in(
         make_the_fixtures.MEMBER, make_the_fixtures.OTHER_APP_ID)
     STATE["stranger_token"] = sign_in(make_the_fixtures.STRANGER, members_portal)
+    STATE["newcomer_token"] = sign_in(make_the_fixtures.NEWCOMER, members_portal)
 
 
 if __name__ == "__main__":

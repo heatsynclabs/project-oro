@@ -21,6 +21,9 @@ export ORO_HOSTNAME=localhost ORO_TLS=internal
 export ORO_HTTP_PORT=8083 ORO_HTTPS_PORT=8446 ORO_IDENTITY_PORT=8187
 export ORO_DB_PASSWORD="throwaway-$$"
 export ORO_IDENTITY_DB_PASSWORD="throwaway-identity-$$"
+# compose.yaml includes compose.api.yaml, which interpolates this whether or
+# not the members API is one of the services this suite starts.
+export ORO_API_DB_PASSWORD="throwawayapi$$"
 export ORO_IDENTITY_MASTERKEY="throwaway-master-key-0123456789a"
 export ORO_IDENTITY_ADMIN_USERNAME="fixture-admin"
 export ORO_IDENTITY_ADMIN_PASSWORD="Fixture-Handover-1!"

@@ -71,6 +71,9 @@ export ORO_MOCK_PORT=4097
 export ORO_DB_PASSWORD="throwaway-$$"
 export ORO_IDENTITY_DB_PASSWORD="throwaway-identity-$$"
 API_DB_PASSWORD="throwaway-api-$$"
+# The same value under the name compose.api.yaml reads, because compose.yaml
+# includes that file and interpolates it whatever this run starts.
+export ORO_API_DB_PASSWORD="$API_DB_PASSWORD"
 # Exactly 32 bytes, which is what the service requires and all it requires.
 export ORO_IDENTITY_MASTERKEY="throwaway-master-key-0123456789a"
 export ORO_IDENTITY_ADMIN_USERNAME="fixture-admin"

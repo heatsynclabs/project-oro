@@ -51,6 +51,16 @@ STRANGER = {
     "password": "No-Member-Row-Passw0rd-1!",
 }
 
+# The person POST /me is for. A real account, a real sign in, and no member
+# record anywhere, which is the state a first sign in starts from. STRANGER
+# above stays in that state for the whole run, because the refusal it proves is
+# what happens to somebody who has not made this call.
+NEWCOMER = {
+    "login": "kiln@example.invalid",
+    "name": "Kiln Newcomer",
+    "password": "First-Sign-In-Passw0rd-1!",
+}
+
 # A second project on the same instance, so that a check can hold a token this
 # identity service really issued, signed with the key it really publishes,
 # carrying an audience that is not the members API's. Buying that token any
@@ -115,9 +125,10 @@ def main() -> int:
         raise SystemExit("No ORO_IDENTITY_TOKEN, so nothing was created.")
     subject = make_person(MEMBER, token)
     make_person(STRANGER, token)
+    make_person(NEWCOMER, token)
     make_the_other_project(registrations.organisation(token), token)
-    print(f"{MEMBER['name']} and {STRANGER['name']} have identity accounts, "
-          f"and {OTHER_PROJECT} exists", file=sys.stderr)
+    print(f"{MEMBER['name']}, {STRANGER['name']} and {NEWCOMER['name']} have "
+          f"identity accounts, and {OTHER_PROJECT} exists", file=sys.stderr)
     print(f"{subject}\t{MEMBER['login']}\t{MEMBER['name']}")
     return 0
 
