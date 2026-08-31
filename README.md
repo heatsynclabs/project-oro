@@ -237,6 +237,8 @@ make help               # every target, with a line each
 | `make backup-test` | the restore drill: back up, destroy the database, restore, check every row came back | no, own project |
 | `./tools/bootstrap/tests/run.sh` | the first three admins seated, and the fourth refused | no, own project |
 | `make ceilings` | file and function size limits | no |
+| `make api-identity-test` | the members API accepts a token the real identity service issued, and refuses four kinds it should not | no, own project |
+| `make attributions-check` | the dependency tables in ATTRIBUTIONS.md still match the two lockfiles | no, builds two images |
 | `make import-boundaries` | the layers only import downward, over the Python in `services/` | no |
 | `make api-test` | the first three operations of the members API, against a real Postgres and the real policies | no, own project |
 | `./tools/ci/voice-gate.sh` | the writing rules, over every tracked file | no |

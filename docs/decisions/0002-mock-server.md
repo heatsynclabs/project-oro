@@ -212,10 +212,11 @@ That paragraph still holds for the deployment. What changed after it was
 written is the section below, which was added rather than folded in so the
 original reasoning stays readable.
 
-**CI runs it.** `.github/workflows/ci.yml` has a Mock server job calling
-`tools/mock/tests/run.sh`, alongside the database suite, the door conformance
-suite, the Redocly lint of `members-v1.yaml`, the prose gate, and the commit
-message check. That job is what stops an edit to the contract document breaking
+**CI runs it.** `.github/workflows/ci-stacks.yml` has a Mock server job calling
+`tools/mock/tests/run.sh`, alongside the database suite and the other jobs that
+start a container. The door conformance suite, the Redocly lint of
+`members-v1.yaml`, the prose gate and the commit message check are in
+`.github/workflows/ci.yml`, which is the half that starts none. That job is what stops an edit to the contract document breaking
 all thirteen checks with nothing going red. It needs Docker, which the database
 job already uses. The pinned image has one manifest and it is `linux/amd64`, so
 it runs native on the runner and emulated on an arm64 laptop.
