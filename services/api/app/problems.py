@@ -60,24 +60,54 @@ INVALID_REQUEST = Problem(
     ),
 )
 
-# Not a shape the contract declares, and the gap is real rather than an
-# oversight in this service. /me declares 200 and 401 only, and a token this
-# service verified whose subject matches no member row is neither. The database
-# function that would claim or create that row, link_or_create_member in
-# db/migrations/008_system_paths.sql, is called by no operation in the
-# contract. docs/api/contract-review-notes.md finding 5 is the same gap.
+# 401 rather than a status of its own, because it is the status the contract
+# declares on every one of these paths, and a sentence that says what actually
+# happened, because the reader is about to go looking for a fault that is not
+# on their side. The Unauthenticated response in docs/api/members-v1.yaml names
+# this slug beside its own.
 #
-# 401 because it is the status the contract does declare, and a sentence that
-# says what actually happened, because the reader is about to go looking for a
-# fault that is not on their side.
+# The last sentence stopped being "ask an admin" on 2026-08-30, when POST /me
+# landed. A person reading this has somewhere to go now, and the operation that
+# takes them there is named. docs/api/contract-review-notes.md finding 5 is the
+# gap it closes.
 NO_MEMBER_RECORD = Problem(
     slug="no-member-record",
     status=401,
     title="This sign in is not linked to a member record",
     detail=(
         "The lab knows this sign in and has no member record joined to it, so "
-        "there was nothing to read. Nothing here can join the two yet. Ask an "
-        "admin to link your record."
+        "there was nothing to read. Sending POST /me with your name writes "
+        "one, which is what the members portal does on a first sign in. If the "
+        "lab already has a record for you, an admin joins it to this sign in."
+    ),
+)
+
+# The words are the contract's, from the 404 on /me/waiver. That a waiver is
+# missing is an answer rather than a fault, and the members portal reads this
+# status as an empty section: apps/members/index.html carries
+# data-empty-on="404" on that view.
+NO_WAIVER_RECORDED = Problem(
+    slug="no-waiver-recorded",
+    status=404,
+    title="No waiver is recorded for you",
+    detail=(
+        "Nobody has recorded a waiver for you, so there was nothing to read. "
+        "That is an answer rather than a fault. An admin records one once you "
+        "have signed it."
+    ),
+)
+
+# Raised by the database, never by a check here. members.email is citext UNIQUE
+# in db/migrations/001_schema.sql, so this is the constraint speaking and there
+# is no way for a caller to talk past it.
+EMAIL_ALREADY_KNOWN = Problem(
+    slug="email-already-known",
+    status=409,
+    title="That email already belongs to a member",
+    detail=(
+        "An email address identifies one member, and another member record "
+        "already carries this one, so nothing was saved. An admin can find "
+        "that record and merge the two."
     ),
 )
 

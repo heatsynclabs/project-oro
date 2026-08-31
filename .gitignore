@@ -36,3 +36,9 @@ dumps/
 .DS_Store
 .idea/
 *.swp
+
+# Written by tools/identity/configure.py. It carries the client id Zitadel
+# generated for this instance, so it is different on every deployment and on
+# every laptop, and committing one would point everybody else at a client that
+# is not theirs.
+apps/members/identity.json

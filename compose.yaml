@@ -1,11 +1,12 @@
 # The Project ORO stack, as it exists today: Postgres, Caddy and the identity
-# service.
+# service. The members API is in compose.api.yaml, which this file includes,
+# because this one had reached the 300 line ceiling in rule 6 of CLAUDE.md.
 #
-# The API service, the door service and the three portals are not built, so they
-# have no service block here and no route in caddy/routes/deployment.caddyfile.
-# Each one arrives with the phase that builds it.
+# The door service and the three portals are not built, so they have no service
+# block and no route in caddy/routes/deployment.caddyfile. Each one arrives with
+# the phase that builds it.
 #
-# This file is the deployment and it is the whole of it. What a laptop adds is
+# This file and the one it includes are the deployment. What a laptop adds is
 # in compose.development.yaml, an override rather than a profile, so there is
 # one way to ask for each shape:
 #
@@ -22,6 +23,12 @@
 # a machine they own, provides an .env, runs make up, and has the stack.
 
 name: oro
+
+# Read as though it were written here, and started by the same docker compose up.
+# The seam is what this repository builds from source rather than what it runs
+# from an image somebody else publishes.
+include:
+  - compose.api.yaml
 
 services:
   db:

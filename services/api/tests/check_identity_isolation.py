@@ -156,11 +156,17 @@ def test_a_token_from_another_issuer_is_refused():
 
 
 def test_a_verified_token_with_no_member_row_says_so():
+    """The sentence changed on 2026-08-30 and the check changed with it.
+
+    It used to send the reader to an admin, because nothing in the contract
+    could join a sign in to a record. POST /me can, so the sentence names it
+    and this asserts on the way out rather than on the old dead end.
+    """
     refused = fetch("/me", mint("sub-c-nobody-at-all"))
     assert refused.status == 401, refused.body
     problem = refused.json()
     assert problem["type"].endswith("/no-member-record"), problem
-    assert "link your record" in problem["detail"], problem
+    assert "POST /me" in problem["detail"], problem
 
 
 def test_an_identity_does_not_survive_on_a_pooled_connection():

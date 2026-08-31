@@ -35,6 +35,7 @@ STRANGER_KEY = os.environ["ORO_API_TEST_STRANGER_KEY"]
 WREN = "cccccccc-0000-0000-0000-000000000001"
 IDA = "cccccccc-0000-0000-0000-000000000002"
 SOLDER = "cccccccc-0000-0000-0000-000000000003"
+ANVIL = "cccccccc-0000-0000-0000-000000000004"
 
 
 class Answer:
@@ -45,11 +46,21 @@ class Answer:
         return json.loads(self.body)
 
 
-def fetch(path, token=None, method="GET"):
+def fetch(path, token=None, method="GET", body=None):
+    """One request, and the answer whatever its status.
+
+    `body` is sent as JSON when it is anything but None, which includes an
+    empty object: a check about a request body with nothing in it needs to be
+    able to send one.
+    """
     headers = {"Accept": "application/json, application/problem+json"}
     if token is not None:
         headers["Authorization"] = "Bearer " + token
-    request = urllib.request.Request(BASE + path, headers=headers,
+    sent = None
+    if body is not None:
+        sent = json.dumps(body).encode()
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(BASE + path, data=sent, headers=headers,
                                      method=method)
     try:
         with urllib.request.urlopen(request, timeout=20) as answer:

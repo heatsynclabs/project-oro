@@ -2,20 +2,33 @@
 
 ## What it is
 
-The service the three portals will call. Today it answers three of the twenty
-three operations in `docs/api/members-v1.yaml`:
+The service the three portals will call. Today it answers eight of the twenty
+four operations in `docs/api/members-v1.yaml`:
 
 | Operation | Path | What it proves |
 |---|---|---|
 | `getMe` | `GET /me` | A member reads their own record, with their tier and their live roles |
+| `createMe` | `POST /me` | A first sign in becomes a member record, and a second call writes nothing |
+| `listMyCards` | `GET /me/cards` | A member's own cards, tag numbers masked, no door hardware named |
+| `listMyCertifications` | `GET /me/certifications` | What they are certified on, revoked grants included |
+| `getMyWaiver` | `GET /me/waiver` | That a waiver exists, when, and where the document is kept |
+| `getMyCardEligibility` | `GET /me/card-eligibility` | Whether they may be nominated, out of the one function that decides it |
 | `listDirectory` | `GET /members` | The directory, with an email or a phone number hidden unless its owner published it |
 | `getDirectoryMember` | `GET /members/{id}` | The same object and the same visibility rules, for one member |
 
-That is the whole of it. There is no write path and no admin path. Nothing here touches a card, an
-approval or the door. This is a vertical slice built to prove one thing end to
-end: an HTTP request carrying an access token turns into a database transaction
-that runs under the member's own row level security policies, and the policies
-are what decide the answer.
+Those are the six sources `apps/members/index.html` declares, plus the
+operation that gets a person a record to read. There is no admin path and no
+other write path. Nothing here touches an approval or the door. It is a
+vertical slice built to prove one thing end to end: an HTTP request carrying an
+access token turns into a database transaction that runs under the member's own
+row level security policies, and the policies are what decide the answer.
+
+`POST /me` is the exception to "no write path" and it is a narrow one. It calls
+`link_or_create_member` in `db/migrations/008_system_paths.sql`, the only path
+in this system that writes a member without an admin, and it hands that
+function no email address, so the branch that claims somebody's existing record
+cannot fire. `app/first_sign_in.py` says why. It also prices what that costs a
+legacy member and names what would close it.
 
 **This is ahead of the order.** `docs/plan/order-of-operations.md` forbids
 starting a phase whose predecessor's exit criterion is unmet, and phase 1 has
@@ -25,7 +38,8 @@ review, and it is not the review. `HANDOFF.md` section 6 nevertheless lists
 `services/api` under what is buildable now, and the members portal was already
 built out of order on purpose as the contract proof, so this is deliberate and
 it is stated here rather than discovered later. The contract underneath these
-three operations may still move.
+operations may still move, and one part of it moved in the change that added
+them: `CardEligibility` promised a per rule breakdown that nothing could fill.
 
 ### How a request works
 
@@ -84,20 +98,29 @@ holding one function.
 ### What is deliberately missing
 
 - **The generated OpenAPI document and the pages FastAPI serves for it.**
-  `docs/api/members-v1.yaml` is the contract. A second document describing three
-  operations would disagree with it about the other twenty. Rule 10 wants the
-  document verified against the running service, and that check belongs with the
-  change that completes the set.
+  `docs/api/members-v1.yaml` is the contract. A second document describing
+  eight operations would disagree with it about the other sixteen. Rule 10
+  wants the document verified against the running service, and that check
+  belongs with the change that completes the set.
 - **A health endpoint.** The contract declares none, and rule 10 says not to
   document what does not exist. The suite waits for the service by making a real
   request, which is a better check anyway: a call with no token can only come
   back 401 after the service has reached the database and been refused by it.
-- **First sign in.** `link_or_create_member` exists in
-  `db/migrations/008_system_paths.sql` and no operation in the contract calls
-  it, so a verified token whose subject matches no member row has nowhere to go.
-  This answers 401 with a problem detail that says exactly that.
-  `docs/api/contract-review-notes.md` finding 5 is the same gap seen from the
-  contract's side.
+- **Claiming a member record that already exists.** `POST /me` writes a record
+  and never claims one. Claiming needs a verified email address, and an access
+  token from the identity service carries none: measured on 2026-08-30 against
+  a token from a real sign in through the real screens, one carries `iss`,
+  `sub`, `aud`, `exp`, `iat`, `nbf`, `client_id` and `jti`. So a legacy member
+  who signs in before an admin has linked them gets a second, empty record.
+  `app/first_sign_in.py` carries the measurement and what would close it.
+- **`PATCH /me`, and every admin operation.** A member cannot change their own
+  profile through this service yet, which is why `POST /me` takes an address at
+  all: it is the only chance a member has to record one.
+- **A checked email address.** Nothing here validates the shape of what
+  somebody types into `email`. `format: email` in the contract is a promise
+  about the value with no validator behind it, because the one FastAPI would
+  use is a dependency nobody has priced. The unique constraint on
+  `members.email` is the only rule that applies to it.
 
 ## How to run it
 
@@ -168,13 +191,20 @@ image. Then it makes real HTTP requests against the result. Everything it starts
 is named after its own process id and is removed when it exits, so a stack you
 have up is neither read nor touched.
 
-Thirty five checks. One is in `run.sh` itself, a refusal: a container with no
-settings has to stop and name the one that is missing. The other thirty four are
-in three files. `check_members_api.py` is what the three operations return and
-what they withhold. `check_identity_isolation.py` is who the service thinks you
-are and how long that lasts, and the last check in it is the reason this suite
-exists. `check_signing_keys.py` is when the provider's keys are read, which is
-one clock answering two failures that pull in opposite directions.
+Sixty eight checks. One is in `run.sh` itself, a refusal: a container with no
+settings has to stop and name the one that is missing. The other sixty seven
+are in five files. `check_members_api.py` is what the member record and the
+directory return and what they withhold. `check_self_service.py` is the four
+paths a member reads about themselves. Each one is asked what it answers its
+owner, then what it answers somebody who is not its owner, which is the check
+that catches a WHERE clause going missing. `check_members_first_sign_in.py` is `POST /me`,
+and it is the only file here that writes: it deletes what it wrote whether or
+not a check failed, because a record left behind is a member in the directory
+that the other checks count. `check_identity_isolation.py` is who the service
+thinks you are and how long that lasts, and the last check in it is the reason
+this suite exists. `check_signing_keys.py` is when the provider's keys are
+read, which is one clock answering two failures that pull in opposite
+directions.
 
 That suite mints its own tokens, so what it cannot see is what the identity
 provider actually issues. `tools/api-against-identity/` is the suite that does:
@@ -189,6 +219,8 @@ Four ways to make it go red, each of which was run:
 | `set_config(..., false)`, which is a plain `SET` | The anonymous request in the middle of `test_an_identity_does_not_survive_on_a_pooled_connection` comes back 200 carrying the previous caller's record |
 | Drop `SET LOCAL ROLE oro_api` | `permission denied for table members`, because the login role inherits nothing |
 | Read the directory from `members` instead of `member_directory` | The directory returns one row, the caller's own, because no policy lets one member read another's row |
+| Drop `WHERE member_id = current_member_id()` from the cards query | Nothing, until an admin calls it, and then `admin_reads_all_cards` answers `/me/cards` with the whole lab's cards. The suite seats no admin, so this one is held by review rather than by a check |
+| Pass the request's `email` to `link_or_create_member` | `test_a_first_sign_in_never_claims_a_record_by_the_address_typed_in` goes red, because a stranger takes over Ida's record by typing her address |
 | Turn PyJWKClient's per key cache back on | A key withdrawn from the published JWKS keeps verifying tokens, and `test_a_key_withdrawn_from_the_jwks_stops_being_accepted` goes red |
 | Let an unknown key id trigger a read of the JWKS | Twenty tokens naming keys nobody published cost twenty outbound requests, and a member's own call times out while they arrive |
 

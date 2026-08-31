@@ -34,6 +34,13 @@ from psycopg_pool import ConnectionPool
 # rather than a 500, and logs that the database is what refused.
 NO_IDENTITY_REFUSAL = "No identity set on this transaction"
 
+# The constraint db/migrations/001_schema.sql gives members.email. psycopg
+# reports it on the diagnostics of a UniqueViolation, and app/main.py turns
+# that one constraint into the contract's 409 and every other into a 500,
+# because a unique violation nobody predicted is a fault here rather than
+# something to tell a member about.
+EMAIL_CONSTRAINT = "members_email_key"
+
 # How long a request waits for a free connection before it is answered 500.
 # psycopg_pool's own default is thirty seconds, read from ConnectionPool in
 # psycopg-pool 3.3.1, and a request that waits that long holds one of the forty
@@ -129,3 +136,20 @@ def member_transaction(subject: str | None):
             # 401, which reports on somebody who was never read.
             connection.execute("SELECT current_member_id()")
             yield connection
+
+
+def caller_member_id(connection):
+    """Which member the database says this transaction is acting as, or None.
+
+    None means a token this service verified for somebody the members database
+    has never met. Every path that reads one member's own rows asks this first,
+    because the alternative is answering that person with an empty list, which
+    reads as "you have no cards" rather than "you have no record".
+
+    It is a second statement rather than the answer to the one
+    member_transaction already runs. Keeping that one where it is means the
+    refusal of an anonymous caller stays in one place, and this is an indexed
+    lookup on a unique column.
+    """
+    return connection.execute(
+        "SELECT current_member_id() AS member_id").fetchone()["member_id"]

@@ -66,8 +66,8 @@ info:
     path has no operation to attach a response to. The 405 has the same problem
     one step in: it is answered by the path, not by any operation under it.
     Hanging it on `GET /me` would say that operation can answer 405, and it
-    cannot. The 405 on `/me` comes from `POST /me`, which is not an operation in
-    this document.
+    cannot. A `DELETE /me` is what earns a 405 on that path, and this document
+    declares no operation to hang that answer on.
 
     Leaving them undeclared was the alternative, and it was rejected because the
     sentence at the top of this section would then be false for the two refusals
@@ -199,6 +199,67 @@ paths:
                 instance: /me
         '409': { $ref: '#/components/responses/EmailAlreadyKnown' }
         '422': { $ref: '#/components/responses/Invalid' }
+    post:
+      operationId: createMe
+      tags: [self service]
+      summary: Join your first sign in to a member record.
+      description: |
+        The first request a person makes after signing in for the first time. A
+        verified token whose subject matches no member record writes one and
+        gets 201. Every later call gets 200 and the same record, so a portal
+        that cannot tell a first sign in from a fifth may send this once and
+        read what comes back.
+
+        A POST rather than something `GET /me` does on the way past, because a
+        safe method must not create anything, and because a member who has
+        signed in before needs `GET /me` to keep meaning what it means.
+
+        What it writes grants nothing: no role, no tier, no card, standing
+        unknown. `link_or_create_member` in
+        `db/migrations/008_system_paths.sql` is the only path in this system
+        that writes a member record without an admin, and this is the only
+        operation that calls it.
+
+        **It never claims a record that already exists.** That function can
+        claim one carrying a matching email address and no sign in, which is
+        how the paying members who never signed up were meant to arrive.
+        Claiming a person's record by their address needs the address proved,
+        and an access token from the identity service in `compose.yaml` carries
+        no address to prove it with: measured on 2026-08-30, a real one carries
+        `iss`, `sub`, `aud`, `exp`, `iat`, `nbf`, `client_id` and `jti`. So
+        this operation passes no address to that function, the claim branch
+        cannot fire, and nobody takes over a record by typing somebody else's
+        address into `email`. A member whose record already exists is joined to
+        it by an admin, which is what the `no-member-record` refusal says.
+
+        The `email` in the body is written onto the new record and reaches
+        nothing else. `members.email` is `citext UNIQUE`, so an address another
+        record already carries is refused by the database and the whole request
+        is rolled back, record and all.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FirstSignIn' }
+      responses:
+        '200':
+          description: >-
+            The record already joined to this sign in. Nothing was written.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '201':
+          description: The record this request wrote.
+          headers:
+            Location:
+              description: Where the new record is read, which is this same path.
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { $ref: '#/components/responses/EmailAlreadyKnown' }
+        '422': { $ref: '#/components/responses/Invalid' }
 
   /me/cards:
     get:
@@ -263,6 +324,15 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/ProblemDetail' }
+              example:
+                type: https://oro.heatsynclabs.org/errors/no-waiver-recorded
+                title: No waiver is recorded for you
+                status: 404
+                detail: >-
+                  Nobody has recorded a waiver for you, so there was nothing to
+                  read. That is an answer rather than a fault. An admin records
+                  one once you have signed it.
+                instance: /me/waiver
 
   /me/door-events:
     get:
@@ -305,19 +375,7 @@ paths:
               example:
                 eligible: false
                 eligible_on: '2026-10-14'
-                requirements:
-                  - rule: tier
-                    met: true
-                    detail: Basic, card eligible
-                  - rule: tenure
-                    met: false
-                    detail: Two months required. Joined 2026-08-14.
-                  - rule: standing
-                    met: true
-                    detail: Good standing
-                  - rule: waiver
-                    met: true
-                    detail: Signed 2026-08-14
+                reason: Card access needs 2 months at this tier.
                 process: >-
                   A current card member nominates you, posts the proposal
                   publicly at least two weeks before Hack Your Hackerspace, and
@@ -1098,7 +1156,12 @@ components:
   responses:
 
     Unauthenticated:
-      description: No token, or a token this API could not validate.
+      description: >-
+        No token, or a token this API could not validate. A verified token
+        whose subject matches no member record is refused here too, as
+        `no-member-record` rather than `unauthenticated`, because the caller
+        signed in and there is still nothing to read. `POST /me` is what ends
+        that state for somebody the lab has no record of.
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/ProblemDetail' }
@@ -1302,10 +1365,10 @@ components:
     Tier:
       type: object
       description: >-
-        What a member pays and what that entitles them to. Tiers are rows rather
-        than an integer, so adding one is data and the bylaws rule that card
-        access needs the fifty dollar level is a flag rather than a constant in
-        code.
+        What a member pays and what that entitles them to. Tiers are rows
+        rather than an integer, so adding one is data, and the bylaws rule that
+        card access needs the fifty dollar level is a row in
+        `governance_parameters` rather than a constant in code.
       properties:
         id:
           type: string
@@ -1317,10 +1380,16 @@ components:
         monthly_cents: { type: integer }
         sort_order:
           type: integer
-          description: Rank. The card access minimum is compared on this, not on price.
+          description: >-
+            Rank. `card_eligibility` compares the `card_access.min_tier`
+            parameter on this, and not on price.
         card_eligible:
           type: boolean
-          description: Whether this tier may be nominated for card access.
+          description: >-
+            Whether the lab considers this tier a card access tier. Read by
+            nothing that decides eligibility: `card_eligibility` compares
+            `sort_order` against the minimum tier and does not look at this
+            flag.
         storage:
           type: [string, 'null']
           description: What storage the tier includes, where it includes any.
@@ -1568,6 +1637,29 @@ components:
         email_visible: { type: boolean }
         phone_visible: { type: boolean }
         listed_in_directory: { type: boolean }
+      additionalProperties: false
+
+    FirstSignIn:
+      type: object
+      description: >-
+        What a person may say about themselves on a first sign in. Neither
+        value grants anything and neither is checked against anything. The name
+        is required because `members.name` is `NOT NULL` in
+        `db/migrations/001_schema.sql` and the access token carries no name to
+        fall back on.
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+        email:
+          type: [string, 'null']
+          format: email
+          minLength: 1
+          description: >-
+            Written onto the new record and left unverified, because nothing
+            here has checked it. Surrounding space is trimmed off it and off
+            the name, so a value of nothing but space is refused rather than
+            stored. It never matches this sign in to a record
+            somebody else already holds.
       additionalProperties: false
 
     MemberCreate:
@@ -2025,41 +2117,48 @@ components:
 
     CardEligibility:
       type: object
-      description: >-
-        Whether a member may be nominated for card access, the date it becomes
-        true, and what is still missing. Eligibility is not a card. A cardholder
-        nominates, the proposal is posted publicly, and card members vote.
-      required: [eligible, requirements, process]
+      description: |
+        Whether a member may be nominated for card access, the date their
+        tenure is served, and the sentence the database has about where they
+        stand. Eligibility is not a card. A cardholder nominates, the proposal
+        is posted publicly, and card members vote.
+
+        This carried a `requirements` array until 2026-08-30, one entry per
+        rule with a `met` flag on each, and nothing could fill it.
+        `card_eligibility` in `db/migrations/012_close_remaining.sql` is the one
+        place that decides this, and it returns three values: a boolean, a
+        date, and one sentence naming the first rule that failed. It never
+        reads `waivers`, so one of the four rules that array declared had no
+        source anywhere. Filling the array meant this service deciding
+        eligibility a second time out of `governance_parameters`, and rule 5 of
+        `CLAUDE.md` says a rule lives in exactly one place. Finding 6 of
+        `docs/api/contract-review-notes.md` is where that was written down.
+      required: [eligible, reason, process]
       properties:
         eligible: { type: boolean }
         eligible_on:
           type: [string, 'null']
           format: date
           description: >-
-            The date every time based requirement is met. Null when something
-            that is not about time is missing, or when the rules are not
-            configured.
-        requirements:
-          type: array
-          items:
-            type: object
-            required: [rule, met, detail]
-            properties:
-              rule:
-                type: string
-                enum: [tier, tenure, standing, waiver]
-              met: { type: boolean }
-              detail:
-                type: string
-                description: >-
-                  A sentence saying where this member stands against the rule,
-                  with the number the rule uses.
+            When this member's tenure is served, counted from the day they
+            joined. It is filled whatever else is missing, so a date here is
+            not a promise of eligibility on it. Null when the card access
+            parameters are not configured, which is the case that makes nobody
+            eligible.
+        reason:
+          type: string
+          description: >-
+            Where this member stands, in the database's own sentence, carrying
+            the number the rule uses. It names the first rule that failed
+            rather than every rule, because that is what the function returns.
         process:
           type: string
           description: >-
             What actually happens next, in words. This endpoint exists to end a
             recurring support conversation, and the process is most of the
-            answer.
+            answer. Nothing in the database records it, because card access is
+            not a workflow in this system: the sentence is the lab's, from
+            `docs/glossary.md`, and the service carries it.
 
     ApprovalStatus:
       type: string

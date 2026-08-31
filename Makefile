@@ -10,7 +10,7 @@
 DEV = docker compose -f compose.yaml -f compose.development.yaml
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure bootstrap-admins migration-test ceilings backup restore backup-test api-test api-identity-test import-boundaries attributions attributions-check
+.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure bootstrap-admins migration-test ceilings backup restore backup-test api-test api-identity-test import-boundaries attributions attributions-check browser-checks
 
 help:
 	@echo "make up                start the stack in the background"
@@ -24,6 +24,7 @@ help:
 	@echo "make development       start the stack with the portal and the mock too, on plain HTTP"
 	@echo "make development-test  prove the portal and the mock share one origin"
 	@echo "make portal-test       prove the members portal against the contract mock"
+	@echo "make browser-checks    open the portal in a real browser. Needs a stack already up"
 	@echo "make identity-test     prove the identity service holds the lab's existing passwords"
 	@echo "make identity-configure  register the project, the clients and the branding"
 	@echo "make bootstrap-admins  seat the first three admins, who can then administer everything"
@@ -38,8 +39,9 @@ help:
 	@echo "make attributions      regenerate the dependency tables in ATTRIBUTIONS.md from the lockfiles"
 	@echo "make attributions-check say what those tables would become, and write nothing"
 	@echo ""
-	@echo "The database this stack starts is empty. make test applies"
-	@echo "db/migrations to a throwaway container, never to this stack."
+	@echo "The database this stack starts carries db/migrations and the reference"
+	@echo "data, put there by the schema service, and no members at all. make test"
+	@echo "applies the migrations to a throwaway container, never to this stack."
 
 # --wait holds until every healthcheck passes, so a stack that did not come up
 # fails here rather than in whatever the volunteer runs next. Without it the
@@ -112,7 +114,9 @@ mock-test:
 # The mock lives in compose.development.yaml, an override rather than a profile,
 # so make up is unchanged and a deployment never carries it. An override has one
 # way to ask for it. The profile had two that disagreed, and one of them started
-# the mock while leaving Caddy serving the deployment 404 in front of it.
+# the mock while leaving Caddy serving the deployment 404 in front of it. It has
+# had no route since the members API took /v1, and make mock-test reaches it on
+# its own port the way it always has.
 #
 # The same 300 seconds make up allows, and this shape needs more of it: the mock
 # reads the whole contract before it answers, and slower still on a machine that
@@ -120,7 +124,7 @@ mock-test:
 development:
 	@test -f .env || { echo "No .env file, so nothing was started. Copy .env.example to .env, set the values in it, and run make development again." >&2; exit 1; }
 	@$(DEV) up --detach --wait --wait-timeout 300 || { echo "The development stack did not come up, and the error above says why. If it names a variable, fix that line in .env. If it names a service, make logs shows what that service printed. If it says db is unhealthy on a machine where this stack used to work, see the note under make up." >&2; exit 1; }
-	@echo "Up. The portal is at / and the contract mock is under /v1, over plain HTTP on the hostname and ORO_HTTP_PORT set in .env. The identity service is on localhost and ORO_IDENTITY_PORT. No certificate to accept, and nothing redirects."
+	@echo "Up. The portal is at / and the members API is under /v1, over plain HTTP on the hostname and ORO_HTTP_PORT set in .env. The identity service is on localhost and ORO_IDENTITY_PORT. Nothing signs in yet, so a call under /v1 comes back 401 with a problem detail saying so, and that is the API working. The contract mock still runs on ORO_MOCK_PORT with no route of its own, because one prefix cannot answer twice."
 
 development-test:
 	./tools/development/tests/run.sh
@@ -129,6 +133,23 @@ development-test:
 # stack on its own ports, so it neither reads nor disturbs one you have up.
 portal-test:
 	./tools/members-portal/tests/run.sh
+
+# The same portal in a real chromium, which sees the page after its own script
+# has run rather than the document Caddy served. One check, and a screenshot
+# every time, red or green. ADR 0015 chose the driver.
+#
+# Deliberately not in make check, and it is the only target here that is not in
+# it for this reason: it checks a stack somebody else started rather than
+# bringing up its own. Start one first:
+#
+#   make development
+#   make browser-checks
+#
+# It reads ORO_PORTAL_URL, default http://localhost:8080, so a laptop serving
+# on another ORO_HTTP_PORT passes its own. Screenshots land in ORO_SHOT_DIR,
+# default $$HOME/oro-screenshots, which is outside the working tree on purpose.
+browser-checks:
+	./tools/browser-checks/run.sh
 
 # The synthetic half of the phase 2 password proof: hashes written by the
 # library the legacy application uses, imported, and signed in with. Its own
@@ -262,8 +283,8 @@ backup-test:
 # server and its own image, all named after its own process id, so it neither
 # reads nor disturbs a stack you have up.
 #
-# The service is not in compose.yaml and make up is unchanged. services/api is
-# ahead of the order on purpose and its README says so.
+# The service is in the stack as well, as of 2026-08-30: compose.api.yaml, which
+# compose.yaml includes, with Caddy serving it under /v1 in both shapes.
 api-test:
 	./services/api/tests/run.sh
 

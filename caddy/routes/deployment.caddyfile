@@ -1,6 +1,6 @@
-# What the deployment serves. The identity service under id.HOSTNAME, and
-# nothing yet under the hostname itself: the API service, the door service and
-# the three portals are not built, so there is nothing else to reverse proxy to.
+# What the deployment serves. The identity service under id.HOSTNAME, the
+# members API under /v1 on the hostname, and nothing else yet: the door service
+# and the three portals are not built, so there is nothing else to proxy to.
 #
 # Imported by caddy/Caddyfile at the top level, and it opens its own site blocks
 # because the scheme is one of the things that differs between the two shapes.
@@ -39,10 +39,62 @@ id.{$ORO_HOSTNAME} {
 		respond "ok" 200
 	}
 
+	# The members API. Under the hostname the portals are served from rather
+	# than a name of its own, so every path a page calls is relative and no page
+	# names a host. apps/members/api.js is written that way already.
+	#
+	# handle_path strips the prefix, and this service needs it stripped: it
+	# declares its operations at /me and /members with no prefix anywhere in
+	# app/main.py. Both forms were called against the running container on
+	# 2026-08-30 rather than assumed from what the mock wanted. /me answered
+	# 401, and /v1/me answered 404 carrying the API's own no such path problem
+	# detail.
+	handle_path /v1/* {
+		reverse_proxy api:8000
+	}
+
 	# A bare 404 on the front page reads as a broken deployment. Say which stack
 	# answered and that it has nothing to serve, so the reader stops looking for a
 	# fault that is not there.
 	handle {
 		respond "Project ORO is running. No application is deployed here yet." 404
+	}
+}
+
+# The identity service's key set, for the api container and for nothing else.
+#
+# That service works out which instance a request is for from the Host header,
+# and answers 404 to a name it was not configured with, so the api container
+# cannot ask it by the name it has on the compose network. This block is what
+# puts the right name on that one request.
+#
+# Measured on 2026-08-30 against the running stack: the key set answered 404 to
+# a Host of identity:8080, and answered the keys to the instance's own domain
+# whether that name carried a port, another port, or none at all. The name is
+# what it reads. The port it ignores.
+#
+# The alternative was for the api container to go out to https://id.HOSTNAME
+# and back in, which asks it to resolve the public name and to trust whatever
+# certificate Caddy holds. Under "tls internal" that certificate comes from an
+# authority no container trusts, so the key set would be unreadable on exactly
+# the deployments that have no public DNS.
+#
+# What it exposes: a caller who reaches port 80 with a Host header of "caddy"
+# reads the signing keys, which are published to the internet by design. The
+# handle below is what keeps everything else off this name.
+http://caddy {
+	handle /oauth/v2/keys {
+		reverse_proxy identity:8080 {
+			header_up Host id.{$ORO_HOSTNAME}
+			# The identity service reads the forwarded name in preference to
+			# the Host header, and answers "unable to set instance using origin
+			# caddy" when the two disagree. Measured on 2026-08-30 with only the
+			# Host set.
+			header_up X-Forwarded-Host id.{$ORO_HOSTNAME}
+		}
+	}
+
+	handle {
+		respond "This name serves the identity service's key set to the api container. Nothing else is here." 404
 	}
 }

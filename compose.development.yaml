@@ -35,10 +35,28 @@ services:
       # a laptop's identity service.
       - "127.0.0.1:${ORO_IDENTITY_PORT:-8180}:8080"
 
+  api:
+    environment:
+      # The one thing about the members API that a laptop changes. The issuer is
+      # the string the identity service signs into every token, and this shape
+      # reaches that service on a published port rather than under id. through
+      # Caddy, so the string is different. Measured on 2026-08-30: the discovery
+      # document at http://localhost:8180/.well-known/openid-configuration
+      # carries exactly this, and the development suite checks the two agree.
+      #
+      # The key set URL is not overridden. It goes through Caddy in both shapes,
+      # and the route file is where the two names differ.
+      ORO_API_TOKEN_ISSUER: "http://${ORO_HOSTNAME}:${ORO_IDENTITY_PORT:-8180}"
+
   mock:
-    # The members API contract, served as a mock, so the portal can be built
-    # before services/api/ exists. It answers with invented records, which is
-    # why it lives in this file and reaches no deployment. ADR 0002.
+    # The members API contract, served as a mock. It answered /v1 on the portal's
+    # origin until 2026-08-30, when the real service took that prefix, and it now
+    # answers on ORO_MOCK_PORT and nowhere else. Caddy routes nothing to it.
+    #
+    # It stays because it is the contract proof: tools/mock/tests/ starts this
+    # service by name and calls it on that port, which is how make mock-test has
+    # always worked. It answers with invented records, which is why it lives in
+    # this file and reaches no deployment. ADR 0002.
     #
     # Pinned by digest as well as by tag, because a tag can be moved onto a
     # different build by whoever publishes it. stoplight/prism 5.15.10,
@@ -50,8 +68,8 @@ services:
     volumes:
       - ./docs/api:/spec:ro
     ports:
-      # Loopback only. The portal reaches the mock through Caddy at /v1; this
-      # port is for curl and for the contract checks.
+      # Loopback only, and now the only way in. The contract checks read it, and
+      # so does anybody curling the contract by hand.
       - "127.0.0.1:${ORO_MOCK_PORT:-4010}:4010"
     # --multiprocess false because the default forks the server off the CLI and
     # reads cluster.isPrimary on a Node version where it is undefined, so this

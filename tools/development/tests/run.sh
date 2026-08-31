@@ -30,6 +30,9 @@ export ORO_MOCK_PORT=4011
 # Invented, used by nothing, and removed with the volumes when this exits.
 export ORO_DB_PASSWORD="throwaway-$$"
 export ORO_IDENTITY_DB_PASSWORD="throwaway-identity-$$"
+# Hex rather than base64, because this one is pasted into a database URL and
+# base64 can hand a URL a slash. .env.example says the same where it asks for it.
+export ORO_API_DB_PASSWORD="throwawayapi$$"
 # Exactly 32 bytes, which is what the identity service requires of it.
 export ORO_IDENTITY_MASTERKEY="throwaway-master-key-0123456789a"
 export ORO_IDENTITY_ADMIN_USERNAME="fixture-admin"
@@ -93,6 +96,13 @@ reaches_tls() {
   fi
 }
 
+# Which shape a refusal took, rather than only which status it carried. The
+# contract says every refusal is RFC 9457, and Caddy's own error pages are text.
+content_type_of() {
+  curl -sk -o /dev/null -w '%{content_type}' \
+    -H 'Authorization: Bearer development-test' "$1"
+}
+
 body_holds() {
   if curl -sk -H 'Authorization: Bearer development-test' "$1" | grep -q "$2"; then
     echo yes
@@ -102,6 +112,22 @@ body_holds() {
 }
 
 running_services() { compose ps --services --status running | sort | xargs; }
+
+# Asked from inside the api container, so what is proven is the URL that
+# service is actually given rather than one this file can reach. The identity
+# service answers only to the domain it was configured with, and on a laptop
+# that domain is localhost, which inside a container is the container itself.
+# Caddy is what puts the right name on the request, and this is the check that
+# the relay works. $1 is the compose form to use, so both shapes can be asked.
+key_set_read_by_the_api() {
+  "$1" exec -T api python3 -c 'import json, os, urllib.request
+answer = urllib.request.urlopen(os.environ["ORO_API_JWKS_URL"], timeout=5)
+print("yes" if json.load(answer).get("keys") else "no")' 2>/dev/null | tr -d '\r'
+}
+
+issuer_the_api_demands() {
+  "$1" exec -T api printenv ORO_API_TOKEN_ISSUER 2>/dev/null | tr -d '\r'
+}
 
 # The identity service publishes its own discovery document, and it refuses any
 # call whose Host header is not the domain it was configured with, so this is
@@ -141,7 +167,7 @@ echo
 echo "Bringing up the deployment default on ports $ORO_HTTP_PORT and $ORO_HTTPS_PORT"
 compose up --detach --wait --wait-timeout 300 >/dev/null
 check "compose.yaml alone starts only the deployment" \
-  "caddy db identity" "$(running_services)"
+  "api caddy db identity" "$(running_services)"
 check "the root says nothing is deployed" "404" "$(status_of "$HTTPS_ORIGIN/")"
 # The status code alone cannot tell a considered front page from a bare 404,
 # and a bare 404 is what deployment.caddyfile exists to avoid. Read the
@@ -166,23 +192,50 @@ check "the deployment serves the identity service under id" \
 # .env.example ships, the target is right.
 check "and names the hostname it was asked for" \
   "https://$ORO_HOSTNAME/" "$(redirect_from "$HTTP_ORIGIN/")"
+# The members API, under the hostname the portal is served from, so every path
+# the portal calls is relative and no page names a host.
+check "the members API answers under /v1" "401" "$(status_of "$HTTPS_ORIGIN/v1/me")"
+check "and a caller with no token is refused as a problem detail" \
+  "application/problem+json" "$(content_type_of "$HTTPS_ORIGIN/v1/me")"
+check "and the refusal names the rule that refused" "yes" \
+  "$(body_holds "$HTTPS_ORIGIN/v1/me" 'errors/unauthenticated')"
+# A path nothing serves is the one a Caddy 404 and an API 404 both answer, so it
+# is where a route that reached nothing would look like a route that worked.
+check "a path the API does not serve is refused by the API" "yes" \
+  "$(body_holds "$HTTPS_ORIGIN/v1/nope" 'errors/no-such-path')"
+check "the deployment serves no contract mock" "no" \
+  "$(body_holds "$HTTPS_ORIGIN/v1/nope" 'stoplight.io/prism/errors')"
+check "the API reads the identity service's key set" "yes" \
+  "$(key_set_read_by_the_api compose)"
 
 echo
 echo "Bringing up what a laptop adds"
 compose_dev up --detach --wait --wait-timeout 300 >/dev/null
 check "the override adds the mock and nothing else" \
-  "caddy db identity mock" "$(running_services)"
+  "api caddy db identity mock" "$(running_services)"
 check "the portal is served at the root over plain HTTP" \
   "200" "$(status_of "$HTTP_ORIGIN/")"
 check "nothing redirects the reader anywhere" "" "$(redirect_from "$HTTP_ORIGIN/")"
 check "the root serves a page" "yes" "$(body_holds "$HTTP_ORIGIN/" '<html')"
-check "a member arrives through /v1/me" "200" "$(status_of "$HTTP_ORIGIN/v1/me")"
-check "that member has an email address" "yes" "$(body_holds "$HTTP_ORIGIN/v1/me" '"email"')"
+# Nobody is signed in on a laptop, so this is the answer a volunteer should get
+# and the portal should show. It is not an outage.
+check "a member arrives through /v1/me and is asked to sign in" \
+  "401" "$(status_of "$HTTP_ORIGIN/v1/me")"
+check "and is refused as a problem detail rather than a Caddy page" \
+  "application/problem+json" "$(content_type_of "$HTTP_ORIGIN/v1/me")"
 check "/v1/nope is refused" "404" "$(status_of "$HTTP_ORIGIN/v1/nope")"
-# Caddy has its own 404 for the deployment, so proving the mock wrote this one
-# is what proves the proxy reached it rather than falling through.
-check "/v1/nope is refused by the mock rather than by Caddy" "yes" \
+# Caddy has its own 404, so proving the API wrote this one is what proves the
+# proxy reached it rather than falling through.
+check "/v1/nope is refused by the API rather than by Caddy" "yes" \
+  "$(body_holds "$HTTP_ORIGIN/v1/nope" 'errors/no-such-path')"
+# One origin serves one API. The mock kept its container and its own port and
+# lost this route, because the portal cannot read two things at /v1.
+check "the portal's origin serves no contract mock" "no" \
   "$(body_holds "$HTTP_ORIGIN/v1/nope" 'stoplight.io/prism/errors')"
+check "the contract mock still answers on its own port" \
+  "200" "$(status_of "http://$ORO_HOSTNAME:$ORO_MOCK_PORT/me")"
+check "the API reads the identity service's key set" "yes" \
+  "$(key_set_read_by_the_api compose_dev)"
 check "the health route still answers" "200" "$(status_of "$HTTP_ORIGIN/health")"
 # There is no TLS listener at all under this shape, so the HTTPS port answers
 # nothing. A reader who typed https by habit gets a connection error rather than
@@ -198,6 +251,12 @@ check "the identity service answers on its own port over plain HTTP" \
   "200" "$(status_of "http://$ORO_HOSTNAME:$ORO_IDENTITY_PORT/.well-known/openid-configuration")"
 check "and publishes an issuer a client can use" "yes" \
   "$(body_holds "http://$ORO_HOSTNAME:$ORO_IDENTITY_PORT/.well-known/openid-configuration" "\"issuer\":\"http://$ORO_HOSTNAME:$ORO_IDENTITY_PORT\"")"
+# The two halves of a sign in have to agree about one string. The API refuses a
+# token whose iss claim is not exactly this, and the identity service signs
+# every token with what it publishes above, so a drift between them is a
+# member signed in and refused with no fault they can see.
+check "and the API demands the issuer that service publishes" \
+  "http://$ORO_HOSTNAME:$ORO_IDENTITY_PORT" "$(issuer_the_api_demands compose_dev)"
 
 echo
 echo "Taking it down"

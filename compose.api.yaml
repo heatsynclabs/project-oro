@@ -1,0 +1,120 @@
+# The members API, and the schema it reads.
+#
+# compose.yaml includes this file, so `docker compose up` starts what is here
+# along with everything there and nothing has to be asked for twice. It is a
+# second file because compose.yaml had reached the 300 line ceiling in rule 6
+# of CLAUDE.md, and the seam is what this repository builds from source rather
+# than what it runs from an image somebody else publishes. The door service
+# arrives here in phase 5.
+#
+# What a laptop changes about the API is one setting, and it is in
+# compose.development.yaml with everything else a laptop changes.
+
+services:
+  schema:
+    # Everything the members API needs the database to already hold: the
+    # migrations, the reference data, and the login role it connects as. It
+    # runs, prints what it did, and exits, the way identity_bootstrap does.
+    #
+    # Not db/init/. That directory is run by the postgres image once, against an
+    # empty data directory, and never again, so a machine that already has a
+    # database volume would never see it and `make down && make up` would leave
+    # the API with nothing to read. Two suites also apply db/migrations by hand
+    # to a database started from compose.yaml, tools/bootstrap/tests/run.sh and
+    # tools/api-against-identity/run.sh, and an init that applied them first
+    # would break both. Neither of those names this service, so neither starts
+    # it.
+    #
+    # postgres:18 because it is the image this stack already pins and already
+    # has, and psql is the whole of what is wanted here.
+    image: postgres:18
+    entrypoint: ["/bin/sh", "/oro/db/apply-the-schema.sh"]
+    environment:
+      ORO_DB_PASSWORD: "${ORO_DB_PASSWORD:?set ORO_DB_PASSWORD in .env. Generate one with: openssl rand -base64 24}"
+      ORO_API_DB_PASSWORD: "${ORO_API_DB_PASSWORD:?set ORO_API_DB_PASSWORD in .env. Generate one with: openssl rand -hex 24}"
+    volumes:
+      # Directories, never single files. A bind whose source is missing does not
+      # fail: Docker creates a directory in its place and the run comes up
+      # having read nothing.
+      - ./db:/oro/db:ro
+      # oro_api_login.sql lives beside the service that logs in as that role,
+      # and its own header explains the two roles. This is the only thing read
+      # out of here.
+      - ./services/api:/oro/api:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    # The members API. services/api/README.md says which operations it answers
+    # and what is deliberately missing, including a health endpoint.
+    build: ./services/api
+    restart: unless-stopped
+    environment:
+      # The login role, created by the schema service above. Hex rather than
+      # base64 because this value is pasted into a URL and base64 can hand one
+      # a slash. .env.example says so where it asks for the password.
+      ORO_API_DATABASE_URL: "postgresql://oro_api_login:${ORO_API_DB_PASSWORD:?set ORO_API_DB_PASSWORD in .env. Generate one with: openssl rand -hex 24}@db:5432/oro"
+
+      # Caddy, and not the identity service directly, because that service
+      # works out which instance a request is for from the Host header and
+      # answers 404 to any name it was not configured with. The route that
+      # relays this is in caddy/routes/, which is the file that already knows
+      # what this stack calls things. Measured on 2026-08-30 against a running
+      # stack: with Host "identity:8080" the key set answers 404, and with the
+      # instance's own domain it answers the keys whatever port is on the name.
+      ORO_API_JWKS_URL: "http://caddy/oauth/v2/keys"
+
+      # The iss claim on every token this service will accept, which has to be
+      # the string the identity service signs into them rather than a name that
+      # merely reaches it.
+      #
+      # ASSUMPTION: the deployment serves HTTPS on 443, so that string carries
+      # no port. Zitadel builds it from ZITADEL_EXTERNALDOMAIN,
+      # ZITADEL_EXTERNALPORT and ZITADEL_EXTERNALSECURE, and a port that is not
+      # the scheme's default lands in the middle of it. Measured on 2026-08-30
+      # on a throwaway deployment with ORO_HTTPS_PORT set to 8494: the issuer
+      # in its discovery document read https://id.localhost:8494.
+      # CONFIRM BY: curl -s https://id.HOSTNAME/.well-known/openid-configuration
+      # and read the issuer field.
+      # BLAST RADIUS: every member's token is refused, the log reads "token
+      # refused: Invalid issuer", and the member is answered 401. Nothing is
+      # written and nothing else is affected.
+      ORO_API_TOKEN_ISSUER: "https://id.${ORO_HOSTNAME:?copy .env.example to .env and set it}"
+
+      # Measured rather than chosen, and this was wrong in a README until
+      # 2026-08-30. A real access token from this identity service carries an
+      # aud list: the client id of every application registered under the
+      # project, and the project's own identifier. The client ids are generated
+      # per instance, so the project identifier is the only entry a container
+      # can be given ahead of time, and tools/identity/configure.py is what
+      # chooses it. tools/api-against-identity/README.md holds the measurement
+      # and one check there fails if these two strings stop matching.
+      ORO_API_TOKEN_AUDIENCE: "oro-project"
+    depends_on:
+      # The schema rather than the database, because this service reads tables
+      # and calls functions that the migrations create, and that step waits for
+      # the database itself.
+      schema:
+        condition: service_completed_successfully
+      # Both of these are on the path this service takes to read the identity
+      # provider's signing keys at start. It starts anyway if that read fails,
+      # per app/identity.py, and waiting for them keeps a warning out of every
+      # log that says the provider could not be read.
+      identity:
+        condition: service_healthy
+      caddy:
+        condition: service_healthy
+    healthcheck:
+      # A real request, because the contract declares no health endpoint and
+      # rule 10 forbids documenting one that does not exist. A call carrying no
+      # token can only come back 401 after this service has reached the
+      # database and been refused by it, so one status code proves the whole
+      # path. An open port proves that uvicorn is listening and nothing else.
+      test: ["CMD", "python3", "-c", "import http.client, sys; call = http.client.HTTPConnection('127.0.0.1', 8000, timeout=4); call.request('GET', '/members'); sys.exit(0 if call.getresponse().status == 401 else 1)"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    # No published port. Caddy is the only way in, which is the shape every
+    # other service in this stack has.

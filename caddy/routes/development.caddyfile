@@ -1,6 +1,12 @@
 # What a laptop serves: the members portal at the root, the theme under /theme,
-# and the contract mock under /v1, on one origin. The portal then calls the same
-# paths it will call against the real service.
+# and the members API under /v1, on one origin. The portal calls the same paths
+# here that it calls on a deployment, because they are the same paths.
+#
+# The contract mock had /v1 until 2026-08-30 and no longer has a route at all.
+# Two things cannot answer one prefix, and the portal reads that prefix, so the
+# real service took it. The mock still runs in compose.development.yaml and
+# still answers on ORO_MOCK_PORT, which is how tools/mock/tests/ has always
+# reached it.
 #
 # Plain HTTP, no tls directive, because an http site has none. Under
 # "tls internal" this page could not be opened at all: Chrome shows its
@@ -15,12 +21,15 @@ http://{$ORO_HOSTNAME} {
 		respond "ok" 200
 	}
 
-	# handle_path strips the prefix, and that is the point of this block rather
-	# than a detail of it. The contract declares its server as
-	# https://api.heatsynclabs.org/v1 and Prism ignores that prefix, so the mock
-	# answers /me and refuses /v1/me. Both were called to confirm it.
+	# The members API, and handle_path strips the prefix the same way it did for
+	# the mock. The two agree about that for different reasons: Prism ignored
+	# the /v1 the contract declares in its server URL, and this service declares
+	# its operations at /me and /members with no prefix anywhere in app/main.py.
+	# Both forms were called against the running container on 2026-08-30 rather
+	# than assumed from the mock. /me answered 401, and /v1/me answered 404
+	# carrying the API's own no such path problem detail.
 	handle_path /v1/* {
-		reverse_proxy mock:4010
+		reverse_proxy api:8000
 	}
 
 	# The theme, served straight out of packages/gantry-tokens. The portal used
@@ -33,5 +42,28 @@ http://{$ORO_HOSTNAME} {
 	handle {
 		root * /srv/members
 		file_server
+	}
+}
+
+# The identity service's key set, for the api container and for nothing else.
+# deployment.caddyfile carries the reasoning, and the one difference is here: on
+# a laptop the instance was configured with the bare hostname, which is
+# localhost, and inside any container that name is the container itself. So the
+# relay matters more here than it does on a deployment, where an alias would
+# have been possible.
+http://caddy {
+	handle /oauth/v2/keys {
+		reverse_proxy identity:8080 {
+			header_up Host {$ORO_HOSTNAME}
+			# The identity service reads the forwarded name in preference to
+			# the Host header, and answers "unable to set instance using origin
+			# caddy" when the two disagree. Measured on 2026-08-30 with only the
+			# Host set.
+			header_up X-Forwarded-Host {$ORO_HOSTNAME}
+		}
+	}
+
+	handle {
+		respond "This name serves the identity service's key set to the api container. Nothing else is here." 404
 	}
 }

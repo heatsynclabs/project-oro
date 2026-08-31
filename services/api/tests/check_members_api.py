@@ -169,8 +169,13 @@ def test_an_unknown_path_is_refused_in_the_one_shape():
 
 
 def test_a_method_a_path_does_not_take_is_refused_in_the_one_shape():
-    """The other default, and the Allow header RFC 9110 requires with it."""
-    refused = fetch("/me", mint("sub-c-wren"), method="POST")
+    """The other default, and the Allow header RFC 9110 requires with it.
+
+    This asked POST /me until 2026-08-30, when POST /me became an operation.
+    The directory is the path that still takes one method, and a 405 has to be
+    asked for on a path that has an operation: a path with none answers 404.
+    """
+    refused = fetch("/members", mint("sub-c-wren"), method="POST")
     assert refused.status == 405, refused.body
     assert refused.headers["Content-Type"].startswith(
         "application/problem+json"), refused.headers["Content-Type"]

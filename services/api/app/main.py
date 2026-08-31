@@ -1,4 +1,4 @@
-"""The members API, three operations of the twenty three in the contract.
+"""The members API, eight operations of the twenty four in the contract.
 
 Read services/api/README.md first. It says which three, why the service exists
 before the phase it belongs to, and what is deliberately missing.
@@ -16,9 +16,13 @@ import logging
 
 import psycopg
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as RouterRefusal
 
-from . import config, database, identity, members, problems
+from . import (config, database, first_sign_in, identity, members, problems,
+               self_service)
 
 # uvicorn configures its own loggers and leaves the root logger alone, so
 # without this the service's own lines are dropped below WARNING and the only
@@ -90,6 +94,44 @@ async def refused_by_the_router(request: Request, refusal: RouterRefusal):
         problem, request.url.path, headers=refusal.headers)
 
 
+@app.exception_handler(psycopg.errors.UniqueViolation)
+async def refused_by_a_unique_constraint(request: Request, refusal: Exception):
+    """The one constraint a member can hit, said in the contract's shape.
+
+    Only members.email is turned into a refusal a person is shown. Any other
+    unique violation is a fault in this service rather than something the
+    caller did, and saying otherwise would send them looking for a mistake they
+    did not make.
+    """
+    named = getattr(getattr(refusal, "diag", None), "constraint_name", None)
+    if named == database.EMAIL_CONSTRAINT:
+        _log.info("refused by the database: the address on this request "
+                  "already belongs to another member record (%s)", named)
+        return problems.problem_response(
+            problems.EMAIL_ALREADY_KNOWN, request.url.path)
+    _log.warning("a unique constraint refused this request: %s", refusal)
+    return problems.problem_response(problems.UNEXPECTED, request.url.path)
+
+
+@app.exception_handler(RequestValidationError)
+async def refused_before_the_endpoint(request: Request,
+                                      refusal: RequestValidationError):
+    """A request body FastAPI could not read, said in the contract's shape.
+
+    FastAPI answers this one itself, as `{"detail": [...]}` in
+    application/json, which is the third shape after the two
+    refused_by_the_router catches. `loc` starts with the word body, and what a
+    caller wants is the field it named.
+    """
+    errors = [
+        {"field": ".".join(str(part) for part in named["loc"][1:]) or "body",
+         "detail": named["msg"]}
+        for named in refusal.errors()
+    ]
+    return problems.problem_response(
+        problems.INVALID_REQUEST, request.url.path, errors=errors)
+
+
 @app.exception_handler(Exception)
 async def anything_else(request: Request, fault: Exception):
     _log.exception("unhandled fault answering %s", request.url.path)
@@ -105,6 +147,77 @@ def get_me(request: Request):
             problems.NO_MEMBER_RECORD, request.url.path
         )
     return member
+
+
+@app.post("/me")
+def create_me(request: Request, asked: first_sign_in.FirstSignIn):
+    """A first sign in, which is the only way a member record is written here.
+
+    201 when this call wrote it and 200 when it was already there, so a portal
+    that cannot tell a first sign in from a fifth may send this once and read
+    what comes back. app/first_sign_in.py says why no address in the body ever
+    reaches link_or_create_member.
+    """
+    with database.member_transaction(_subject(request)) as connection:
+        written = first_sign_in.claim_or_create(connection, asked)
+        member = members.read_own_member(connection)
+    if member is None:
+        # Unreachable as written: link_or_create_member either answers with a
+        # record id or raises. Left in place because the alternative is
+        # answering 200 with nothing in it.
+        _log.error("a first sign in wrote no record and raised nothing")
+        return problems.problem_response(problems.UNEXPECTED, request.url.path)
+    if not written:
+        return member
+    return JSONResponse(status_code=201, content=jsonable_encoder(member),
+                        headers={"Location": "/me"})
+
+
+@app.get("/me/cards")
+def list_my_cards(request: Request):
+    with database.member_transaction(_subject(request)) as connection:
+        if database.caller_member_id(connection) is None:
+            return _no_member_record(request)
+        return self_service.read_own_cards(connection)
+
+
+@app.get("/me/certifications")
+def list_my_certifications(request: Request):
+    with database.member_transaction(_subject(request)) as connection:
+        if database.caller_member_id(connection) is None:
+            return _no_member_record(request)
+        return self_service.read_own_certifications(connection)
+
+
+@app.get("/me/waiver")
+def get_my_waiver(request: Request):
+    with database.member_transaction(_subject(request)) as connection:
+        if database.caller_member_id(connection) is None:
+            return _no_member_record(request)
+        waiver = self_service.read_own_waiver(connection)
+    if waiver is None:
+        return problems.problem_response(
+            problems.NO_WAIVER_RECORDED, request.url.path)
+    return waiver
+
+
+@app.get("/me/card-eligibility")
+def get_my_card_eligibility(request: Request):
+    with database.member_transaction(_subject(request)) as connection:
+        if database.caller_member_id(connection) is None:
+            return _no_member_record(request)
+        return self_service.read_card_eligibility(connection)
+
+
+def _no_member_record(request: Request):
+    """What every self service read answers a sign in with no record behind it.
+
+    Not an empty list. A member whose record an admin has not joined to their
+    sign in yet has cards, and answering /me/cards with [] would tell them they
+    have none.
+    """
+    return problems.problem_response(
+        problems.NO_MEMBER_RECORD, request.url.path)
 
 
 @app.get("/members")
