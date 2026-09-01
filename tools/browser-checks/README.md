@@ -36,11 +36,17 @@ and a password. That is a suite worth having and it is not this one. What this
 proves is that the harness drives a browser, takes a picture, and goes red when
 the page is wrong.
 
-It is in no CI workflow and in no `make check`, because it drives a stack that
-is already up rather than starting one. That cost something: the landing
-arrived the day after this check did, the check went red against a portal that
-was working correctly, and nothing noticed for a day. `HANDOFF.md` section 2
-carries it.
+`run.sh` drives a stack that is already up rather than starting one, which is
+right for a laptop and is why it is in no `make check`. It was in no CI workflow
+either until 2026-08-31, and that cost something: the landing arrived the day
+after this check did, the check went red against a portal that was working
+correctly, and nothing noticed for a day. `HANDOFF.md` section 2 carries it.
+
+`with_its_own_stack.sh` beside it is the same check with a compose project and
+ports of its own, and that is what CI runs, keeping the screenshot whether the
+run was red or green. It stays out of `make check`: that already runs fourteen
+suites which start containers, and this one builds an image carrying three
+browsers.
 
 `docs/decisions/0015-a-browser-driver.md` records why the driver is Playwright
 and what was priced against it.
@@ -52,6 +58,13 @@ It checks a stack that is already up, and it starts nothing:
 ```sh
 make development                  # if the portal is not already running
 ./tools/browser-checks/run.sh
+```
+
+Or, with a stack of its own on its own ports, which is what the CI job runs and
+what to reach for when a stack you have up should not be disturbed:
+
+```sh
+./tools/browser-checks/with_its_own_stack.sh
 ```
 
 ```

@@ -211,13 +211,23 @@ def test_an_access_token_lasts_ten_minutes():
     ZITADEL_OIDC_DEFAULTACCESSTOKENLIFETIME, does not. It is the fallback for
     an instance with no setting of its own, and setup gives this instance one.
     Setting only that variable and measuring a real token gave 43200 seconds.
+
+    A second of slack, because exp and iat are two reads of the same clock and
+    each is floored to a whole second, so a token minted across a second
+    boundary carries 599. Measured on 2026-08-31 over 150 tokens from one
+    instance: 148 came back 600 and 2 came back 599, and none came back 601,
+    which is the direction that arithmetic allows. This check asserted equality
+    until then, and `make check` went red on a run where nothing had changed.
+    The slack is a second and not a minute: the failure worth catching is a
+    token that lasts twelve hours.
     """
     answer = identity_api.machine_token(f"token-lifetime-probe-{RUN}", TOKEN)
     assert answer.status == 200, answer.message()
     seconds = identity_api.lifetime_of(answer.body["access_token"])
-    assert seconds == 600, (
-        f"an access token lasts {seconds} seconds, not 600. Roles are read per "
-        "request rather than from a claim, and a long token spends that")
+    assert 599 <= seconds <= 600, (
+        f"an access token lasts {seconds} seconds, not ten minutes. Roles are "
+        "read per request rather than from a claim, and a long token spends "
+        "that")
 
 
 def _run() -> int:

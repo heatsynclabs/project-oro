@@ -11,7 +11,7 @@ Code, and no way past.
 On a laptop the server is the catcher compose.development.yaml runs, which holds
 mail rather than delivering it. That is the only thing this file can configure:
 it writes a provider with no username, no password and TLS off. A deployment
-relay is set up by hand once, per step 7 of
+relay is set up by hand once, per step 8 of
 docs/runbooks/deploy-beside-the-legacy-system.md, and point_at refuses to touch
 an instance that is already sending through a host it was not asked for.
 
@@ -74,7 +74,7 @@ def point_at(host: str, token: str) -> None:
     Only ever the catcher. What this can build is a provider with no username,
     no password and TLS off, which is a mail catcher on a compose network and
     nothing that would be accepted by a real relay. A lab relay is configured by
-    hand, once, per step 7 of docs/runbooks/deploy-beside-the-legacy-system.md.
+    hand, once, per step 8 of docs/runbooks/deploy-beside-the-legacy-system.md.
 
     So this refuses rather than writes when the instance is already sending
     through a host it was not asked for. Activating deactivates the one that was

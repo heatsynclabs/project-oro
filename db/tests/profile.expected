@@ -24,3 +24,12 @@ ok   and that member is untouched
 --   an admin may set what a member may not
 ok   standing (1 row(s))
 ok   orientation, recording who ran it (1 row(s))
+--   an admin loses a confirmation date the same way a member does
+ok   an admin changes their own address (1 row(s))
+ok   and the confirmation that belonged to the old one is gone
+ok   an admin records a confirmation on an address that did not move (1 row(s))
+ok   and it is kept, because an admin may mark an address confirmed
+ok   an admin moves an address and records the new confirmation together (1 row(s))
+ok   and what they set in the same statement is what is there
+ok   an admin changes another member address (1 row(s))
+ok   and that confirmation goes too

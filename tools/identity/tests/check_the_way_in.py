@@ -162,6 +162,46 @@ def _turn_registration_off() -> None:
         "the write was accepted and registration is still on")
 
 
+def test_the_step_closes_the_sign_up_and_the_screens_stop_offering_one():
+    """The other direction, which a deployment with no mail server needs.
+
+    Asserted on the screen rather than on the policy, because the policy is the
+    mechanism and the button is what a person meets. A deployment that cannot
+    send a code has to be able to take the button away: pressing it leaves an
+    account in USER_STATE_INITIAL, which no admin can repair.
+
+    Registration is turned back on at the end, because it is the default this
+    site ships with and every check after this one reads that state.
+    """
+    login_policy.open_self_registration(TOKEN)
+
+    said = io.StringIO()
+    with contextlib.redirect_stdout(said):
+        login_policy.close_self_registration(TOKEN)
+    assert "turned off" in said.getvalue(), (
+        f"the step said {said.getvalue().strip()!r} against an instance with "
+        "registration on, so it is not what turns it off")
+
+    status, page = flow.sign_in_page(_members_client_id(), MEMBERS_ORIGIN)
+    assert status == 200, f"the sign in page answered {status}"
+    assert 'name="register"' not in page, (
+        "the sign up was closed and the screens still offer a Register "
+        "button, so a person can still reach a code nothing will send")
+
+    said = io.StringIO()
+    with contextlib.redirect_stdout(said):
+        login_policy.close_self_registration(TOKEN)
+    assert "already off" in said.getvalue(), (
+        f"running the step again said {said.getvalue().strip()!r} rather than "
+        "finding the sign up already closed, so it writes on every run")
+
+    policy = login_policy.held(TOKEN)
+    assert policy.get("allowUsernamePassword") is True, (
+        f"closing the sign up turned password sign in off too: {policy}")
+
+    login_policy.open_self_registration(TOKEN)
+
+
 def test_the_step_turns_registration_on_and_a_second_run_reports_it_correct():
     """Both halves, from the state the step is for.
 

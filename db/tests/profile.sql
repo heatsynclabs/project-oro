@@ -77,4 +77,44 @@ CALL t.must_change('standing',
 CALL t.must_change('orientation, recording who ran it',
   $$UPDATE members SET oriented_at=now(),
      oriented_by='dddddddd-0000-0000-0000-000000000002' WHERE identity_subject='sub-pat'$$);
+
+-- The trigger returns early for the owner, so this seeds a confirmation date
+-- without going through the rule the checks below are about.
+CALL t.note('an admin loses a confirmation date the same way a member does');
+RESET ROLE;
+\set QUIET on
+UPDATE members SET email='ann@example.test', email_verified_at='2026-01-02 03:04:05+00'
+  WHERE identity_subject='sub-adm';
+\set QUIET off
+SET ROLE oro_api;
+SET LOCAL oro.identity_subject = 'sub-adm';
+CALL t.must_change('an admin changes their own address',
+  $$UPDATE members SET email='ann.new@example.test' WHERE identity_subject='sub-adm'$$);
+CALL t.must_query('and the confirmation that belonged to the old one is gone',
+  $$SELECT coalesce(email_verified_at::text,'null') FROM members WHERE identity_subject='sub-adm'$$,
+  'null');
+CALL t.must_change('an admin records a confirmation on an address that did not move',
+  $$UPDATE members SET email_verified_at='2026-02-03 04:05:06+00'
+     WHERE identity_subject='sub-adm'$$);
+CALL t.must_query('and it is kept, because an admin may mark an address confirmed',
+  $$SELECT email_verified_at::text FROM members WHERE identity_subject='sub-adm'$$,
+  '2026-02-03 04:05:06+00');
+CALL t.must_change('an admin moves an address and records the new confirmation together',
+  $$UPDATE members SET email='ann.third@example.test',
+     email_verified_at='2026-03-04 05:06:07+00' WHERE identity_subject='sub-adm'$$);
+CALL t.must_query('and what they set in the same statement is what is there',
+  $$SELECT email_verified_at::text FROM members WHERE identity_subject='sub-adm'$$,
+  '2026-03-04 05:06:07+00');
+RESET ROLE;
+\set QUIET on
+UPDATE members SET email_verified_at='2026-04-05 06:07:08+00'
+  WHERE identity_subject='sub-pat';
+\set QUIET off
+SET ROLE oro_api;
+SET LOCAL oro.identity_subject = 'sub-adm';
+CALL t.must_change('an admin changes another member address',
+  $$UPDATE members SET email='pat.third@example.test' WHERE identity_subject='sub-pat'$$);
+CALL t.must_query('and that confirmation goes too',
+  $$SELECT coalesce(email_verified_at::text,'null') FROM members WHERE identity_subject='sub-pat'$$,
+  'null');
 RESET ROLE;

@@ -5,10 +5,17 @@ so one idempotent step decides what a member is offered when they arrive. Its
 own file rather than a section of api.py, which is calls to the identity
 service and has no business holding a policy.
 
-The Register button is the whole reason this exists. It is on, because this site
-replaces one that has a sign up. It needs a mail server behind it: the screens
-ask a new joiner for a code, and compose.development.yaml runs a catcher for a
-laptop while a deployment points at the lab's own server.
+The Register button is the whole reason this exists. It is on by default, because
+this site replaces one that has a sign up. It needs a mail server behind it: the
+screens ask a new joiner for a code, and compose.development.yaml runs a catcher
+for a laptop while a deployment points at the lab's own server.
+
+Both directions are here, and a deployment can need either. An operator standing
+up this stack with no mail server has to be able to close the sign up, because
+the alternative is a person pressing Register and landing in a state no admin can
+repair. Which one runs is a flag on configure.py and is never worked out from
+whether mail was configured: deriving one setting from another is the mistake
+ADR 0002 records.
 """
 from __future__ import annotations
 
@@ -87,12 +94,44 @@ def open_self_registration(token: str) -> None:
     A forgotten password rides on the same thing. Both are dead without mail and
     both work with it.
     """
+    _set_registration(True, token)
+
+
+def close_self_registration(token: str) -> None:
+    """Take the Register button off the screens.
+
+    The other end of the same write, and it exists because a deployment with no
+    mail server has nowhere to send a joiner. Measured on 2026-08-31 against
+    4.17.1: registering with no mail server configured creates the account and
+    lands it in USER_STATE_INITIAL, waiting for a code nothing can send. That is
+    the one state no admin can repair. Every write to such an account is
+    refused, and the only route out is removing it and making a new one, which
+    costs the member their identity subject.
+
+    So an operator who is not configuring mail today needs this, and until it
+    existed the only way to close the sign up was to type the whole policy back
+    by hand. Step 8 of docs/runbooks/deploy-beside-the-legacy-system.md is where
+    that decision is taken. It is a decision rather than a default: this site
+    replaces one that has a sign up, so the button is on unless somebody turns
+    it off, and nothing derives the answer from whether mail was configured.
+    """
+    _set_registration(False, token)
+
+
+def _set_registration(wanted_on: bool, token: str) -> None:
+    """Write allowRegister, carrying the rest of the policy back unchanged.
+
+    One function for both directions, because the whole hazard here is the
+    fields that are not allowRegister and there is no version of that hazard
+    worth writing down twice.
+    """
+    word = "on" if wanted_on else "off"
     policy = held(token)
-    if self_registration_is_on(policy):
-        print("self registration: already on")
+    if self_registration_is_on(policy) == wanted_on:
+        print(f"self registration: already {word}")
         return
     wanted = {field: policy[field] for field in FIELDS if field in policy}
-    wanted["allowRegister"] = True
+    wanted["allowRegister"] = wanted_on
 
     answer = api.call(POLICY, wanted, token, method="PUT")
     # The read above comes from a projection the service updates after the
@@ -101,13 +140,13 @@ def open_self_registration(token: str) -> None:
     # that with a refusal rather than a shrug, and it is the same state as the
     # branch above. api.apply_branding reads this message the same way.
     if answer.status != 200 and "has not been changed" in answer.message():
-        print("self registration: already on")
+        print(f"self registration: already {word}")
         return
     if answer.status != 200:
-        raise Refused(f"self registration could not be turned on: "
+        raise Refused(f"self registration could not be turned {word}: "
                       f"{answer.status} {answer.message()}. The rest of the "
                       "login policy is untouched, so signing in still works "
                       "and a person who is already a member is unaffected. "
                       "Somebody who is not has to be given an account by an "
                       "admin until this runs.")
-    print("self registration: turned on")
+    print(f"self registration: turned {word}")

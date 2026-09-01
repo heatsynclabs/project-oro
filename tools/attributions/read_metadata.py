@@ -5,7 +5,7 @@ This is the half that runs in the container. It writes JSON on stdout and the
 generator beside it reads that. Standard library only, because it has to run in
 an image that installed nothing but the lock it is being asked about.
 
-    docker run --rm -v ...:/reader:ro IMAGE python /reader/read_metadata.py
+    docker run --rm -v ...:/reader:ro IMAGE python3 /reader/read_metadata.py
 
 Rule 9 wants a licence claim traced to the package rather than to a summary
 field on an index or to somebody's memory, so the licence here comes from the

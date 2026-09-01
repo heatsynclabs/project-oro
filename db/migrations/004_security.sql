@@ -85,7 +85,25 @@ BEGIN
   -- because a definer function inherits the caller's identity setting.
   IF current_user <> 'oro_api' THEN RETURN NEW; END IF;
   IF subject IS NULL OR subject = '' THEN RETURN NEW; END IF;
-  IF is_admin(current_member_id()) THEN RETURN NEW; END IF;
+
+  -- An admin sets what a member may not, on any row, including their own. The
+  -- one thing they may not do is leave a confirmation date standing against an
+  -- address nobody confirmed, so an update that moves the address and says
+  -- nothing about the date clears it, the same as for a member. An admin
+  -- recording a confirmation sets both in one statement and keeps what they
+  -- set, which is the path first_sign_in.py will take when the token carries a
+  -- verified address to read.
+  --
+  -- This branch used to return above the email rule, so an admin who changed
+  -- their own address kept its old confirmation date. Nothing in the suite
+  -- could catch that: every profile edit check ran as a member.
+  IF is_admin(current_member_id()) THEN
+    IF NEW.email IS DISTINCT FROM OLD.email
+       AND NEW.email_verified_at IS NOT DISTINCT FROM OLD.email_verified_at THEN
+      NEW.email_verified_at := NULL;
+    END IF;
+    RETURN NEW;
+  END IF;
 
   IF NEW.identity_subject    IS DISTINCT FROM OLD.identity_subject
   OR NEW.standing            IS DISTINCT FROM OLD.standing

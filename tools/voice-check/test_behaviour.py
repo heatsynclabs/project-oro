@@ -49,6 +49,20 @@ def test_warns_on_repeated_triads():
     assert "triad" in rules(text)
 
 
+def test_warns_on_triads_written_without_an_oxford_comma():
+    """The shape this repository actually writes, and the one the check missed.
+
+    The pattern required a comma before "and" until 2026-08-31, and nothing here
+    writes one, so the check that bans the rule of three could not fire on its
+    own subject.
+    """
+    text = ("The portal shows profile, cards and payments. "
+            "Admins manage members, roles and approvals. "
+            "The door reports status, alarms and logs. "
+            "The stack uses Postgres, Caddy and Docker.")
+    assert "triad" in rules(text)
+
+
 def test_warns_on_summary_closing():
     text = "The door service reconciles the card table.\n\n" + \
            "In summary, the system keeps the controller and the database agreed " \

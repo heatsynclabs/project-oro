@@ -15,15 +15,17 @@ HANDOFF.md sections 2, 5, 6 and 7, ADR 0001 and ADR 0002. Every claim below
 names the file and line range it came from.
 
 `npx @redocly/cli@2.49.0 lint docs/api/members-v1.yaml` reports no errors and
-five warnings, which is the count and the identity ADR 0001 records: one
+six warnings, which is the count and the identity ADR 0001 records: one
 `info-license`, two `operation-4xx-response` on the public status endpoints,
-and two `no-unused-components` on the `NoSuchPath` and `WrongMethod` response
-components at lines 1188 and 1205. The last two are the newest. They fire
-because no operation references those components, and `info.description` at
-line 58 argues that none can: a 404 for a path this document does not declare
-has no operation to hang it on, and the 405 belongs to the path rather than to
-any operation under it. None of the five is a finding and none is repeated
-below.
+and three `no-unused-components` on the `RecordWasRemoved` (line 1279),
+`NoSuchPath` (line 1305) and `WrongMethod` (line 1322) response components. They
+fire because no operation references those components, and `info.description`
+(line 39) argues that none can: a 404 for a path this document does not
+declare has no operation to hang it on, and the 405 belongs to the path rather
+than to any operation under it. `RecordWasRemoved` is unreferenced for its own
+reason, written where it is defined: the 409 on `POST /me` carries two slugs and
+OpenAPI allows one response per status. This paragraph said five until
+2026-08-31. None of the six is a finding and none is repeated below.
 
 Findings are ordered by what they would cost to fix once services and portals
 exist, most expensive first.
@@ -38,21 +40,32 @@ wrote them. They move every time the contract does, so a citation that lands in
 the wrong place is a drift to fix rather than evidence that the finding is
 stale.
 
-One exception, and it is marked where it applies. Where a finding carries a note
-saying the text after it is the record of an earlier state, the numbers inside
-that block are frozen at that state and land on nothing now. Finding 3 says so in
-as many words. Do not renumber those: they are what makes the before readable.
+Two blocks are exempt, and both are now marked in the file rather than left to
+be recognised by their prose. Where a finding carries a note saying the text
+after it is the record of an earlier state, the numbers inside that block are
+frozen at that state and land on nothing now. Findings 1 and 3 both do that, and
+the preamble used to name only the third. Do not renumber those: they are what
+makes the before readable.
+
+Every other citation is checked by `tools/citations/check_citations.py`, which
+finds the backticked thing in the contract and compares the number against where
+it actually is. The number is derived rather than maintained, so an edit to the
+contract does not need a pass over this file: `--fix` renumbers, and the gate
+fails a citation nobody renumbered. A citation the checker cannot resolve is a
+defect too, because a reader cannot follow it either.
 
 ---
 
 ## 1. `/me/cards` hands a member an EEPROM address
 
-**Defect. Addressed in commit `bd55232`.** `/me/cards` (line 203) returns
-`MyCard` (line 1629) now, a shape with no `controller_slot` and no
+**Defect. Addressed in commit `bd55232`.** `/me/cards` (line 292) returns
+`MyCard` (line 1779) now, a shape with no `controller_slot` and no
 `permission_mask`, and `tools/mock/tests/check_contract.py` carries
 `test_a_member_is_never_handed_a_door_controller_address`, so pointing the
 reference back at `Card` turns the contract suite red. What follows describes
 the state before that commit and is kept as the record of it.
+
+<!-- citations: frozen -->
 
 `/me/cards` returned an array of `Card`, and `Card` (line 1701)
 carries `controller_slot` and `permission_mask`. The endpoint description says
@@ -82,11 +95,13 @@ Cost later: removing a declared field after clients render it is a breaking
 change to every generated type. Cost now: deciding which keys `/me/cards`
 returns and saying so.
 
+<!-- /citations: frozen -->
+
 ## 2. `?fields=` is unconstrained, and the directory is where that bites
 
 **Defect.** This is the phase 3 exit criterion, stated as a contract question.
 
-`Fields` (line 1058) is one shared parameter, typed `{type: string}`, described
+`Fields` (line 1144) is one shared parameter, typed `{type: string}`, described
 as "Comma separated `Member` field names". It is applied to `/members`,
 `/members/{id}` and `/admin/members`. Nothing in the machine readable document
 says the permitted set differs between the directory and the admin list, and
@@ -124,6 +139,8 @@ the shape decision underneath is untouched. There are seven of them, not six:
 the list below missed one, and two of the six it names carried no description
 rather than the wrong one.** What follows the note describes the state before
 that edit and is kept as the record of it, line numbers included.
+
+<!-- citations: frozen -->
 
 The count came from reading the document rather than from this finding. Six
 copies of "Only `id` and `name` are populated" were in it, one of them wrapped
@@ -194,17 +211,19 @@ fields are empty for a member, and only the contract says otherwise.
 Cost later: high. Either a `SECURITY DEFINER` name lookup gets designed and
 tested, or every screen that renders "granted by" changes shape.
 
+<!-- /citations: frozen -->
+
 ## 4. Five collections return a bare array and one returns an envelope
 
 **Defect, and the most mechanically expensive one here.**
 
 `/me/cards`, `/me/certifications`, `/members`, `/admin/members` and
 `/admin/approvals` all return `type: array` directly. `/me/door-events` returns
-`DoorEventPage` (line 2013), an object with `items` and `next_cursor`.
+`DoorEventPage` (line 2163), an object with `items` and `next_cursor`.
 
 Adding pagination to a bare array later means changing a JSON array into a JSON
 object. Every client breaks on the same day. `/admin/members` is the one that
-will need it: line 388 says it returns "Every member, including unlisted and
+will need it: `/admin/members` (line 470) returns "Every member, including unlisted and
 lapsed", and that set only grows, unlike the directory whose line 345 argument
 about a few hundred rows is sound.
 
@@ -220,7 +239,7 @@ While there: sort order is stated on `/me/cards` ("newest first") and
 **Defect.**
 
 `GET /me` (line 136) declares 200 and 401 and nothing else. The 401 is defined
-as "No token, or a token this API could not validate" (line 1101). A valid token
+as "No token, or a token this API could not validate" (`Unauthenticated`, line 1186). A valid token
 belonging to a person with no member row is neither of those.
 
 That state is real and the database expects it.
@@ -232,7 +251,7 @@ no row (`012_close_remaining.sql` line 59), and `waiver_status` raises "No membe
 matches the identity on this transaction" in that case (`011` line 22).
 
 No operation in this document calls that function, and neither
-`api-design.md` section 3.1 nor the `memberToken` description (line 1034) says
+`api-design.md` section 3.1 nor the `memberToken` (line 1120) description says
 what happens on the first request after a member signs in for the first time.
 Every portal's boot path depends on the answer.
 
@@ -242,7 +261,7 @@ Cost later: it is the first request all three clients make.
 
 **Defect.**
 
-`CardEligibility` (line 2026) requires a `requirements` array with one entry per
+`CardEligibility` (line 2176) requires a `requirements` array with one entry per
 rule, each carrying `met` and a `detail` sentence, and the enum at line 2050 is
 `[tier, tenure, standing, waiver]`.
 
@@ -253,11 +272,13 @@ short circuits, so it reports only the first rule that failed. It never reads
 
 Two further disagreements in the same schema. Line 2035 says `eligible_on` is
 "Null when something that is not about time is missing"; the function sets
-`ready_on` and returns it non null on the tier failure branch (line 171) and the
-standing branch (line 175). And `Tier.card_eligible` (line 1321) is described as
+`ready_on` and returns it non null on the tier failure branch
+(`012_close_remaining.sql` line 171) and the standing branch
+(`012_close_remaining.sql` line 175). And `Tier.card_eligible` (line 1441) is described as
 "Whether this tier may be nominated for card access" while `Tier.sort_order`
-(line 1318) says "The card access minimum is compared on this, not on price".
-The function compares `sort_order` (line 170) and ignores the flag, so the
+(line 1436) says "The card access minimum is compared on this, not on price".
+The function compares `sort_order` (`012_close_remaining.sql` line 170) and
+ignores the flag, so the
 contract documents two fields as the rule and the database uses one.
 
 Cost later: either the SQL function grows to return the breakdown, or the
@@ -270,22 +291,22 @@ second one puts a business rule in two places, which rule 5 forbids.
 is the same failure a step earlier: a contract describing operations it does not
 declare.
 
-- `/me/door-events` at line 274 says "an admin can read all of them". No admin
+- `/me/door-events` (line 365) says "an admin can read all of them". No admin
   door event endpoint exists. `admin_reads_all_door_events` in
   `004_security.sql` line 55 is real, so the capability exists and the contract
   is the only place a client could learn it does not.
-- `RoleGrant` (line 1345) describes granting, expiry and revocation with a
+- `RoleGrant` (line 1469) describes granting, expiry and revocation with a
   reason, and `Member.roles` returns them. There is no endpoint that grants an
   ordinary role, and none that revokes any role. `api-design.md` section 3.5
   makes revocation single actor and calls it "the control that actually matters
   there", and `007_write_policies.sql` line 78 has the policy for it. The two
   approver flow can grant admin. Nothing can take it away.
-- `MemberCertification.revoked_reason` (line 1870) says "Required when a
+- `MemberCertification.revoked_reason` (line 2020) says "Required when a
   certification is revoked. The database refuses one without it", which is true
   (`002_access.sql` line 126). No revoke endpoint exists, and
   `012_close_remaining.sql` line 133 added a policy specifically so instructors
   could do it.
-- `ApprovalStatus` (line 2064) enumerates `rejected` and `withdrawn`. No
+- `ApprovalStatus` (line 2221) enumerates `rejected` and `withdrawn`. No
   operation produces either. Note that `decided_rows_have_a_decider` in
   `002_access.sql` line 162 requires a decider for `rejected` and forbids one for
   `withdrawn`, so those two are not the same operation and a later addition has
@@ -300,7 +321,7 @@ not additive.
 **Defect.**
 
 `PATCH /admin/cards/{id}` and `POST /admin/cards/{id}/revoke` are keyed on the
-card's uuid, and `CardId` at line 1080 says so plainly: "This is the card's own
+card's uuid, and `CardId` (line 1162) says so plainly: "This is the card's own
 identity, not its slot." The only operation in this document that returns a card
 uuid to an admin is `POST /admin/cards`, at the moment of issue.
 
@@ -310,7 +331,7 @@ contract path to the id the revoke endpoint requires.
 
 The same gap on members, one step smaller: there is no admin GET of one member.
 `GET /members/{id}` is the directory endpoint and returns
-`NotInDirectory` (line 1154) for anybody unlisted, which is most of the people an
+`NotInDirectory` (line 1245) for anybody unlisted, which is most of the people an
 admin needs to open. `PATCH /admin/members/{id}` can write a record nothing can
 read.
 
@@ -341,8 +362,8 @@ and a narrower list: `joined_on` is refused here and the trigger allows it.
 What follows is the finding as it was written, and its line numbers are
 frozen at that state.
 
-`PATCH /me` declares a 403 at line 186 whose example says membership standing and
-orientation are set by an admin. `MemberSelfUpdate` (line 1541) sets
+`PATCH /me` (line 152) declares a 403 whose example says membership standing
+and orientation are set by an admin. `MemberSelfUpdate` (line 1665) sets
 `additionalProperties: false` and does not declare `standing`, `paid_through`,
 `oriented_at`, `oriented_by` or `email_verified_at`. A request carrying any of
 them is schema invalid, which the same operation already answers with 422.
@@ -372,7 +393,7 @@ are reachable:
   covers both.
 
 `POST /admin/approvals` declares no refusal for proposing a role whose
-`grants_roles` is false, though `ApprovalCreate.role_id` at line 2137 says only
+`grants_roles` is false, though `ApprovalCreate.role_id` (line 2294) says only
 such a role belongs in this queue. No database constraint refuses it either, so
 today that request would create a row nothing acts on.
 
@@ -380,8 +401,8 @@ today that request would create a row nothing acts on.
 
 **Defect, small, and the kind that outlives everyone who knew better.**
 
-Line 1375 says `approval_id` is "Null on the grants made while the lab had fewer
-than two admins and the two approver rule could not yet bind."
+`RoleGrant.approval_id` (line 1499) is "Null on the grants made while the lab
+had fewer than two admins and the two approver rule could not yet bind."
 
 `db/migrations/013_bootstrap_three_admins.sql` replaced that. The escape is now a
 quota of three grants over the life of the database, spent by use rather than
@@ -414,7 +435,7 @@ refuses to be an existence oracle, and it should be written down as deliberate.
 
 **Question for the reviewer.**
 
-`Member` at line 1419 says the deletion timestamp is not exposed, and no
+`Member` (line 1531) says the deletion timestamp is not exposed, and no
 endpoint or filter mentions it. `admin_reads_all` (`004_security.sql` line 41)
 carries no `deleted_at` filter, so `GET /admin/members` returns soft deleted
 members mixed in with everyone else and the response cannot tell them apart.
@@ -438,7 +459,7 @@ left.
 ## 14. Email verification has an exit and no entrance
 
 **Question for the reviewer. Answered in commit `bd55232`, in the contract
-rather than with an endpoint.** `email_verified_at` (line 1434) now says an
+rather than with an endpoint.** `email_verified_at` (line 1558) now says an
 absent date is a valid state and never a gate, that no operation here refuses a
 member for it, and that confirmation belongs to the identity service. Nothing
 was added to send mail, because nothing in this project configures a sender.
@@ -453,7 +474,7 @@ system holding a different record. No code here writes a date into that
 column, and the only code that touches it at all is the trigger that clears it.
 The description says that now, and names each file it was checked against.
 
-`PATCH /me` at line 164 says changing your email clears its verified date, and
+`PATCH /me` (line 152) says changing your email clears its verified date, and
 the trigger does exactly that (`004_security.sql` line 104). `email_verified_at`
 is `readOnly` on `Member` and appears in no update schema. No operation in this
 document sets it.
@@ -468,18 +489,19 @@ place rather than leaving it to be discovered.
 ## Matters of taste, flagged and not asserted
 
 - `POST /admin/certifications/{id}/grant` sits under `/admin/` and its own
-  description (line 684) says an instructor who is not an admin may call it.
+  description (`/admin/certifications/{id}/grant`, line 756) says an instructor
+  who is not an admin may call it.
   `api-design.md` section 3.3 agrees. The path prefix reads as a permission and
   is not one.
 - `Member.oriented_by` is a `Member` object on read and
   `MemberAdminUpdate.oriented_by` is a uuid on write. Generated clients get two
   types for one field. The same asymmetry sits on `tier` and `tier_id`, where it
   is at least named by two different keys.
-- `Approval.expires_at` (line 2114) says "Thirty days after the proposal was
+- `Approval.expires_at` (line 2271) says "Thirty days after the proposal was
   made, unless an admin set otherwise". `ApprovalCreate` is
   `additionalProperties: false` and has no such field, so no admin can set it
   through this API.
-- `Limit` (line 1083) is a shared component whose description says "How many
+- `Limit` (line 1169) is a shared component whose description says "How many
   events to return". Only `/me/door-events` uses it today. The wording will be
   wrong for the second user.
 - The approval example at line 790 reads "Taking over operations from D. Kim".
@@ -496,7 +518,7 @@ Recorded so the reviewer knows these were looked at rather than skipped.
   `/space_api/simple.json`, both of which `api-design.md` section 3.7 says are
   public. No operation is unintentionally anonymous.
 - Every error response in the document uses `application/problem+json` with
-  `ProblemDetail`, and `ProblemDetail` requires `detail` (line 1252) rather than
+  `ProblemDetail`, and `ProblemDetail` requires `ProblemDetail.detail` (line 1385) rather than
   leaving it optional as RFC 9457 does. That is the right call for this project
   and it is argued in place.
 - The 900 byte ceiling on `space_api.json`, its `Cache-Control` header and the

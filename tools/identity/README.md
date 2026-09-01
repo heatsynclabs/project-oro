@@ -219,12 +219,23 @@ subject afterwards. Left unrepointed, the row is unclaimable:
 `link_or_create_member` matches on the subject first, falls through to the
 email branch, and refuses with `That email already belongs to another account.`
 
-`configure.py` turns the Register button **on** through `login_policy.py`, and
+`configure.py` turns the Register button on through `login_policy.py`, and
 `mail.py` gives the code somewhere to come from. It was off for one day, on the
 reasoning that a sign up nobody can finish is worse than no sign up. The dead
 end was real and taking the button away was the wrong end of it: this members
 site replaces one that has a sign up, so a person who has never been here needs
 a way in that is not asking an admin. The mail server is the fix.
+
+`--self-registration off` is the other end of the same write, and it exists for
+the deployment that has no mail server yet. Pressing Register there lands a
+person in `USER_STATE_INITIAL`, which is the row in the table above that no
+admin can repair, so an operator taking that branch has to be able to close the
+sign up rather than only be told about it. On is the default and nothing works
+the answer out from whether `--mail-host` was given: one variable doing two jobs
+is the trap ADR 0002 records. `close_self_registration` carries the whole policy
+back the way `open_self_registration` does, because a field left out of that
+request reads as false and sending `allowRegister` alone turns password sign in
+off.
 
 `mail.py` can only ever write a provider with no username, no password and TLS
 off, which is the catcher `compose.development.yaml` runs and nothing a real
@@ -236,7 +247,7 @@ would otherwise take the relay offline and report success.
 ### What configuring a mail server would take
 
 Nothing here does it, and the runbook step that decides is
-`docs/runbooks/deploy-beside-the-legacy-system.md` step 7. The shape, measured
+`docs/runbooks/deploy-beside-the-legacy-system.md` step 8. The shape, measured
 by doing it against a throwaway instance on 2026-08-31 and then removing it:
 
 - `POST /admin/v1/smtp` requires `senderAddress`, `senderName` and `host`,
@@ -257,8 +268,11 @@ through five above stop being dead ends.
 
 | File | What it is |
 |---|---|
-| `configure.py` | Registers the project, the three portals as public PKCE clients, the door service machine account, and the GANTRY branding. Idempotent |
+| `configure.py` | Registers the project, the three portals as public PKCE clients, the door service machine account, and the GANTRY branding, and opens or closes the sign up. Idempotent |
 | `api.py` | Calls to the identity service, shared by the configuration step and the suites |
+| `messages.py` | The words in the message a new member gets, which were the vendor's until 2026-08-31 |
+| `login_policy.py` | The Register button, opened and closed. `--self-registration` chooses |
+| `branding.py` | The label policy, and the four asset uploads. Two files, because the dark slots take a dark mark |
 | `flow.py` | One whole sign in, driven through the hosted screens with a cookie jar |
 | `make_a_sign_in.py` | The command an admin runs to give somebody a sign in, or to put one right |
 | `sign_ins.py` | What an account is on this service, and the writes that make one. Read by the command and by both of its suites |
@@ -266,6 +280,8 @@ through five above stop being dead ends.
 | `tests/check_making_a_sign_in.py` | The same command against a real service and a real members schema |
 | `tests/check_identity.py` | Part (a) of the password proof |
 | `tests/check_configuration.py` | What was configured, read back, plus the sign in and what the tokens do afterwards |
+| `tests/check_branding.py` | The part a member sees: the colours on the screens, the marks in both slots, the words in the message |
+| `tests/check_the_way_in.py` | The screens a person meets and the login policy behind them, including closing the sign up |
 | `tests/check_reconfiguration.py` | What a second run of `configure.py` does to all of that |
 | `tests/check_legacy_import.py` | Hashes a replica of the legacy application wrote, imported and signed in with |
 | `fixtures/legacy-hashes.json` | The hashes, committed |

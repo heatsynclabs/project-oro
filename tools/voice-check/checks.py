@@ -152,7 +152,24 @@ def _check_sentence_shape(sents: list[str], out: list[Finding]) -> None:
 
 
 def _check_repetition(prose: str, out: list[Finding]) -> None:
-    triads = re.findall(r"\b\w[\w\s]{2,28}, [\w\s]{2,28}, and [\w\s]{2,28}\b", prose)
+    # The comma before "and" is optional, and it was required until 2026-08-31.
+    # This repository does not write an Oxford comma anywhere, so the check that
+    # bans the rule of three could not fire on its own subject: the ban is in
+    # CLAUDE.md rule 11 and every triad written here was invisible to it.
+    #
+    # What correcting it cost, measured over the 260 files tracked at the time
+    # on 2026-08-31: the whole gate went from 17 warnings to 70. The threshold
+    # stays at three, which is already a concession to a rule that says one per
+    # document at most, because moving it to make the new warnings go away is
+    # how a gate stops meaning anything.
+    #
+    # A share of those are comma spliced sentences rather than parallel items:
+    # "was left that way, a registration sent nothing, and the catcher held
+    # nothing" is three clauses and matches. Telling those apart needs to know
+    # what a clause is, and no pattern here can. This is a smell to look at, it
+    # stays a warning, and it never fails a build.
+    triads = re.findall(
+        r"\b\w[\w\s]{2,28}, [\w\s]{2,28},? and [\w\s]{2,28}\b", prose)
     if len(triads) >= 3:
         out.append(Finding(
             "warn", "triad",

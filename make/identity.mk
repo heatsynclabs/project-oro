@@ -21,12 +21,25 @@ identity-test:
 # origin. It reads the bootstrap token out of the container, which is the only
 # way to read it: that image is distroless and has no shell.
 #
-# The origins are the deployment's, from .env, and the identity service is
-# reached at id.ORO_HOSTNAME. A laptop has neither, so it passes the port the
-# service is published on and calls the step directly with the origins it
-# serves. README.md walks through that.
+# The origins are the deployment's, from .env, built from ORO_HOSTNAME with no
+# port on them. That is right for a deployment on 443 and wrong everywhere else,
+# and this used to give a laptop the wrong example. Measured on 2026-08-31:
+# ORO_IDENTITY_URL=http://localhost:8180 make identity-configure registered the
+# members portal with a redirect of https://localhost/ while the portal is
+# served at http://localhost:8080, so the sign in screens refuse the redirect
+# the browser comes back on.
 #
-#   ORO_IDENTITY_URL=http://localhost:8180 make identity-configure
+# So a laptop calls the step directly with the origins it actually serves, and
+# so does a deployment on a port other than 443, which is step 6 of
+# docs/runbooks/deploy-beside-the-legacy-system.md:
+#
+#   ORO_IDENTITY_TOKEN="$$(docker compose cp identity:/bootstrap/pat - | tar -xO)" \
+#   ORO_IDENTITY_URL=http://localhost:8180 \
+#     python3 tools/identity/configure.py \
+#       --members-origin http://localhost:8080 \
+#       --admin-origin http://localhost:8081 \
+#       --door-origin http://localhost:8082 \
+#       --mail-host mail:1025
 identity-configure:
 	@test -f .env || { echo "No .env file. Copy .env.example to .env and set the values in it." >&2; exit 1; }
 	@ORO_IDENTITY_TOKEN="$$(docker compose cp identity:/bootstrap/pat - 2>/dev/null | tar -xO)" \

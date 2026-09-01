@@ -5,10 +5,20 @@
 The GANTRY design system as CSS custom properties, and a checker that keeps the
 colours legible.
 
-One file, `tokens.css`. No build step and no token compiler, because the
-consumers are Astro, Vue, React 19, and Rails ERB, and only plain CSS reaches
-all four. Link it and the properties are there. `docs/plan/architecture.md`
-section 5 is the reasoning.
+The token layer is one file, `tokens.css`, with no build step and no token
+compiler, because the consumers are Astro, Vue, React 19, and Rails ERB, and
+only plain CSS reaches all four. Link it and the properties are there.
+`docs/plan/architecture.md` section 5 is the reasoning.
+
+Two files here are generated, and this used to say nothing was.
+`brand/hsl-lockup.svg` and `brand/hsl-lockup-dark.svg` are built by
+`brand/build-the-lockup.py` from the two SVGs the members portal carries inline
+in its masthead, because the hosted sign in screens take a file and cannot
+inline anything, and a second copy of a logo is two logos that drift. Two files
+rather than one because the label policy has a light slot and a dark one, and
+the ink differs: `--bone` in each theme. `tests/run.sh` runs that script with
+`--check`, so a masthead somebody edits without rebuilding fails rather than
+shipping two marks.
 
 Three things it defines:
 

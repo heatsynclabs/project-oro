@@ -193,6 +193,11 @@ value at the moment it exists, and Caddy already serves this directory. The file
 is gitignored. The portal reads it, then reads the identity service's own
 discovery document for every endpoint, so no path is written down here either.
 
+`configure.py --no-portal-config` leaves it alone, and the identity suite passes
+that. Without it, running that suite wrote this file pointing at the throwaway
+service it had just started, which dies with the suite, so a portal somebody had
+open on this machine was repointed at an instance that no longer existed.
+
 Three ways that can be wrong, and each is a sentence in the band rather than a
 button that does nothing: the document is not there, it registers an address
 other than the one the page is being read on, or the browser does not treat this

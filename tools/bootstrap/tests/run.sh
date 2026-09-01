@@ -148,10 +148,14 @@ export ORO_MEMBERS_ORIGIN="http://$ORO_HOSTNAME:$ORO_HTTP_PORT"
 
 # Only check_first_sign_in.py needs this, and it needs the members portal to be
 # a registered client before an authorization request means anything.
+#
+# --no-portal-config, because this stack dies with the suite. Without it the
+# file apps/members/identity.json is left naming a service on a port nothing
+# answers on any more, and a portal somebody has open on this machine reads it.
 python3 "$ROOT/tools/identity/configure.py" \
   --members-origin "$ORO_MEMBERS_ORIGIN" \
   --admin-origin "http://$ORO_HOSTNAME:8093" \
-  --door-origin "http://$ORO_HOSTNAME:8094" >/dev/null || {
+  --door-origin "http://$ORO_HOSTNAME:8094" --no-portal-config >/dev/null || {
   echo "The identity service could not be configured, so nothing was checked." >&2
   exit 1
 }

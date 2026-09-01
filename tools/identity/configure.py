@@ -6,8 +6,12 @@ from the compose file plus a database dump, with no console click that is not
 also in configuration. The compose file creates the instance, its admin and a
 machine account. This creates everything above that: the project, the four
 clients docs/plan/api-design.md section 2 specifies, the GANTRY branding on the
-hosted screens, self registration turned on, and the mail server the codes those
-screens ask for are sent through.
+hosted screens, the words on the message a new member gets, the sign up, and the
+mail server the codes those screens ask for are sent through.
+
+The sign up is on unless --self-registration off says otherwise. Off is for a
+deployment with no mail server, where pressing Register strands a person in a
+state no admin can repair.
 
     tools/identity/configure.py --members-origin http://localhost:8080 \\
       --admin-origin http://localhost:8081 --door-origin http://localhost:8082
@@ -28,6 +32,8 @@ copies it out.
 
 Writes one file: apps/members/identity.json, carrying the client id Zitadel
 generated for the members portal, which is the only way that portal can know it.
+--no-portal-config leaves it alone, which is what a throwaway stack wants: an
+instance about to be removed should not be what a working portal points at.
 """
 from __future__ import annotations
 
@@ -44,6 +50,7 @@ import branding         # noqa: E402
 import clients          # noqa: E402
 import login_policy     # noqa: E402
 import mail             # noqa: E402
+import messages         # noqa: E402
 import portal_config    # noqa: E402
 import registrations    # noqa: E402
 
@@ -106,7 +113,13 @@ def ensure_project(organisation: str, token: str) -> str:
     return PROJECT_ID
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """What this step takes, which is longer than what it does.
+
+    Its own function because main reached the 50 line ceiling in rule 6, and the
+    seam was already here: the flags are a description of the step and the body
+    below is the step.
+    """
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     for portal in clients.PORTALS:
         parser.add_argument("--" + portal.flag + "-origin", required=True,
@@ -118,9 +131,26 @@ def main() -> int:
                              "compose.development.yaml runs. Without it, "
                              "registering and a forgotten password both "
                              "stop at a code nothing can send.")
+    parser.add_argument("--self-registration", choices=("on", "off"),
+                        default="on",
+                        help="whether the sign in screens carry a Register "
+                             "button. On, because this site replaces one with "
+                             "a sign up. Off is for a deployment with no mail "
+                             "server, where a person who presses it lands in "
+                             "USER_STATE_INITIAL waiting for a code nothing "
+                             "can send, and no admin can repair that account.")
+    parser.add_argument("--no-portal-config", action="store_true",
+                        help="do not write apps/members/identity.json. For a "
+                             "throwaway stack, which would otherwise leave that "
+                             "file pointing a portal somebody is using at an "
+                             "instance that is about to be removed.")
     parser.add_argument("--token", default=api.token_from_environment(),
                         help="a token that can administer the instance")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
     if not args.token:
         raise SystemExit("No token. Pass --token, or set ORO_IDENTITY_TOKEN. "
                          "make identity-configure reads one out of the container.")
@@ -131,15 +161,24 @@ def main() -> int:
         for portal in clients.PORTALS:
             origin = getattr(args, portal.flag + "_origin").rstrip("/")
             application = clients.ensure_app(project, portal, origin, args.token)
-            if portal.configuration:
+            if portal.configuration and not args.no_portal_config:
                 portal_config.write_configuration(portal, application, origin)
         clients.ensure_door_service(organisation, args.token)
         branding.apply_branding(args.token)
+        messages.apply_message_text(args.token)
         if args.mail_host:
             mail.point_at(args.mail_host, args.token)
         else:
             mail.say_there_is_none()
-        login_policy.open_self_registration(args.token)
+        # Read from the flag rather than from whether --mail-host was given.
+        # Tying the two together would leave one variable doing two jobs, which
+        # is the trap ADR 0002 records, and it would take the sign up away from
+        # a deployment whose mail server somebody configured by hand at step 8
+        # of the deploy runbook rather than through this step.
+        if args.self_registration == "on":
+            login_policy.open_self_registration(args.token)
+        else:
+            login_policy.close_self_registration(args.token)
     except api.Refused as refused:
         # Nothing here is partially applied by a refused search: each step reads
         # before it writes. So the whole message is what happened, and it names

@@ -73,7 +73,7 @@ jobs:
       # Pinned rather than floating, per docs/decisions/0001-openapi-toolchain.md:
       # a linter that changes its rules on somebody else's schedule turns an
       # unrelated pull request red. Node 22 and npm are already on the runner
-      # image, read from actions/runner-images on 2026-08-27. The five warnings
+      # image, read from actions/runner-images on 2026-08-27. The six warnings
       # this reports are expected and the ADR says why; warnings do not fail it.
       - name: The members API document
         run: npx --yes @redocly/cli@2.49.0 lint docs/api/members-v1.yaml
@@ -100,6 +100,37 @@ jobs:
       # because there is nothing meaningful to diff against there.
       - name: Changed files
         run: ./tools/ci/voice-gate.sh "${{ github.event.pull_request.base.sha }}"
+
+  citations:
+    name: Contract citations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # docs/api/contract-review-notes.md cites the contract by line number and
+      # every edit to the contract moves some of them. Hand correction was done
+      # twice and drifted twice: measured on 2026-08-31, one of twenty five
+      # anchored citations landed. Nothing here starts a container, which is why
+      # it sits in this file rather than in ci-stacks.yml.
+      - name: Every citation lands where it says
+        run: ./tools/citations/run.sh
+
+  locks:
+    name: Lockfile coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Rule 9 says every dependency, and the generator's SOURCES was a tuple
+      # somebody had to remember to extend. It held two entries while three
+      # lockfiles were tracked, so tools/browser-checks/requirements.txt landed
+      # on 2026-08-30 and make attributions-check reported ATTRIBUTIONS.md
+      # correct over four packages it had never read.
+      #
+      # The generator itself is in no workflow, because it needs the network to
+      # build images and it rewrites a tracked file. This check needs neither.
+      - name: Every lockfile has a Source
+        run: python3 tools/attributions/test_sources.py
 
   commits:
     name: Commit messages

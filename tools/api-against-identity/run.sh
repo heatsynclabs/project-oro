@@ -157,10 +157,13 @@ fi
 
 echo
 echo "Registering the project, the clients and the branding"
+# --no-portal-config for the reason the other throwaway suites pass it: the
+# repository is mounted here, this stack dies with the run, and the file that
+# step writes is read by a portal somebody may have open on this machine.
 in_the_network /repo/tools/identity/configure.py \
   --members-origin "http://portal.invalid:9999" \
   --admin-origin "http://admin.invalid:9999" \
-  --door-origin "http://door.invalid:9999" || {
+  --door-origin "http://door.invalid:9999" --no-portal-config || {
   echo "The configuration step failed, so nothing was checked." >&2
   exit 1
 }

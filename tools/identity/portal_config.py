@@ -27,10 +27,20 @@ def write_configuration(portal: clients.Portal, application: dict, origin: str) 
     its source. A portal is static files behind a file server, so a document in
     the directory it serves is how the value gets handed over.
 
-    Written on every run, and one of those runs is not the obvious one.
-    tools/identity/tests/run.sh calls this against a throwaway service on port
-    8184 that dies with the suite, leaving this file naming it. The portal finds
-    nothing there, says so on screen, and names this command.
+    Not written on every run, since 2026-08-31. The run that made that a defect
+    was not the obvious one: tools/identity/tests/run.sh configures a throwaway
+    service on port 8184 that dies with the suite, and the file it left behind
+    said `"issuer": "http://localhost:8184"` beside a redirect back to the
+    portal a laptop serves on 8080. So running the identity suite repointed a
+    working portal at an instance that no longer existed, repeatedly, during an
+    audit. The suite passes --no-portal-config now.
+
+    The audit proposed a guard here comparing origins, and that cannot work:
+    the suite passes the real portal origin, http://localhost:8080, for a stack
+    that serves the portal on 8084 and serves nothing at 8080. The origin it
+    passes is a fiction and it is the right fiction, because what is being
+    checked is that the identity service sends a browser back there. Nothing in
+    this file can tell that apart from a deployment. The caller knows and says.
     """
     where = ROOT / portal.configuration
     document = json.dumps({

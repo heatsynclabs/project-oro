@@ -107,6 +107,33 @@ jobs:
       - name: Hashes the lab already holds, imported and signed in with
         run: ./tools/identity/tests/run.sh
 
+  browser:
+    name: Members portal in a browser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # The browser checks were in no workflow until now, because run.sh drives
+      # a stack somebody else started. That cost a day: the landing page arrived
+      # after the check that reads it, the check went red against a portal that
+      # was working correctly, and nothing was running it. with_its_own_stack.sh
+      # is that check with a stack of its own, on its own ports.
+      - name: The portal in a real chromium
+        run: ORO_SHOT_DIR="$RUNNER_TEMP/oro-screenshots" ./tools/browser-checks/with_its_own_stack.sh
+
+      # A screenshot is written whether the check passed or failed, which is the
+      # reason that suite writes one at all: a red browser check with no picture
+      # sends the reader back to reproduce it by hand.
+      #
+      # actions/upload-artifact v7.0.1, MIT, maintained by GitHub, pinned to the
+      # commit rather than the tag. Both read from the GitHub API on 2026-08-31.
+      - name: What the browser saw
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: members-portal-screenshots
+          path: ${{ runner.temp }}/oro-screenshots
+
   ceilings:
     name: File and function ceilings
     runs-on: ubuntu-latest

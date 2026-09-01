@@ -13,7 +13,7 @@ DEV = docker compose -f compose.yaml -f compose.development.yaml
 include make/identity.mk
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure bootstrap-admins migration-test ceilings names backup restore backup-test api-test api-identity-test import-boundaries attributions attributions-check browser-checks
+.PHONY: help up down logs ps psql check test mock-test development development-test portal-test identity-test identity-configure bootstrap-admins migration-test ceilings names backup restore backup-test api-test api-identity-test import-boundaries attributions attributions-check browser-checks citations
 
 help:
 	@echo "make up                start the stack in the background"
@@ -34,6 +34,7 @@ help:
 	@echo "make migration-test    prove the legacy import, and prove it refuses dirty data"
 	@echo "make ceilings          check every file and function against the ceilings in rule 6"
 	@echo "make names             check that every name a Python module uses exists"
+	@echo "make citations        check the line numbers in the contract review notes"
 	@echo "make import-boundaries check that the layers in rule 5 only import downward"
 	@echo "make backup            write a backup of the members database outside this repository"
 	@echo "make restore FILE=...  restore one. It refuses over a database that holds members"
@@ -88,10 +89,12 @@ check:
 	python3 tools/voice-check/test_regressions.py
 	python3 tools/voice-check/test_behaviour.py
 	./tools/ci/voice-gate.sh
+	./tools/citations/run.sh
 	./tools/ceilings/run.sh
 	./tools/names/run.sh
 	./tools/import-boundaries/run.sh
 	python3 tools/attributions/test_attributions.py
+	python3 tools/attributions/test_sources.py
 	./tools/mock/tests/run.sh
 	./tools/development/tests/run.sh
 	./tools/members-portal/tests/run.sh
@@ -153,6 +156,13 @@ migration-test:
 
 # Rule 6, in two tools because no single one measures all five ceilings.
 # ADR 0005 records which does what and what was priced against it.
+# The line numbers in docs/api/contract-review-notes.md, which cite the contract
+# and move every time it does. The backticked thing before each number is the
+# authority and the number is derived from it, so this renumbers with --fix
+# rather than asking anybody to do another pass by hand.
+citations:
+	./tools/citations/run.sh
+
 ceilings:
 	./tools/ceilings/run.sh
 

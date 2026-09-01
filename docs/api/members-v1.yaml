@@ -162,14 +162,14 @@ paths:
         Card access is decided by a vote of cardholders.
 
         Changing your `email` clears its verified date, and you cannot set that
-        date yourself. The trigger that clears it,
-        `enforce_profile_self_edit` in `db/migrations/004_security.sql`,
-        returns early for a caller holding admin, so an admin changing their
-        own address here keeps the date. That is a carve out nobody decided on
-        purpose and it is written down here until somebody does. Losing that date costs the member nothing: an unconfirmed
-        address is a valid state and no operation here refuses anybody for it.
-        An address that already belongs to another member is refused, because one
-        address identifies one member.
+        date yourself. `enforce_profile_self_edit` in
+        `db/migrations/004_security.sql` clears it for an admin too, their own
+        address included, decided on 2026-08-31: it used to return early for an
+        admin above that rule, so an admin's record could go on claiming a
+        confirmation that belonged to the address before it. Losing that date
+        costs the member nothing: an unconfirmed address is a valid state and no
+        operation here refuses anybody for it. An address that already belongs
+        to another member is refused, because one address identifies one member.
 
         Membership standing, what you are paid through, orientation, and the
         identity your account is joined by are set by an admin. This operation

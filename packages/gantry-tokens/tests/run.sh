@@ -32,6 +32,19 @@ else
   failed=$((failed + 1))
 fi
 
+# The lockup the identity service uploads is built from the two SVGs the portal
+# masthead carries, so that a second copy of the logo cannot drift from the
+# first. It existed with nothing running it: no target, no job, no suite, which
+# is a drift detector that cannot detect drift.
+printf '%-24s ' "the lockup"
+if output="$(python3 "$ROOT/brand/build-the-lockup.py" --check 2>&1)"; then
+  echo "$output" | tail -n 1
+else
+  echo
+  echo "$output"
+  failed=$((failed + 1))
+fi
+
 if [ "$failed" -eq 0 ]; then
   echo
   echo "every gantry-tokens check passed"

@@ -19,7 +19,10 @@ under test is what api.search does with an answer, not what the service sends.
 from __future__ import annotations
 
 import pathlib
+import ssl
 import sys
+import urllib.error
+import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -113,6 +116,49 @@ def a_service_that_is_not_there_is_a_refusal_and_not_a_traceback():
     assert "Nothing was read or changed" in message, message
 
 
+def a_certificate_nothing_trusts_names_the_certificate():
+    """The shape a deployment is in, and it used to be told to check a hostname.
+
+    ORO_TLS=internal means Caddy issued the certificate from its own authority,
+    so every Python command here stops on it while the curl beside them passes
+    -k. Measured on 2026-08-31 against a deployment shaped stack: configure.py
+    printed CERTIFICATE_VERIFY_FAILED and then advice about ORO_HOSTNAME and the
+    stack being up, and both of those were already right.
+
+    The reason object is the one urlopen raises, carrying the text that
+    measurement printed, because there is no certificate here to fail against
+    and this check needs nothing running.
+    """
+    was = api.BASE
+    api.BASE = "https://id.oro.example.invalid:8443"
+    verify_failed = urllib.error.URLError(ssl.SSLCertVerificationError(
+        1, "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+           "unable to get local issuer certificate (_ssl.c:1032)"))
+
+    def refuse(request, *rest, **named):
+        raise verify_failed
+
+    original = urllib.request.urlopen
+    urllib.request.urlopen = refuse
+    try:
+        api.get("/admin/v1/policies/login", "any-token")
+    except api.Refused as refused:
+        message = str(refused)
+    else:
+        raise AssertionError("an untrusted certificate answered")
+    finally:
+        urllib.request.urlopen = original
+        api.BASE = was
+
+    assert "SSL_CERT_FILE" in message, (
+        "the refusal does not name what fixes it: " + message)
+    assert "deploy-beside-the-legacy-system.md" in message, (
+        "the refusal does not name where the commands are: " + message)
+    assert "ORO_HOSTNAME" not in message, (
+        "the refusal still sends the reader to check the hostname, which is "
+        "not what went wrong: " + message)
+
+
 CHECKS = [
     ("a search that found nothing is empty", a_search_that_found_nothing_is_empty),
     ("a search that found something returns it", a_search_that_found_something_returns_it),
@@ -121,6 +167,7 @@ CHECKS = [
     ("the refusal says what happened", the_refusal_says_what_happened_and_what_to_do),
     ("a server fault is refused too", a_server_fault_is_refused_too),
     ("a service that is not there is a refusal", a_service_that_is_not_there_is_a_refusal_and_not_a_traceback),
+    ("a certificate nothing trusts names the certificate", a_certificate_nothing_trusts_names_the_certificate),
 ]
 
 

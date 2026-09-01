@@ -20,11 +20,20 @@ against a token from a real sign in through the real screens, one carries
 else. So this passes NULL, the claim branch cannot fire, and a member whose
 record already exists is joined to it by an admin.
 
+The `email` scope is not what is missing, and this used to say it was. The
+portal already asks for it, in apps/members/identity.js. Measured on 2026-08-31
+by signing the same member in twice through the real screens, once with that
+scope and once without: the access token carried the same eight claims both
+times and the id token carried no address either.
+
 What that costs, and it is worth writing down for whoever closes it: a legacy
 member who signs in before an admin has linked them gets a second, empty
-record. The way out is a token carrying a verified address, which is a change
-to what the portal asks for and to what the identity service asserts, not a
-change here.
+record. The way out is `GET /oidc/v1/userinfo`, which answers `email` and
+`email_verified` to the member's own access token and needs no credential of
+this service's. Taking it means asking the identity provider something on a
+request path, which is the one property app/identity.py is built around, so it
+is a decision rather than an edit: ADR 0016 prices it and is proposed rather
+than accepted.
 """
 
 from typing import Annotated

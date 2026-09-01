@@ -16,8 +16,8 @@ the runbook for it. Rule 12 of `CLAUDE.md` puts that above every phase, so if
 you find yourself about to type something that could reach the controller or
 the legacy application's card screens, stop instead.
 
-**Nobody has seen hsl-web.** Six things this document would otherwise guess at
-are written as assumptions below, and step 1 is where each one gets an answer.
+**Nobody has seen hsl-web.** Seven things this document would otherwise guess
+at are written as assumptions below, and step 1 is where each one gets an answer.
 Do step 1 first and write the answers down. If one of them comes back
 differently from what is assumed here, that changes the work rather than being
 a detail.
@@ -27,7 +27,7 @@ command below runs on hsl-web through your ssh session, and the table after the
 assumptions lists where each copy lives and what removes it. If you catch
 yourself typing `scp`, stop.
 
-**What you have at the end, and what you do not.** After step 9 hsl-web runs an
+**What you have at the end, and what you do not.** After step 10 hsl-web runs an
 identity service, a Postgres holding a migrated copy of the members data, and a
 members API answering under `/v1` on a new hostname. There is no portal. The
 deployment's routes serve a health check and the members API, with a 404 at the
@@ -79,6 +79,15 @@ BLAST RADIUS: tools/backup/restore.sh refuses an archive that does not fit in
   the database container's /dev/shm. The fix is one line in compose.yaml and
   the refusal names it.
 
+ASSUMPTION: the legacy application's checkout is on hsl-web, and its config
+  directory is on disk rather than assembled from the environment.
+CONFIRM BY: step 1, the configuration block.
+BLAST RADIUS: the two values everything downstream is built on. config.stretches
+  and config.pepper in devise.rb decide whether the lab's password hashes can be
+  imported at all, and the Rails time zone decides whether every migrated date
+  is right. Both are read today from the sources this project was given, and
+  neither has been read from the file this machine runs.
+
 ASSUMPTION: hsl-web has room for about 1GB of container images plus the dump
   held twice over, with enough left that the legacy application does not run a
   disk out.
@@ -98,9 +107,10 @@ Rule 13 asks for this to be written down rather than reconstructed later.
 | Production | The legacy Postgres on hsl-web | Nothing here. It is never written to |
 | The archive | `/root/hsl-legacy-backups` on hsl-web, mode 600 inside a mode 700 directory | You do, by hand. Nothing else will |
 | The roles file beside it | The same directory. On 9.6 it carries password hashes until step 2 strips them | The same |
-| The staging copy | Inside the `oro-staging` container, which has no volume | `docker rm -f oro-staging` at the end of step 8, which takes the rows with it |
+| The configuration archive | The same directory. It carries `database.yml` and the session secret | The same |
+| The staging copy | Inside the `oro-staging` container, which has no volume | `docker rm -f oro-staging` at the end of step 9, which takes the rows with it |
 | The `legacy` schema | Inside whichever database the import ran against | `DROP SCHEMA legacy CASCADE`, which the import itself tells you to run |
-| The imported members | The `db_data` volume of the ORO stack, once step 9 puts them there | `docker compose down --volumes` |
+| The imported members | The `db_data` volume of the ORO stack, once step 10 puts them there | `docker compose down --volumes` |
 | Your terminal | The preflight and the import print member names and email addresses | Closing it. Do not redirect that output into a file, and never paste it into a channel |
 
 ---
@@ -164,6 +174,60 @@ step 3 has to install it, and that is a change to this machine. If Docker is
 there and `docker ps` lists the legacy application, then step 2 reads the
 database through `docker exec` rather than through `sudo -u postgres`.
 
+**What the application is configured with.** Two values in the Rails checkout
+decide things this project has already built on, and neither has been read from
+this machine. Find the checkout first:
+
+```
+ls -d /var/www/* /srv/* /home/*/* 2>/dev/null | head -20
+ps aux | grep -Ei 'ruby|rails|passenger|unicorn|puma' | head -3
+```
+
+Read: the directory holding `config/`, `app/` and `Gemfile`. Set it once:
+
+```
+APP=/the/path/you/found
+grep -nE 'config\.(pepper|stretches)' $APP/config/initializers/devise.rb
+```
+
+Read: whether `config.pepper` is commented out, and the number in
+`config.stretches`. The committed sources this project was given say pepper off
+and stretches 10, and ADR 0004 says that still wants confirming against the
+deployed file, because a hand edit on this host is invisible everywhere else.
+**If a pepper is set, stop.** Every hash in that database was made with a secret
+this project does not have, none of them can be imported as they are, and that
+changes phase 2 rather than being a detail.
+
+```
+grep -nE 'time_zone|default_timezone' $APP/config/application.rb
+```
+
+Read: `config.time_zone`, and whether anything sets
+`config.active_record.default_timezone`. The import reads every naive timestamp
+`AT TIME ZONE 'UTC'` on the basis that Rails 3.2 stores UTC and the zone in that
+file is only for display. If something there sets the record timezone to
+`:local`, every migrated date moves seven hours and the check that would catch
+it is written against the other answer.
+
+```
+grep -vE 'password|secret' $APP/config/database.yml
+ls $APP/config/initializers/
+```
+
+Read: the adapter, the host, the database name and the user. **Do not paste that
+file anywhere, even after the grep.** A `database.yml` is a credential file, and
+so is anything under `config/initializers/` named for a secret.
+
+**Which file serves the members site.**
+
+```
+grep -rl 'members.heatsynclabs.org' /etc/nginx /etc/apache2 /etc/httpd 2>/dev/null
+```
+
+Read: one path, most likely. Nothing in this document changes it. Write it down
+anyway, because step 13's rollback claims it was never touched and that claim is
+worth being able to check.
+
 **Where the database is and what version it is.**
 
 ```
@@ -198,7 +262,7 @@ getent hosts id.oro.heatsynclabs.org
 ```
 
 Read: nothing, most likely, because neither record exists yet. That is fine for
-everything up to step 9 and it is not fine for step 10. Phase 0 item 4 of
+everything up to step 10 and it is not fine for step 11. Phase 0 item 4 of
 `docs/plan/order-of-operations.md` asks for these records, and whoever controls
 the zone is a name nobody has filled in. Until they exist you reach this
 deployment with `curl --resolve` or with a line in your own machine's hosts
@@ -311,6 +375,27 @@ ALTER ROLE hslweb WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLI
 If the count is anything other than 0 the file holds a live credential. Delete
 it and do not go on until the strip works.
 
+**Back up the configuration as well, because it is not in this repository
+either.** The database is what matters and it is not the only thing that would
+have to be reconstructed. `$APP` is the path from step 1:
+
+```
+umask 077
+tar -czf /root/hsl-legacy-backups/legacy-config-$STAMP.tar.gz \
+  "$APP/config" /etc/nginx /etc/apache2 /etc/httpd 2>/dev/null
+ls -l /root/hsl-legacy-backups/legacy-config-$STAMP.tar.gz
+```
+
+Expected: one file, mode `-rw-------`. `tar` prints a warning for each of those
+`/etc` paths that does not exist, which is why the error output goes away, and
+it still archives the ones that do.
+
+**That archive holds credentials.** `database.yml` carries the database
+password and `secret_token.rb` or `secrets.yml` carries the session secret,
+which is why it lives in the mode 700 directory beside the dump and why it does
+not go on your laptop. Rule 13. It is on the list at the top of this document
+for the same reason.
+
 **Read the archive back before you believe in it.** A backup nobody has opened
 is a file of the right size.
 
@@ -339,7 +424,7 @@ If that errors, the archive is damaged or was never finished. Take it again
 rather than carrying on.
 
 **A backup nobody has restored is a hypothesis, so restore it.** This is phase
-0 item 5, and it wants a copy rather than the original. Step 8 restores it into
+0 item 5, and it wants a copy rather than the original. Step 9 restores it into
 Postgres 18 while building the staging copy. Do it once here as well, into the
 same major version the archive came from, because that is the restore you would
 actually perform if production were gone. It needs Docker, so if step 1 said
@@ -670,7 +755,122 @@ request arrived under some other name. The identity service works out which
 instance a call is for from the Host header, so `127.0.0.1` on the right port
 is refused, and it reads like a routing fault when it is not.
 
-## 6. Check that nothing on the old side moved
+## 6. Register the clients
+
+`compose.yaml` creates the instance, its administrator and one machine account,
+and that is the whole of what a compose file can create. Everything above it is
+written by one step: the project, the three portal clients, the door service
+account, the lab's colours on the sign in screens, and the sign up button.
+
+Until this has run there is no client id for anything to sign in with, and no
+token the identity service issues can carry the audience `compose.api.yaml`
+gives the members API, so every call to `/v1` with a real token comes back 401.
+Step 8 hands people sign ins, and without this they can sign in to nothing.
+
+It is idempotent. A second run reads back what the first one wrote and reports
+every line as already there. Run it again whenever the hostname or the port in
+step 4 changes, because each client holds the origin it was given.
+
+**The name has to resolve on this machine.** The identity service works out
+which instance a request is for from the Host header, so an address is not a
+substitute for the name, and unlike `curl` this step has no `--resolve`. Until
+the DNS records exist, one line in `/etc/hosts`:
+
+```
+127.0.0.1 oro.heatsynclabs.org id.oro.heatsynclabs.org
+```
+
+```
+getent hosts id.oro.heatsynclabs.org
+```
+
+Expected: `127.0.0.1 id.oro.heatsynclabs.org`. Take that line out again once
+the zone has the records, so this machine and everybody else resolve the name
+the same way.
+
+**Python has to trust the certificate.** `internal` in step 4 means Caddy
+issued it from its own authority, which nothing on this machine trusts. The
+`curl -k` above skips the question and no Python here does. So copy the
+authority's own root out of the container and name it:
+
+```
+docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt \
+  /root/oro-caddy-root.crt
+openssl x509 -in /root/oro-caddy-root.crt -noout -subject
+```
+
+Expected, measured on 2026-08-31:
+
+```
+subject=CN=Caddy Local Authority - 2026 ECC Root
+```
+
+That verifies against the authority rather than skipping verification, so a
+certificate from anywhere else still fails. Without it the step stops on
+`CERTIFICATE_VERIFY_FAILED` and says so.
+
+**Run it.**
+
+```
+SSL_CERT_FILE=/root/oro-caddy-root.crt \
+ORO_IDENTITY_URL="https://id.oro.heatsynclabs.org:8443" \
+ORO_IDENTITY_TOKEN="$(docker compose cp identity:/bootstrap/pat - | tar -xO)" \
+  tools/identity/configure.py \
+    --members-origin https://oro.heatsynclabs.org:8443 \
+    --admin-origin https://admin.oro.heatsynclabs.org:8443 \
+    --door-origin https://door.oro.heatsynclabs.org:8443
+```
+
+Not `make identity-configure`. That target builds the three origins from
+`ORO_HOSTNAME` with no port on them, and step 4 chose a port. A client
+registered without the port refuses the redirect the browser comes back on, and
+the member sees the sign in screens reject the application rather than anything
+that names the cause.
+
+Expected on a first run. These lines come from a laptop, so the port in them is
+8453 rather than the 8443 step 4 chose:
+
+```
+project Project ORO: created
+Members portal: created
+Members portal: signs in at https://id.oro.heatsynclabs.org:8453, written to apps/members/identity.json
+Admin portal: created
+Door app: created
+door-service: created
+branding: colours, mark and light theme applied and activated
+mail: no server given, so nothing can send a code. Registering, a forgotten password and a changed address all stop at a screen asking for one. Pass --mail-host to fix that.
+self registration: already on
+
+configured against https://id.oro.heatsynclabs.org:8453
+```
+
+Two lines in that are worth reading rather than skipping.
+
+`self registration: already on` says the step found the Register button on
+rather than turning it on, because a fresh instance ships with it on. Step 8 is
+where that becomes a decision.
+
+`mail: no server given` is correct here. Mail is step 8 and it is set up by
+hand, and this step is deliberately not the thing that points a deployment at a
+mail server.
+
+A second run says `already there` and `already correct` on every line and
+writes nothing:
+
+```
+project Project ORO: already there
+Members portal: already correct
+Admin portal: already correct
+Door app: already correct
+door-service: already there
+```
+
+The one file it writes into the checkout is `apps/members/identity.json`,
+carrying the client id the identity service generated. There is no portal on
+this deployment so nothing reads it here, and it is written because the same
+command serves a laptop that does have one.
+
+## 7. Check that nothing on the old side moved
 
 Do this now, while it is cheap to undo. Run it from a second machine rather
 than from hsl-web.
@@ -681,7 +881,7 @@ curl -sI https://members.heatsynclabs.org/ | head -3
 
 Expected: the same status line the legacy application gave before you started.
 Somebody should have written that down during step 1. If it changed, take this
-stack down with `make down` and read step 11.
+stack down with `make down` and read step 12.
 
 ```
 ss -lntp
@@ -694,7 +894,7 @@ Then ask a member to open the members site and say whether it looks normal.
 That costs a message, and it is the only check here that reads the thing a
 member actually sees.
 
-## 7. Decide about mail, and prove whichever way you go
+## 8. Decide about mail, and prove whichever way you go
 
 The identity service sends nothing, and it does not say so. It accepts the
 request, answers 200, and writes the reason into its own log. The screens are
@@ -725,10 +925,11 @@ these is measured, and `tools/identity/README.md` holds the measurement:
 2. A member cannot verify a new address after changing it, so the address on
    their account is the one an admin recorded.
 3. The Register button is on and cannot be finished, because a registration
-   lands in `USER_STATE_INITIAL` waiting for a code. The button stays on:
-   this site replaces one that has a sign up. Until a mail server is
-   configured, a person who registers is stuck on Activate User and an admin
-   has to remove that account and make them a sign in, per item 4.
+   lands in `USER_STATE_INITIAL` waiting for a code. A person who presses it
+   is stuck on Activate User, and an admin has to remove that account and make
+   them a sign in, per item 4. Step 6 turned the button on, because this site
+   replaces one that has a sign up. If you are not configuring mail today, the
+   branch below is where you take it away again.
 4. An account that is already in `USER_STATE_INITIAL` cannot be repaired at
    all. Every write to it is refused. The only route is to remove it and make
    a new one, which is what
@@ -738,6 +939,8 @@ these is measured, and `tools/identity/README.md` holds the measurement:
 Everybody's sign in is made by an admin either way:
 
 ```
+SSL_CERT_FILE=/root/oro-caddy-root.crt \
+ORO_IDENTITY_URL="https://id.oro.heatsynclabs.org:8443" \
 ORO_IDENTITY_TOKEN="$(docker compose cp identity:/bootstrap/pat - | tar -xO)" \
   tools/identity/make_a_sign_in.py "Ada Byron <ada@example.org>"
 ```
@@ -745,12 +948,74 @@ ORO_IDENTITY_TOKEN="$(docker compose cp identity:/bootstrap/pat - | tar -xO)" \
 Expected: three lines, and a password on the terminal that is in no file. Run
 it from a terminal or it refuses before it creates anything.
 
+The first two lines are the ones step 6 set up, and every Python command in
+this document that speaks to the identity service needs both. Without
+`ORO_IDENTITY_URL` the default is a port on `localhost` that only a laptop
+publishes, and without `SSL_CERT_FILE` the certificate from step 4 is one
+nothing trusts.
+
 ### If you are not configuring one today
 
-Write that down where the answers from step 1 are, with the date and the name
-of whoever decided. The four things above stay unavailable, and the next
-person to stand in front of this deployment needs to know that was a decision
-rather than an oversight. Then go to step 8.
+**Close the sign up first.** This is the part that has to happen rather than
+be written down. The Register button is on, and behind it is the one state no
+admin can repair: a person who presses it lands in `USER_STATE_INITIAL`, the
+screens ask for a code, nothing can send one, and every write to that account
+is refused from then on. So a deployment that cannot send mail should not be
+offering the button.
+
+```
+SSL_CERT_FILE=/root/oro-caddy-root.crt \
+ORO_IDENTITY_URL="https://id.oro.heatsynclabs.org:8443" \
+ORO_IDENTITY_TOKEN="$(docker compose cp identity:/bootstrap/pat - | tar -xO)" \
+  tools/identity/configure.py \
+    --members-origin https://oro.heatsynclabs.org:8443 \
+    --admin-origin https://admin.oro.heatsynclabs.org:8443 \
+    --door-origin https://door.oro.heatsynclabs.org:8443 \
+    --self-registration off
+```
+
+The same command as step 6 with one flag on the end, because it is one
+idempotent step and running it twice is what it is for. Everything else in it
+reports itself already correct.
+
+Expected, on the last line before the summary:
+
+```
+self registration: turned off
+```
+
+Then read the screen a person would arrive at, because the policy is the
+mechanism and the button is what anybody meets. The client id is in the file
+step 6 wrote:
+
+```
+CLIENT=$(python3 -c 'import json;print(json.load(open("apps/members/identity.json"))["client_id"])')
+curl -sk -L -c /tmp/oro-jar -b /tmp/oro-jar \
+  "https://id.oro.heatsynclabs.org:8443/oauth/v2/authorize?client_id=$CLIENT&redirect_uri=https%3A%2F%2Foro.heatsynclabs.org%3A8443%2F&response_type=code&scope=openid&code_challenge=Ab_cdefghijklmnopqrstuvwxyz0123456789ABCDEFG&code_challenge_method=S256" \
+  | grep -c 'name="register"'
+rm -f /tmp/oro-jar
+```
+
+Expected: `0`. Measured on 2026-08-31 against 4.17.1 on a laptop, both ways:
+`1` with the sign up open and `0` with it closed. A `1` here means the button
+is still there and the command above did not take. Somebody who wants an
+account now asks an admin, which is the command above this branch.
+
+The cookie jar is not decoration. The authorize request is bound to a cookie,
+and without one the screens answer 200 and render an internal error, so the
+grep would read `0` and say the button was gone when the request never got as
+far as a screen. `code_challenge` is any 43 character string: nothing here
+completes the sign in.
+
+**Then write the decision down** where the answers from step 1 are, with the
+date and the name of whoever made it. The four things above stay unavailable,
+and the next person to stand in front of this deployment needs to know that
+was a decision rather than an oversight.
+
+When a mail server does arrive, the sign up comes back with the same command
+and `--self-registration on`, which is the default.
+
+Then go to step 9.
 
 ### If you are configuring one
 
@@ -852,7 +1117,7 @@ Section 3 of `docs/plan/people-and-custody.md` is where secret custody is meant
 to live and it still names nobody, so until it does, this goes in the notes
 from step 1 alongside the master key.
 
-## 8. Make a staging copy, and let the migration ask its questions
+## 9. Make a staging copy, and let the migration ask its questions
 
 Everything from here works against a copy. Production is not read again after
 step 2 and it is never written to.
@@ -1017,7 +1282,7 @@ A card at a slot outside 10 to 199 is the one that cannot be automated. A slot
 is an address in the door controller's memory, so renumbering a card points a
 member at somebody else's door permission.
 
-## 9. Run the import against the copy
+## 10. Run the import against the copy
 
 Write the answers down as SQL. `tools/migration/fixtures/decisions.sql` shows
 the shape and is explicitly not a recommendation: it is one plausible set of
@@ -1088,7 +1353,7 @@ disk.
 A parallel run needs the data in the stack's own database rather than in a
 container you throw away. That database already holds the ORO schema, because
 the `schema` service put it there at step 5, so its `public` schema is
-occupied and the trick from step 8 does not work on it. Restore into a scratch
+occupied and the trick from step 9 does not work on it. Restore into a scratch
 database in the same container, rename the schema there, then move that one
 schema across:
 
@@ -1102,7 +1367,7 @@ docker exec oro-db-1 psql -U postgres -d postgres -q -c 'DROP DATABASE legacy_im
 docker exec oro-db-1 psql -U postgres -d oro -c "SELECT (SELECT count(*) FROM legacy.users) AS users, (SELECT count(*) FROM legacy.cards) AS cards"
 ```
 
-Expected: the same two counts you read at step 8, now inside the stack's
+Expected: the same two counts you read at step 9, now inside the stack's
 database. The pipe in the fifth line runs inside the container, so nothing is
 written to a filesystem on the way.
 
@@ -1130,7 +1395,7 @@ make backup
 Expected: two files under `$HOME/oro-backups`, and a first line saying the
 archive was read back before it was named.
 
-## 10. Run the two side by side
+## 11. Run the two side by side
 
 The legacy application serves members exactly as it does today. This one serves
 a health check and the members API under `/v1`, with a 404 at the root. That is
@@ -1160,7 +1425,7 @@ Two things become possible here, and both need a person rather than a command:
   phase 2's exit criterion. Nothing in this repository imports real hashes into
   a running identity service yet, so that is not runnable today. Gap 6.
 
-## 11. Cutover, and what has to be true first
+## 12. Cutover, and what has to be true first
 
 Cutover is phase 6 and this document does not perform it. What it can do is
 list what has to be true beforehand, so nobody arrives at that day with the
@@ -1184,7 +1449,7 @@ list unread. From `docs/plan/order-of-operations.md`:
 The day itself is a DNS change and a port change, both reversible in minutes,
 which is the reason for choosing a separate hostname back at step 4.
 
-## 12. Rollback
+## 13. Rollback
 
 The step people skip writing. Each of these undoes exactly one thing, in the
 reverse order of the steps above, and none of them touches the legacy
@@ -1207,7 +1472,7 @@ every account made in it.
 docker compose down --volumes
 ```
 
-There is no way back from that except step 9 again. The one time it is the
+There is no way back from that except step 10 again. The one time it is the
 right answer is a half written first instance: if the identity service ever
 dies with `permission denied` on its bootstrap file, the second attempt fails
 on a unique constraint over the instance domain it already wrote, and there is
@@ -1235,6 +1500,24 @@ shred -u /root/hsl-legacy-backups/members-STAMP.dump
 if step 3 installed it, is the one change worth leaving in place: uninstalling
 it is another change to a production host and it buys nothing.
 
+Step 6 left two things outside that clone. The `/etc/hosts` line comes out by
+hand, and it should come out anyway once the DNS records exist, so that this
+machine resolves those names the same way everybody else does. The copy of
+Caddy's root certificate is not a secret and is not a credential, and it is
+still a file naming an authority nobody should be asked to trust once this is
+gone:
+
+```
+shred -u /root/oro-caddy-root.crt
+```
+
+**Remove the configuration archive** the same way the database archive goes,
+and for a stronger reason: it carries `database.yml` and the session secret.
+
+```
+shred -u /root/hsl-legacy-backups/legacy-config-STAMP.tar.gz
+```
+
 **What has no rollback.** The backup at step 2 read production, so there is
 nothing to undo. Nothing else in this document wrote to the legacy database, to
 the legacy application, or to the door controller. If you are looking for the
@@ -1253,18 +1536,18 @@ following this at 2am should not discover it by watching a command fail.
    header that it is not a migration runner: it records nothing, and a
    migration written after the database was built will not be applied by it.
    `schema_migrations` is written by nothing outside `db/tests/run.sh`, and the
-   loop at step 8 that writes it lives in this document rather than in the
+   loop at step 9 that writes it lives in this document rather than in the
    repository, where no test covers it.
 2. **`tools/backup/` cannot back up the production database.** `backup.sh` and
    `restore.sh` both hardcode a database named `oro` inside a container, so
    gate one of rule 12 is met at step 2 by typing `pg_dump` rather than by
    running the tool built for it. Nothing tests the commands in step 2.
 3. **`tools/migration/run.sh` cannot be pointed at real data.** It always loads
-   `fixtures/legacy-schema.sql` and `fixtures/legacy-data.sql`, so steps 8 and
-   9 run the numbered SQL files by hand, and the eleven cases in
+   `fixtures/legacy-schema.sql` and `fixtures/legacy-data.sql`, so steps 9 and
+   10 run the numbered SQL files by hand, and the eleven cases in
    `make migration-test` say nothing about that sequence.
 4. **Nothing rewrites a production dump's `public` schema into `legacy`.**
-   Steps 8 and 9 do it with `ALTER SCHEMA`, and no test covers that either.
+   Steps 9 and 10 do it with `ALTER SCHEMA`, and no test covers that either.
 5. **The backup is not on a timer and there is no offsite copy.** A fire in the
    lab takes the server and the archive together. `tools/backup/README.md` says
    what each of those would need.
@@ -1289,7 +1572,7 @@ following this at 2am should not discover it by watching a command fail.
 12. **Whether Docker's published ports bypass this host's firewall.** The
     assumption block at step 3 names the check and nobody has run it.
 13. **Down migrations.** Rule 3 of `CLAUDE.md` starts requiring them at the
-    first production apply. Step 9 against `oro-db-1` is that apply, and from
+    first production apply. Step 10 against `oro-db-1` is that apply, and from
     that day every migration ships with its reverse and both directions get run
     before merge.
 14. **The driver's seat drill.** Phase 0 does not exit until somebody who did

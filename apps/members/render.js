@@ -77,14 +77,36 @@ function markChip(element, value) {
   element.dataset.state = filled ? "on" : "off";
 }
 
+// http and https only, and checked here rather than taken on trust. The rule is
+// social_urls_are_http in db/migrations/001_schema.sql and this page is a
+// courtesy, so a value that arrives some other way still must not reach an href:
+// a javascript: URL in one runs when a member clicks it.
+function isHttpUrl(value) {
+  return typeof value === "string"
+    && (value.startsWith("http://") || value.startsWith("https://"));
+}
+
 function bindFields(root, record) {
   for (const element of root.querySelectorAll("[data-field]")) {
     const value = readPath(record, element.dataset.field);
-    element.textContent = formatted(
+    const text = formatted(
       value,
       element.dataset.format,
       element.dataset.fallback
     );
+    // data-link is opt in. A member who typed their website in expects to be
+    // able to open it, and until 2026-08-31 every one of them was printed as
+    // text somebody had to select and paste.
+    if ("link" in element.dataset && isHttpUrl(value)) {
+      const anchor = document.createElement("a");
+      anchor.href = value;
+      anchor.textContent = text;
+      // Somebody else's page. It does not get told where the reader came from.
+      anchor.rel = "noreferrer";
+      element.replaceChildren(anchor);
+    } else {
+      element.textContent = text;
+    }
     markChip(element, value);
   }
 }
@@ -102,6 +124,14 @@ function bindLists(section, root, record) {
       const row = template.content.cloneNode(true);
       bindFields(row, item);
       holder.appendChild(row);
+    }
+    // A list inside a card has no section of its own, so the data-empty a whole
+    // view uses does not reach it. Without this the Roles card rendered a
+    // heading over nothing for every member who holds no role, which is most of
+    // them, unlike every other view here.
+    const empty = section.querySelector('[data-empty-for="' + name + '"]');
+    if (empty) {
+      empty.hidden = items.length > 0;
     }
   }
 }

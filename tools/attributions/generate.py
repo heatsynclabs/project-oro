@@ -64,12 +64,48 @@ class Source:
     image: str
 
 
-# The image tag for the import boundary gate is the one its own run.sh builds,
-# so the two share a cached build rather than compiling grimp twice.
+# Each image tag is the one that directory's own runner builds, where it has
+# one, so the two share a cached build rather than compiling the same wheels
+# twice. services/api has no runner that tags an image, so this names its own.
 SOURCES = (
     Source("services/api", "oro-attributions-api:local"),
     Source("tools/import-boundaries", "oro-import-boundaries:2.14"),
+    Source("tools/browser-checks", "oro-browser-checks:1.62.0"),
 )
+
+
+def every_lock_is_covered() -> None:
+    """Refuse to generate while a lockfile in this repository has no Source.
+
+    This list was two entries long and there were three locks, so
+    tools/browser-checks/requirements.txt landed on 2026-08-30 and
+    `make attributions-check` reported the page green over four packages it had
+    never read. Rule 9 says every dependency, and a tuple somebody has to
+    remember to extend is not that.
+
+    Read from git rather than from a directory walk, for the same reason the
+    prose gate and the ceilings gate do: a file nobody has added is a file this
+    would not see either, and both of those record what that cost.
+    """
+    listed = subprocess.run(["git", "-C", str(ROOT), "ls-files", "*requirements.txt"],
+                            capture_output=True, text=True, check=True)
+    tracked = {line.strip() for line in listed.stdout.splitlines() if line.strip()}
+    covered = {f"{source.directory}/requirements.txt" for source in SOURCES}
+    missing = sorted(tracked - covered)
+    if missing:
+        raise table.Refused(
+            f"{', '.join(missing)} is a lockfile with no entry in SOURCES, so "
+            "nothing was generated and nothing was written. Every package it "
+            "installs would be absent from ATTRIBUTIONS.md while this reported "
+            "the page correct, which is what rule 9 is for. Add a Source naming "
+            "that directory and the image tag its own runner builds.")
+    stale = sorted(covered - tracked)
+    if stale:
+        raise table.Refused(
+            f"SOURCES names {', '.join(stale)} and git does not track it, so "
+            "nothing was generated. Either the file moved or the entry outlived "
+            "it, and a table generated from a lock nobody has is worse than no "
+            "table.")
 
 
 def read_image(source: Source) -> dict:
@@ -79,7 +115,10 @@ def read_image(source: Source) -> dict:
                    check=True, stdout=subprocess.DEVNULL)
     done = subprocess.run(
         ["docker", "run", "--rm", "--network", "none", "-v", f"{HERE}:/reader:ro",
-         source.image, "python", "/reader/read_metadata.py"],
+         # python3 rather than python. The two python:*-slim images carry
+         # both names and the playwright base this repository builds the
+         # browser checks on is Ubuntu noble, which carries only python3.
+         source.image, "python3", "/reader/read_metadata.py"],
         capture_output=True, text=True)
     if done.returncode != 0:
         raise table.Refused(
@@ -149,6 +188,7 @@ def render(source: Source, rows: list[table.Row], read_on: str) -> str:
 
 
 def generated_region(read_on: str) -> str:
+    every_lock_is_covered()
     sections = []
     for source in SOURCES:
         directory = ROOT / source.directory

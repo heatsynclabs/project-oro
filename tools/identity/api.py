@@ -69,18 +69,43 @@ def _send(request: urllib.request.Request) -> Answer:
     except urllib.error.URLError as unreachable:
         # Rule 7: an error says what happened and what the reader does next.
         # Without this the two commands that seat admins and configure the
-        # instance end in a urllib traceback. The default ORO_IDENTITY_URL is
-        # built from ORO_HOSTNAME as https://id.<host>, which on a laptop is
-        # https://id.localhost and resolves nowhere, and that is the shape this
-        # is nearly always in. Measured on 2026-08-31 by running
-        # make bootstrap-admins on a laptop with the shipped .env.
+        # instance end in a urllib traceback.
         raise Refused(
             f"{BASE} could not be reached: {unreachable.reason}. Nothing was "
-            "read or changed. On a laptop the identity service is published on "
-            "a port rather than at a name, so set ORO_IDENTITY_URL to "
-            "http://localhost: and the port in ORO_IDENTITY_PORT. On a "
-            "deployment, check that ORO_HOSTNAME in .env is the name the "
-            "certificate is for and that the stack is up.") from unreachable
+            "read or changed. " + _what_to_do_about(unreachable.reason)
+        ) from unreachable
+
+
+def _what_to_do_about(reason: object) -> str:
+    """The sentence after the failure, chosen by which failure it was.
+
+    Two shapes reach here and they want opposite answers, and saying both every
+    time sends the reader to check a hostname that is already right.
+
+    Nothing listening is the shape a laptop is nearly always in. The default
+    ORO_IDENTITY_URL is built from ORO_HOSTNAME as https://id.<host>, which on a
+    laptop is https://id.localhost and resolves nowhere. Measured on 2026-08-31
+    by running make bootstrap-admins on a laptop with the shipped .env.
+
+    A certificate nothing trusts is the shape a deployment is in. ORO_TLS is
+    internal there, which means Caddy issued it from its own authority, and the
+    curl in the runbook passes -k while nothing here does. Measured on
+    2026-08-31 against a deployment shaped stack on a non standard port:
+    configure.py stopped on CERTIFICATE_VERIFY_FAILED, and the advice it printed
+    was about the hostname and the stack being up, neither of which was wrong.
+    """
+    if "CERTIFICATE_VERIFY_FAILED" in str(reason):
+        return ("The service answered and its certificate comes from an "
+                "authority this machine does not trust, which is what "
+                "ORO_TLS=internal means. Copy Caddy's own root out of the "
+                "container and name it in SSL_CERT_FILE. Step 6 of "
+                "docs/runbooks/deploy-beside-the-legacy-system.md has the two "
+                "commands.")
+    return ("On a laptop the identity service is published on a port rather "
+            "than at a name, so set ORO_IDENTITY_URL to http://localhost: and "
+            "the port in ORO_IDENTITY_PORT. On a deployment, check that "
+            "ORO_HOSTNAME in .env is the name the certificate is for, that the "
+            "name resolves on this machine, and that the stack is up.")
 
 
 def import_member(login: str, hashed_password: str, token: str) -> Answer:

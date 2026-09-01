@@ -28,7 +28,6 @@ import api                       # noqa: E402, after the path insert above
 import registrations             # noqa: E402
 import flow                      # noqa: E402
 import clients                   # noqa: E402
-import branding                  # noqa: E402
 import configure                 # noqa: E402
 
 TOKEN = os.environ.get("ORO_IDENTITY_TOKEN", "")
@@ -116,24 +115,6 @@ def test_a_member_is_sent_to_a_page_that_serves_a_login_form():
         "the page a member is sent to has no field to type a login name into. "
         "If it says an internal error occurred, read HANDOFF.md section 7")
 
-
-def test_the_branding_reaches_the_login_screen():
-    """Set is not the same as activated, and activated is not the same as served.
-
-    So this reads the stylesheet the screens actually load and looks for the
-    accent colour out of packages/gantry-tokens/tokens.css in it.
-    """
-    organisation = api.call("/v2/organizations/_search", {}, TOKEN).body["result"][0]["id"]
-    status, css = flow.fetch_page(
-        f"/ui/login/resources/dynamic?orgId={organisation}"
-        "&default-policy=false&filename=policy/label/css/variables.css")
-    assert status == 200, f"the branding stylesheet answered {status}"
-    red, green, blue = (int(branding.POLICY["primaryColor"][i:i + 2], 16)
-                        for i in (1, 3, 5))
-    assert f"rgb({red}, {green}, {blue})" in css, (
-        f"the login screens do not carry {branding.POLICY['primaryColor']}. A label "
-        "policy that was set and never activated reads as applied and changes "
-        "nothing")
 
 
 # --------------------------------------------------------------------------

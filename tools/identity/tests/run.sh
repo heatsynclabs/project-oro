@@ -9,13 +9,16 @@
 # already running is neither read nor touched, and no .env has to exist. Leaves
 # nothing behind. Exit code is 1 if any check failed.
 #
-# Nine suites. check_api_refusals.py and check_sign_ins.py need nothing
+# Ten suites. check_api_refusals.py and check_sign_ins.py need nothing
 # running and go first, so a fault in how a refusal is read, or in a command
 # that can remove somebody's account, is reported before anything is started.
 # check_identity.py is part (a) of the phase 2 password proof:
 # hashes the lab already holds, imported and signed in with. check_configuration.py
 # is what configure.py registered, and one whole sign in through the hosted
-# screens ending in a refresh token that rotates. check_reconfiguration.py is
+# screens ending in a refresh token that rotates. check_branding.py is the part
+# a member sees rather than uses: the colours on the screens, the marks in the
+# light and the dark slots, and the words in the message a new member gets, each
+# of which had been the vendor's. check_reconfiguration.py is
 # what a second run of configure.py does to all of that.
 # check_the_way_in.py is the screens a person meets and the login policy behind
 # them: the wall the administrator account is put behind, the sign up the
@@ -145,12 +148,12 @@ echo "Registering the project, the clients and the branding"
 python3 "$ROOT/tools/identity/configure.py" \
   --members-origin "$ORO_MEMBERS_ORIGIN" \
   --admin-origin "http://$ORO_HOSTNAME:8081" \
-  --door-origin "http://$ORO_HOSTNAME:8082" >/dev/null || {
+  --door-origin "http://$ORO_HOSTNAME:8082" --no-portal-config >/dev/null || {
   echo "The configuration step failed, so nothing was checked." >&2
   python3 "$ROOT/tools/identity/configure.py" \
     --members-origin "$ORO_MEMBERS_ORIGIN" \
     --admin-origin "http://$ORO_HOSTNAME:8081" \
-    --door-origin "http://$ORO_HOSTNAME:8082" >&2
+    --door-origin "http://$ORO_HOSTNAME:8082" --no-portal-config >&2
   exit 1
 }
 # Twice, because a configuration step nobody dares re-run is a configuration
@@ -158,7 +161,7 @@ python3 "$ROOT/tools/identity/configure.py" \
 python3 "$ROOT/tools/identity/configure.py" \
   --members-origin "$ORO_MEMBERS_ORIGIN" \
   --admin-origin "http://$ORO_HOSTNAME:8081" \
-  --door-origin "http://$ORO_HOSTNAME:8082" >/dev/null || {
+  --door-origin "http://$ORO_HOSTNAME:8082" --no-portal-config >/dev/null || {
   echo "The configuration step is not idempotent: the second run failed." >&2
   exit 1
 }
@@ -167,6 +170,8 @@ echo
 python3 "$ROOT/tools/identity/tests/check_identity.py" || FAILED=1
 echo
 python3 "$ROOT/tools/identity/tests/check_configuration.py" || FAILED=1
+echo
+python3 "$ROOT/tools/identity/tests/check_branding.py" || FAILED=1
 echo
 python3 "$ROOT/tools/identity/tests/check_reconfiguration.py" || FAILED=1
 echo

@@ -32,7 +32,7 @@ git config core.hooksPath .githooks
 make check
 ```
 
-That is twenty suites and takes a while. If you only want the fast half while
+That is twenty two suites and takes a while. If you only want the fast half while
 you read:
 
 ```sh

@@ -265,10 +265,12 @@ make help               # every target, with a line each
 | `./tools/bootstrap/tests/run.sh` | the first three admins seated, and the fourth refused | no, own project |
 | `make ceilings` | file and function size limits | no |
 | `make api-identity-test` | the members API accepts a token the real identity service issued, and refuses four kinds it should not | no, own project |
-| `make attributions-check` | the dependency tables in ATTRIBUTIONS.md still match the two lockfiles | no, builds two images |
+| `make attributions-check` | the dependency tables in ATTRIBUTIONS.md still match all three lockfiles | no, builds three images |
 | `make import-boundaries` | the layers only import downward, over the Python in `services/` | no |
 | `make api-test` | ten operations of the members API, including the two writes, against a real Postgres and the real policies | no, own project |
 | `make names` | every name a Python module uses exists | no |
+| `make citations` | the line numbers in the contract review notes land on what they name | no, python only |
+| `./tools/browser-checks/with_its_own_stack.sh` | the members portal in a real chromium, with a stack of its own | no, own project |
 | `./tools/ci/voice-gate.sh` | the writing rules, over every tracked file | no |
 | `python3 tools/voice-check/test_voice_check.py` | every ban in rules 1 and 11, on copy that must fail and copy that must pass | no, python only |
 | `python3 tools/voice-check/test_regressions.py` | that the defects the prose gate has already had stay fixed | no, python only |

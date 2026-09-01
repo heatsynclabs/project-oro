@@ -19,19 +19,20 @@ git config core.hooksPath .githooks
 make check
 ```
 
-That runs twenty suites: the database, the door port, the theme, the prose
-gate, the ceilings, the undefined names, the import boundaries, the
-attributions, the contract mock, both stack shapes, the members portal, the
-identity service, the legacy import, the first three admins, the restore drill,
-the members API, and the members API against a real token. If any of it is red,
-stop and say so. Do not build on top of a red suite.
+That runs twenty two suites: the database, the door port, the theme, the prose
+gate, the contract citations, the ceilings, the undefined names, the import
+boundaries, the attributions and their lockfile coverage, the contract mock,
+both stack shapes, the members portal, the identity service, the legacy import,
+the first three admins, the restore drill, the members API, and the members API
+against a real token. If any of it is red, stop and say so. Do not build on top
+of a red suite.
 
 Two checks are outside it, on purpose, and both are worth running once.
 `npx @redocly/cli@2.49.0 lint docs/api/members-v1.yaml` needs Node.
 `make browser-checks` drives a stack somebody else started, so bring one up
-with `make development` first. That second one was red for a day against a
-portal that was working correctly, because it is in no CI workflow. Do not
-trust it to have been run.
+with `make development` first. That one was red for a day against a portal that
+was working correctly, because it was in no CI workflow. It has one now, running
+`tools/browser-checks/with_its_own_stack.sh`, which brings up its own.
 
 ## Read these first, in this order
 
@@ -103,9 +104,15 @@ been current a week earlier.
 **A gate that only ever ran green proves nothing, and neither does one that
 asserts a default.** Two registration checks here passed against an instance the
 configuration step had never touched, because the value they assert is what a
-fresh Zitadel ships with. Deleting the step turned none of them red. Before
-trusting a check, ask what state it would have to be in for the check to fail,
-and put it in that state.
+fresh Zitadel ships with. Deleting the step turned none of them red. They drive
+the instance to the other state first now. Before trusting a check, ask what
+state it would have to be in for the check to fail, and put it in that state.
+
+**And a checker that fixes what it checks always passes.** Two tools here have a
+write mode and a report mode one flag apart, and the report mode is what the
+suite runs. `db/tests/run.sh --update` is where that lesson came from: capturing
+output with it once laundered five failing assertions into expected files, and
+every run afterwards said all database tests passed.
 
 ## How to run this as an orchestrated session
 

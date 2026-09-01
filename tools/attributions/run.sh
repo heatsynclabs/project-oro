@@ -28,4 +28,10 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 python3 "$ROOT/tools/attributions/test_attributions.py"
 echo
 
+# And that SOURCES names every lockfile git tracks. That list was two entries
+# long while three locks existed, and this reported the page correct over a
+# whole image it had never read.
+python3 "$ROOT/tools/attributions/test_sources.py"
+echo
+
 python3 "$ROOT/tools/attributions/generate.py" "$@"

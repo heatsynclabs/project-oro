@@ -73,6 +73,7 @@ moving tag, so a tag repointed at different code cannot change what runs.
 | Tool | Pinned to | Licence | Used for |
 |---|---|---|---|
 | [actions/checkout](https://github.com/actions/checkout) v7.0.1 | commit `3d3c42e5aac5ba805825da76410c181273ba90b1` | MIT, GitHub | Checking out the repository in every job in `.github/workflows/ci.yml` and `.github/workflows/ci-stacks.yml`. Version, tag commit and licence read from the GitHub API on 2026-08-27 |
+| [actions/upload-artifact](https://github.com/actions/upload-artifact) v7.0.1 | commit `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | MIT, GitHub | Keeping the screenshot the browser checks write, in `.github/workflows/ci-stacks.yml`, whether the run was red or green. Version, tag commit and licence read from the GitHub API on 2026-08-31 |
 | [Redocly CLI](https://github.com/Redocly/redocly-cli) 2.49.0 | the npm version, in the workflow and in `HANDOFF.md` | MIT, Redocly Inc. | Validating `docs/api/members-v1.yaml`, in CI and by hand. Chosen in [ADR 0001](./docs/decisions/0001-openapi-toolchain.md), which records how the version and licence were read |
 | [Prism](https://github.com/stoplightio/prism) 5.15.10 | image digest `sha256:586d1f0f94f8d0eaf20b26b8b41f985f2a2d494bea297bd3988c3de3eb87094e`, in `compose.development.yaml` | Apache 2.0, Stoplight | Serving the contract as a mock, for the members portal and for CI. Chosen in [ADR 0002](./docs/decisions/0002-mock-server.md) |
 | [Zitadel](https://github.com/zitadel/zitadel) 4.17.1 | image digest `sha256:3ac6910685d48f32481f01f45e3e6215efe5a9df2c069591b481e9a101712db5`, in `compose.yaml` | **AGPL-3.0**, Zitadel. Read from the GitHub API on 2026-08-28, and see the note below | The identity service. Chosen in [ADR 0004](./docs/decisions/0004-identity-service.md) |
@@ -150,7 +151,7 @@ source tree and is never shipped.
 
 ### `services/api`, from `services/api/requirements.txt`
 
-Read on 2026-08-30, out of an image built from `services/api/Dockerfile`. 21
+Read on 2026-08-31, out of an image built from `services/api/Dockerfile`. 21
 packages: 4 named in `services/api/requirements.in`, and 17 that arrived with
 one of those.
 
@@ -189,7 +190,7 @@ here and installed elsewhere. No licence was read for it.
 
 ### `tools/import-boundaries`, from `tools/import-boundaries/requirements.txt`
 
-Read on 2026-08-30, out of an image built from
+Read on 2026-08-31, out of an image built from
 `tools/import-boundaries/Dockerfile`. 8 packages: 2 named in
 `tools/import-boundaries/requirements.in`, and 6 that arrived with one of
 those.
@@ -209,5 +210,23 @@ rule 9 asks for before the dependency lands.
 | pygments | 2.21.0 | BSD-2-Clause | License-Expression | rich |
 | rich | 15.0.0 | MIT | License | import-linter |
 | typing-extensions | 4.16.0 | PSF-2.0 | License-Expression | import-linter |
+
+### `tools/browser-checks`, from `tools/browser-checks/requirements.txt`
+
+Read on 2026-08-31, out of an image built from
+`tools/browser-checks/Dockerfile`. 4 packages: 1 named in
+`tools/browser-checks/requirements.in`, and 3 that arrived with one of those.
+
+Every version is the one the lock pins. Every licence was read with
+`importlib.metadata` out of the installed package's own metadata, and the
+fourth column names the field it came from. A licence in bold wants the check
+rule 9 asks for before the dependency lands.
+
+| Package | Version | Licence | Where the licence was read | Asked for, or brought in by |
+|---|---|---|---|---|
+| greenlet | 3.5.5 | MIT AND PSF-2.0 | License-Expression | playwright |
+| playwright | 1.62.0 | Apache-2.0 | License-Expression | asked for |
+| pyee | 13.0.1 | MIT | License | playwright |
+| typing-extensions | 4.16.0 | PSF-2.0 | License-Expression | pyee |
 
 <!-- END GENERATED DEPENDENCIES -->

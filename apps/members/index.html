@@ -91,6 +91,7 @@
 <p class="card-label">Roles</p>
 <h3 class="card-title">What you hold</h3>
 <ul class="rows" data-list="roles"></ul>
+<p class="empty" data-empty-for="roles" hidden>No role is recorded for you. A role is a job in running the lab, and an admin grants one.</p>
 </article>
 
 <!-- required, type=email and type=url are a courtesy, so a member is told
@@ -119,7 +120,7 @@
 <p class="switch"><input id="edit-listed" type="checkbox" data-edit="listed_in_directory"><label for="edit-listed">List me in the directory</label></p>
 <p class="switch"><input id="edit-email-visible" type="checkbox" data-edit="email_visible"><label for="edit-email-visible">Show my email to other members</label></p>
 <p class="switch"><input id="edit-phone-visible" type="checkbox" data-edit="phone_visible"><label for="edit-phone-visible">Show my phone number to other members</label></p>
-<p class="note">While you are not listed, the directory shows nothing about you.</p>
+<p class="note">Listed, other members see your name and whatever you tick here. Unlisted, the directory shows nothing about you at all.</p>
 </fieldset>
 <fieldset data-fields="emergency">
 <legend>Emergency contact</legend>
@@ -269,7 +270,7 @@
 <dt>Phone</dt><dd data-field="phone" data-fallback="Not shown"></dd>
 <dt>Skills they have</dt><dd data-field="current_skills" data-fallback="Not set"></dd>
 <dt>Skills they want</dt><dd data-field="desired_skills" data-fallback="Not set"></dd>
-<dt>Website</dt><dd data-field="website_url" data-fallback="Not set"></dd>
+<dt>Website</dt><dd data-field="website_url" data-link data-fallback="Not set"></dd>
 </dl>
 </article>
 </template>

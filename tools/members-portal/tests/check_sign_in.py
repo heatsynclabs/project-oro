@@ -128,14 +128,24 @@ def test_nothing_the_server_sends_carries_a_token():
             f"{where} assigns a credential shaped value: {found.group(1)[:12]}..."
 
 
+# A scheme, the separator, and at least one character of a host. The bare string
+# "http://" is not an address and appears in render.js, which checks the scheme
+# on a link a member typed before it reaches an href. This asserted "://" is
+# absent until 2026-08-31, which is the mechanism rather than the behaviour: what
+# must not be here is a host, and a scheme with nothing after it names none.
+AN_ORIGIN = re.compile(r'[A-Za-z][A-Za-z0-9+.-]*://[A-Za-z0-9]')
+
+
 def test_no_script_names_an_identity_service_or_a_client_id():
     """Zitadel generates a client id per instance, so a portal carrying one
     works on exactly one deployment and fails silently everywhere else. The same
     goes for the address of the identity service: on a laptop it is a port on
     localhost and on a deployment it is a name under the hostname."""
     for where, body in served_scripts().items():
-        assert "://" not in body, \
-            f"{where} names an absolute address, and every origin here differs"
+        found = AN_ORIGIN.search(body)
+        assert found is None, (
+            f"{where} names an absolute address, and every origin here "
+            f"differs: {body[found.start():found.start() + 40]!r}")
         assert not re.search(r'client_?id"?\s*[:=]\s*"[0-9]{6,}"', body, re.I), \
             f"{where} carries a client id, which belongs to one instance only"
 
