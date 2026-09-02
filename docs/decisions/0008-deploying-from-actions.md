@@ -19,9 +19,14 @@ that far. What it forbids is a deployment that cannot be performed any other
 way. A deployment that a person can also do by hand, from the same repository
 with the same command, is not that.
 
-There is also no server yet. Phase 0 is blocked on a shell on hsl-web, per
-`docs/plan/people-and-custody.md` section 2. So this decision is being made
-while it costs nothing to change, which is the cheapest moment to make it.
+There is also no server yet, and as of 2026-08-31 that is a larger gap than
+this record assumed. It said phase 0 was blocked on a shell on hsl-web. That
+shell was granted and used, and the survey it produced,
+`docs/plan/hsl-web-survey.md`, found that hsl-web cannot run this stack at all:
+32 bit, CentOS 6.8, kernel 2.6.32, and Docker needs `x86_64` and 3.10 or newer.
+So the deploy this decision is about has no target host, and choosing one is
+open. This decision is still being made while it costs nothing to change, which
+is the cheapest moment to make it.
 
 ## Options considered
 

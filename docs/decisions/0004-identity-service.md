@@ -8,6 +8,10 @@
 
 The lab's Rails 3.2.8 application holds every member's password as a bcrypt hash
 written by Devise: the modular crypt string `$2a$10$...`, cost 10, no pepper.
+Read off the deployed `config/initializers/devise.rb` on hsl-web on 2026-08-31,
+which is the confirmation this record used to ask for and had never had:
+`config.pepper` is commented out and `config.stretches` is
+`Rails.env.test? ? 1 : 10`. There are 1061 of those hashes.
 Nobody has the plaintext and nobody ever will. Whatever replaces that
 application has to accept those strings as they are and let a member sign in
 with the password they already use, or every member is locked out on cutover

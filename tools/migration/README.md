@@ -128,7 +128,18 @@ Then a small image with the three versions that decide a stored credential
 pinned to that repository's own `Gemfile.lock`: `devise 2.2.7`,
 `bcrypt-ruby 3.0.1`, `rails 3.2.8`. It loads the real `db/schema.rb` and the
 real `app/models/user.rb` and `app/models/card.rb`, and creates members through
-them. `postgres:9.6` underneath, which is the major version production runs.
+them. `postgres:9.6` underneath, and that is **not** the major version
+production runs: hsl-web is on 8.4.20, read on 2026-08-31 and recorded in
+`docs/plan/hsl-web-survey.md`. 9.6 was this repository's assumption for weeks
+and it was wrong by five major versions.
+
+It is left at 9.6 rather than moved, for a reason worth stating. The oldest
+official Postgres image is 9.1, checked on 2026-08-31, so 8.4 cannot be run from
+one at all. What this replica exists to produce is a bcrypt string, and that is
+decided by Ruby and Devise rather than by the server, so the version underneath
+does not change a single hash. Where it does matter is the SQL a real dump
+carries, and the answer to that is not this replica: it is the 62 MB of plain
+`pg_dumpall` taken from the real 8.4 on 2026-09-01.
 
 Two things about that replica are not the legacy application and both are
 written down because they could matter:

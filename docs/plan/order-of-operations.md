@@ -81,15 +81,29 @@ staging queries above have been run and their answers are written into
 somebody who did not build it brought the stack up and restored the database from
 the runbook alone.
 
-**Blocked by, and this is the real gate:** a shell on hsl-web. That is not a
-technical problem, it is the credentials and custody problem this lab has not
-solved since 2013, and the plan does not get to assume past it. It needs a named
-grantor, two named recipients, and a date, per section 2 of
-`docs/plan/people-and-custody.md`. Until those exist, phase 0 has not started, and
-this document shows it as not started rather than in progress.
+**This was blocked on a shell on hsl-web, and that was granted and used on
+2026-08-31.** What it found replaced the blocker rather than clearing it, and
+`docs/plan/hsl-web-survey.md` is the record.
 
-If access cannot be arranged, **that is the finding**, and it is worth more to the
-lab than any architecture in this repository. Report it and stop.
+The backup exists. It was taken on 2026-09-01, read back, and checksummed
+against what the host computed: 36 MiB of custom archive over a 520 MB
+database, 62 MiB of plain SQL beside it, and a row count per table. Nothing was written to
+a disk on that machine. So the first half of gate one is met for the first time
+in this project.
+
+**Blocked by, and this is the real gate now:** a machine that can run this.
+hsl-web cannot, and that is measured rather than suspected. It is `i686` on
+kernel 2.6.32, CentOS 6.8, out of support since 2020, and Docker requires
+`x86_64` and kernel 3.10 or newer. So `make up` cannot happen there, the restore
+that turns the backup from a file into a backup has nowhere to run, and item 5
+above stays open. Section 3 of this document already requires the stack to be
+portable across the lab's R610, a rented box or a laptop, so the architecture
+does not move. A machine and an owner do not exist yet, and naming them is a
+custody decision before it is a technical one.
+
+The original wording of this paragraph said that if access could not be
+arranged, that was the finding and was worth more than any architecture here.
+Access was arranged. The finding arrived anyway, and it is a larger one.
 
 ## Phase 1. The contract, and the door port
 
@@ -176,9 +190,15 @@ configuration.
 stop and switch to Logto rather than working around it. The decision and its flip
 condition are in the identity ADR.
 
-*Note.* The pepper question is settled: `config.pepper` is commented out and
-`config.stretches` is 10 in the committed `devise.rb`. Confirm the deployed file
-matches, since it is committed and a hand edit on the host would be invisible.
+*Note.* The pepper question is settled twice over. `config.pepper` is commented
+out and `config.stretches` is 10 in the committed `devise.rb`, and on 2026-08-31
+the file hsl-web actually runs was read and says the same, with stretches
+written `Rails.env.test? ? 1 : 10`. So the hand edit this note was worried about
+did not happen, and the lab's 1061 hashes import as they are.
+
+One thing that line adds. Cost is 1 in the test environment, so a row written by
+a test run carries a different prefix, which is the reason item 6 asks for the
+distribution of cost prefixes before anybody signs in.
 
 ## Phase 3. Member management
 

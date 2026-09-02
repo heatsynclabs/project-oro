@@ -19,10 +19,13 @@ nothing in production has been touched.
 | 4 | `docs/plan/api-design.md` | The contract. Written before the services, on purpose |
 | 5 | `docs/plan/order-of-operations.md` | Build order, with an exit criterion per phase |
 | 6 | `docs/plan/people-and-custody.md` | Who holds what. **The real blocker lives here** |
-| 7 | `docs/plan/changes-from-the-original.md` | Diff against the original ORO document and its mockups |
-| 8 | `docs/glossary.md` | Domain words. Code uses these exactly |
+| 7 | `docs/plan/hsl-web-survey.md` | What the machine this replaces actually is. The only plan document written from a real host |
+| 8 | `docs/plan/changes-from-the-original.md` | Diff against the original ORO document and its mockups |
+| 9 | `docs/glossary.md` | Domain words. Code uses these exactly |
 
-If you read only two, read `CLAUDE.md` and `people-and-custody.md`.
+If you read only two, read `CLAUDE.md` and `people-and-custody.md`. If you are
+about to plan where any of this runs, read the survey first: it is the reason
+the plan's assumed host is not available.
 
 ## 2. What is built, and what is not
 
@@ -37,14 +40,15 @@ This table is the single place this is tracked. Update it as things land.
 | `tools/mock/` mock server for the API contract | **Built.** `make mock-test`, 14 checks, run by CI. This row said 13 until 2026-08-29, when the suite printed 14/14 and nobody had changed it |
 | `tools/development/tests/run.sh` | **Built.** 33 checks over both stack shapes, `make development-test`. It reads the deployment's certificate issuer, asserts a laptop answers plain HTTP with no redirect, calls the identity service under `id.` on the deployment and on its own port on a laptop, and asserts that neither shape serves a contract mock under `/v1`. In CI |
 | `.githooks/commit-msg` | **Built.** Install it, see section 3 |
-| The plan documents | **Written.** Reviewed adversarially twice |
+| The plan documents | **Written.** Reviewed adversarially twice. `docs/plan/hsl-web-survey.md` joined them on 2026-08-31 and is the only one written from a real machine rather than from reasoning: what hsl-web is, what it runs, what its database holds, and the three things on it that are credentials |
 | The identity service, in the stack | **Built.** Zitadel 4.17.1 in `compose.yaml` with its own database and login on the existing Postgres server, ten minute access tokens, and a first instance created from configuration with no console click. Reached at `id.HOSTNAME` on a deployment and on `ORO_IDENTITY_PORT` on a laptop. [ADR 0004](docs/decisions/0004-identity-service.md) |
 | `tools/identity/` password proof | **Built.** 16 checks, part of `make identity-test`, in CI. Part (a) of the phase 2 proof: hashes written by bcrypt-ruby at cost 10 with no pepper, imported and signed in with. It found a real defect, in `tools/identity/README.md`. Two suites beside it need nothing running and go first, so a fault in how a refusal is read, or in the command that can remove somebody's account, is reported before a container starts: 8 checks in `check_api_refusals.py`, which hold `api.search` to reporting a refused search as a refusal rather than as an empty result, hold an unreachable service to a sentence rather than a traceback, and since 2026-08-31 hold a certificate nothing trusts to naming the certificate rather than sending the reader to check a hostname that was already right. And 12 in `check_sign_ins.py` |
 | `tools/backup/` backup and the restore drill | **Built.** `make backup`, `make restore`, `make backup-test`, in CI. Gate one of rule 12, which is the first thing above every phase. A backup is two files: the database archive and a roles file, because `oro_api` and `door_reader` are cluster roles that a database archive does not carry, and the archive is full of `GRANT ... TO oro_api`, so a restore without them dies on the first grant. An earlier version of this row, and the commit message that introduced it, said every policy names one of those roles. That is false and was measured: no policy in `db/migrations` names a role at all, every one of them defaults to PUBLIC. The grants are the reason, not the policies. The drill backs up a migrated database, destroys the cluster, restores, and compares 95 things including every card's slot, then makes eight further attempts that have to be refused or to change exactly what they claim. A restore over a database holding members is refused until the caller names how many they are destroying, on the command line: an exported variable is refused outright, because make imports the environment and that would arm every later restore in the shell.
 
-Stopping a restore stops it. `docker exec` does not forward a signal, so an earlier version went on and committed while the operator's terminal had stopped printing; the connection is named and terminated now, and a test kills a restore part way and requires the database not to have moved. `kill -9` is still a limit and is written down in three places rather than fixed, because nothing catches it. The archive is streamed onto the container's `/dev/shm` so no copy of the members database lands on a disk, which is why `compose.yaml` now sets `shm_size: 256mb`: the Docker default is 64MB and a restore refuses an archive that does not fit. That 256 carries an assumption about the size of the real dump, stated where it is set. Also here: `roles_the_archive_needs.sh`, `tests/checks.sh` and `tests/what_a_restore_changes.sh` **It proves the mechanism, not the lab's data**: phase 0 still needs a shell on hsl-web. No timer and no offsite copy, so a fire in the lab takes the backups with the server |
+Stopping a restore stops it. `docker exec` does not forward a signal, so an earlier version went on and committed while the operator's terminal had stopped printing; the connection is named and terminated now, and a test kills a restore part way and requires the database not to have moved. `kill -9` is still a limit and is written down in three places rather than fixed, because nothing catches it. The archive is streamed onto the container's `/dev/shm` so no copy of the members database lands on a disk, which is why `compose.yaml` now sets `shm_size: 256mb`: the Docker default is 64MB and a restore refuses an archive that does not fit. That 256 carries an assumption about the size of the real dump, stated where it is set. Also here: `roles_the_archive_needs.sh`, `tests/checks.sh` and `tests/what_a_restore_changes.sh` **It proves the mechanism and it did not take the lab's backup.** That was done on 2026-09-01 by a script written for the occasion, because `backup.sh` and `restore.sh` both hardcode a database named `oro` inside a container and hsl-web has no containers. See the row below. No timer and no offsite copy, so a fire in the lab takes the backups with the server |
+| The lab's first backup | **Taken and read back on 2026-09-01. Never restored.** 36 MiB custom archive of the `members` database, 62 MiB of `pg_dumpall` beside it in plain SQL, the roles, the application's `config`, Apache, the TLS key, and a row count per table read in the same sitting. Every checksum matches what hsl-web computed. Staged in `/dev/shm` and copied off, so nothing was written to a disk there: `/` and `/srv` read the same before and after. It closed two open questions. `pg_restore` 14 reads what `pg_dump` 8.4.20 wrote, which was not a given, and the archive is 36 MiB against the 256MB `compose.yaml` assumes where it sets `shm_size`. What it is not: restored, which needs a machine, and safe, because it is one copy in a plain directory on a laptop with FileVault off. **The script that took it is not in this repository either**, so the only working backup procedure the lab has lives on one machine. `docs/plan/hsl-web-survey.md` has the numbers |
 | `COMMENT ON` for every table and column | **Built.** `db/migrations/014_column_comments.sql` writes the 147 that were missing, and `db/tests/comments.sql` is the gate rule 10 names, widened from tables to columns. Measured on 2026-08-29 against a database built from the migrations and the seed: 17 relations, 16 tables and the `member_directory` view, and 159 columns between them, of which 12 carried a comment. An earlier version of this row said 12 of 150, which came from parsing `db/migrations` rather than from a database and missed the view's 8 columns and one more. Two comments say that nothing reads the column: `tiers.notes` is set by no seed row, selected by nothing, and absent from the `Tier` object in the contract, and `certifications.legacy_id` has no legacy table behind it. **Four passes have been over these comments and the fourth is the one worth knowing about.** The first wrote them, the second verified them and found 55 defects, the third audited them and found 36 more. The fourth read what actually reached the database rather than what the file says, and found that applying the third's corrections had garbled 25 of the 147: SQL string literal syntax pasted into the prose, a sentence written twice, and one full stop spliced onto a comma. Every one of them passed the gate, because the gate read comments for absent text and for banned characters and never for coherence. It reads for coherence now. The gate asks five questions and watches each one fail against a table it makes and drops: a relation or column with no comment, a comment of nothing but whitespace of any kind, a comment carrying a character rule 11 bans, quoting that leaked out of the migration, a sentence written twice, and a full stop followed by a comma. The dash question reads table and view comments as well as column comments, which it did not until the fourth audit measured an em dash and an emoji sitting in a table comment while the gate said none. One consequence for anybody adding a comment: no standalone quote character, so the file says at time zone UTC rather than quoting it |
-| `docs/runbooks/` | **Two files.** `restore-the-members-database.md`, ten numbered steps with the output each one prints, which is what created the directory. `deploy-beside-the-legacy-system.md`, thirteen steps for standing this up beside the legacy system on hsl-web, with a rollback and its own gaps section. That was twelve, and this row said eleven. Step 6 registers the clients, which nothing did: the runbook named `configure.py` twice in passing and never ran it, so a deployment following it end to end had no project, no clients, no branding, and no token that could carry the audience `compose.api.yaml` gives the members API. Two things that step needs were measured rather than assumed: the name has to resolve on the machine, because the identity service reads the Host header, and Python has to be given Caddy's own root in `SSL_CERT_FILE`, because `ORO_TLS=internal` issues from an authority nothing trusts and only the curl beside it passes `-k`. Step 1 also reads the deployed `devise.rb` and `application.rb` now, which is where `config.stretches` and the Rails time zone come from, and step 2 archives the application's configuration beside the dump |
+| `docs/runbooks/` | **Two files, and one of them cannot be followed on the machine it names.** `restore-the-members-database.md`, ten numbered steps with the output each one prints, which is what created the directory. `deploy-beside-the-legacy-system.md`, thirteen steps for standing this up beside the legacy system, with a rollback and its own gaps section. Step 6 registers the clients, which nothing did until 2026-08-31: it named `configure.py` twice in passing and never ran it, so a deployment following it end to end had no project, no clients, no branding, and no token that could carry the audience `compose.api.yaml` gives the members API. **Steps 3 onward cannot run on hsl-web.** That host is 32 bit CentOS 6.8 on a 2.6.32 kernel and every step from 3 to 11 wants containers, so the document now says so at the top and its assumption block carries the measured answers rather than guesses: three of the seven came back wrong. Steps 1 and 2 do run there and both have been run, which is how the survey and the backup exist. Step 1 also reads the deployed `devise.rb` and `application.rb` now, and step 2 archives the application's configuration beside the dump |
 | `tools/bootstrap/` seat the first three admins | **Built.** `make bootstrap-admins`, in CI, 23 checks. A laptop passes its own `ORO_IDENTITY_URL` for the same reason `make identity-configure` needs one. The only path from an empty database to somebody who can administer it, and it spends the escape `013_bootstrap_three_admins.sql` opens. Per person: an identity account, then `link_or_create_member`, then the role, in that order because a member row holding a role is not claimable afterwards. The handover password goes to the terminal and to no file. Safe to run twice, and the fourth admin is refused by the database rather than by the script |
 | `tools/migration/` the legacy import | **Built.** `make migration-test`, in CI. Members, cards, the `admin` and `accountant` booleans as roles, and the waiver date as a pointer to where the document is kept. A preflight refuses to start while anything needs a person and names the rows. Eleven cases: ten imports of the same fixture, three that carry and seven that must be refused, plus one that runs the role step alone. Every refusal is checked by its text and not only its exit code. The fixture was written by a replica of the legacy application through its own models |
 | `tools/identity/configure.py`, the clients, the branding, the sign up and the mail | **Built.** `make identity-configure`. The project, three public PKCE clients with no secret, the door service machine account, the GANTRY palette on the hosted screens set and activated, the words on the message a new member gets, self registration turned on through `login_policy.py`, and the mail server the codes go through when `--mail-host` is passed. Idempotent, and `check_reconfiguration.py` runs it twice to prove that. `make identity-test` prints 79 across ten files: 8, 12, 16, 10, 3, 6, 6, 6, 8, 4. Eight modules rather than one because the file passed the 300 line ceiling: `api.py` is how to call the service, `registrations.py` what it holds, `clients.py` what a client is, `branding.py` the label policy and its four uploads, `login_policy.py` the Register button in both directions, `messages.py` the words in the message, `mail.py` the SMTP provider, `portal_config.py` the one file it writes. Two flags arrived on 2026-08-31. `--self-registration off` closes the sign up, which a deployment with no mail server needs and had no way to do, and `--no-portal-config` leaves `apps/members/identity.json` alone, which is what a throwaway suite wants: three of them used to repoint a working portal at an instance about to be removed. One more thing about this target and it is the laptop half of the runbook's step 6 defect: it builds the three origins from `ORO_HOSTNAME` with no port, so `ORO_IDENTITY_URL=http://localhost:8180 make identity-configure` registered the portal with a redirect of `https://localhost/` while the portal is served on 8080. The comment above the target used to give that as the laptop example and now gives the direct call instead. A laptop has to pass `ORO_IDENTITY_URL`: the default is built from `ORO_HOSTNAME` as `https://id.<host>` and nothing resolves at `id.localhost` |
@@ -52,7 +56,7 @@ Stopping a restore stops it. `docker exec` does not forward a signal, so an earl
 | `.github/workflows/deploy.yml` | **Written, never run.** Dormant until a server exists and four secrets are set. One step, `make up` over SSH. [ADR 0008](docs/decisions/0008-deploying-from-actions.md), which supersedes what `architecture.md` said about CI never holding a deploy credential |
 | Ten minute tokens with rotating refresh | **Built and demonstrated.** 11 further checks in `make identity-test` sign a member in through the real hosted screens, read the access token lifetime off the token, use the refresh token, and prove the previous one stops working |
 | The hosted login screens | **Built.** [ADR 0007](docs/decisions/0007-hosted-login-screens.md). The default in 4.17.1 sends a member to a page this image does not serve, so a check asserts the page really carries a login field |
-| `services/api/` | **Built, and wired into both stack shapes.** Ten of the contract's twenty four operations, against a real Postgres with the real migrations, with the policies deciding every answer. It logs in as `oro_api_login`, a NOINHERIT role that holds nothing until the transaction runs `SET LOCAL ROLE oro_api`, because five places in the schema branch on `current_user` being `oro_api` and an inheriting role would fire every one of those carve outs. The identity is set with `set_config(..., true)`, which is SET LOCAL, and one test proves an identity does not survive on a pooled connection. Nothing in the service decides who may see what. 96 checks across seven files, `make api-test`, in CI: 19 over the endpoints, 23 over the self service reads, 14 over the door events page, 13 over profile edits, 12 over identity isolation including the seven token refusals, 12 over the first sign in, and 3 over the signing key clock. Plus one refusal proved in `run.sh` itself before the container starts. **It has now been run against the real identity service**, which it never had been: that suite serves its own key set from its own key, so until 2026-08-30 nobody had shown this service accepts a token Zitadel issues. It did not. `services/api/README.md` documented `ORO_API_TOKEN_AUDIENCE` as `oro-members-api` and nothing issues that. A real access token carries an `aud` list of every client id under the project plus the project's own identifier, and the client ids are generated per instance, so `oro-project` is the only entry a container can be given ahead of time. The fix was a value and no code changed. `make api-identity-test` holds it, and the audience is `oro-project`. `compose.yaml` includes `compose.api.yaml`, a separate file only because `compose.yaml` was at 291 of the 300 lines rule 6 allows, and both Caddy route files carry `handle_path /v1/* { reverse_proxy api:8000 }`, so the portal reads this service in both shapes and the mock has no route at all. Phase 1 has not exited, so the contract underneath may still move |
+| `services/api/` | **Built, and wired into both stack shapes.** Ten of the contract's twenty four operations, against a real Postgres with the real migrations, with the policies deciding every answer. It logs in as `oro_api_login`, a NOINHERIT role that holds nothing until the transaction runs `SET LOCAL ROLE oro_api`, because five places in the schema branch on `current_user` being `oro_api` and an inheriting role would fire every one of those carve outs. The identity is set with `set_config(..., true)`, which is SET LOCAL, and one test proves an identity does not survive on a pooled connection. Nothing in the service decides who may see what. 96 checks across seven files, `make api-test`, in CI: 19 over the endpoints, 23 over the self service reads, 14 over the door events page, 13 over profile edits, 12 over identity isolation including the seven token refusals, 12 over the first sign in, and 3 over the signing key clock. Plus one refusal proved in `run.sh` itself before the container starts. **It has now been run against the real identity service**, which it never had been: that suite serves its own key set from its own key, so until 2026-08-30 nobody had shown this service accepts a token Zitadel issues. It did not. `services/api/README.md` documented `ORO_API_TOKEN_AUDIENCE` as `oro-members-api` and nothing issues that. A real access token carries an `aud` list of every client id under the project plus the project's own identifier, and the client ids are generated per instance, so `oro-project` is the only entry a container can be given ahead of time. The fix was a value and no code changed. `make api-identity-test` holds it, and the audience is `oro-project`. `compose.yaml` includes `compose.api.yaml`, a separate file only because `compose.yaml` had reached 291 of the 300 lines rule 6 allows. It is at 300 exactly as of 2026-09-01, so the next line added to it fails the ceilings gate and the seam wants finding before that happens rather than after, and both Caddy route files carry `handle_path /v1/* { reverse_proxy api:8000 }`, so the portal reads this service in both shapes and the mock has no route at all. Phase 1 has not exited, so the contract underneath may still move |
 | `services/door/` port, fake, conformance suite | **Built.** 104 tests, `services/door/tests/run.sh` |
 | `services/door/` HTTP API, reconcile loop, real socket against hardware | Not started. Phase 5 |
 | `apps/members/` | **Built, signing in, against the members API.** A landing for somebody signed out, with a Join that opens Registration on the hosted screens and a way in for somebody who already has an account. Then seven views: your record, your cards, entries, certifications, waiver, card access and the directory. The profile is editable, which is the one write a member makes besides the first sign in, and every field it offers is a field of `MemberSelfUpdate`. Sign in is authorization code with PKCE, written as classic scripts with no `import` statement anywhere, deliberately: ADR 0006 makes the first one the condition that brings a lockfile and a hundred packages in. Eight files, each of them under the ceiling after three splits. Three small things were fixed on 2026-08-31, each of them something only a reader would have noticed: the Roles card rendered a heading over nothing for a member holding no role, the note under the directory switches described the state the reader was not in because the box above it is ticked by default, and a website a member had typed in was printed as text rather than as a link. See its README |
@@ -205,8 +209,11 @@ ADR (`docs/decisions/0000-template.md`).
   [ADR 0004](docs/decisions/0004-identity-service.md), which also corrects the
   claim this line used to make: Zitadel is not the only candidate that can do
   this. Logto can too, and Keycloak, the obvious default, cannot without a JAR
-  the lab would maintain forever. Pepper is off and cost is 10 in the committed
-  `devise.rb`, and that still wants confirming against the deployed file.
+  the lab would maintain forever. Pepper is off and cost is 10, and that is
+  confirmed against the file hsl-web actually runs rather than against the
+  committed copy: read on 2026-08-31, `config.pepper` is commented out and
+  `config.stretches` is `Rails.env.test? ? 1 : 10`. The lab's hashes import as
+  they are.
 - **API: one handwritten FastAPI service, not PostgREST.** Row level security
   underneath, so there is no bypass to take.
 - **Deployment: portable Docker Compose.** No vendor anywhere. It must run on the
@@ -222,17 +229,39 @@ ADR (`docs/decisions/0000-template.md`).
 
 ## 5. What is actually blocking
 
-Not code. All three are people problems, and they are the reason the previous
-attempts died.
+One of these was answered on 2026-08-31 and it changed the shape of the other
+three. `docs/plan/hsl-web-survey.md` is where the readings are.
 
-1. **No name is filled in anywhere in `people-and-custody.md`.** Every role is
-   TBD. By the rule in that file, a phase does not start while the roles it needs
-   are empty. This is deliberate, not an oversight.
-2. **Phase 0 needs a shell on hsl-web** to take a verified, restorable backup.
-   That is the credentials and custody problem the lab has not solved since 2013.
-   It needs a named grantor, two named recipients, and a date.
-3. **The two approver rule needs an HYH vote** before it binds anyone. It is a new
-   policy this project introduces, and the proposal is step zero of phase 1.
+1. **There is nowhere to run this.** hsl-web cannot, and that is measured rather
+   than suspected: it is `i686` on kernel 2.6.32, CentOS 6.8, out of support
+   since November 2020, and Docker needs `x86_64` and kernel 3.10 or newer. It
+   is not that Docker is missing, it is that Docker cannot be installed. So
+   `docs/runbooks/deploy-beside-the-legacy-system.md` cannot be followed past
+   step 2 on that host, and every phase from 0 onward is waiting on a machine
+   somebody names. `docs/plan/architecture.md` already requires the stack to be
+   portable across the lab's R610, a rented box or a laptop, so nothing about
+   the architecture moves. What is missing is a machine and a person who owns
+   it.
+2. **The backup exists and has never been restored.** Taken on 2026-09-01 and
+   read back: 36 MiB custom archive, 62 MiB of plain SQL beside it, checksums
+   matching what hsl-web computed. That is half of gate one of rule 12. The
+   other half needs somewhere to restore it to, which is item 1, and there is
+   not room on hsl-web for a second copy of a 520 MB database anyway.
+3. **No name is filled in anywhere in `people-and-custody.md`.** Every role is
+   TBD. By the rule in that file, a phase does not start while the roles it
+   needs are empty. This is deliberate, not an oversight, and it is now also the
+   reason item 1 cannot be answered here: choosing a machine is a custody
+   decision before it is a technical one.
+4. **The two approver rule needs an HYH vote** before it binds anyone. It is a
+   new policy this project introduces, and the proposal is step zero of phase 1.
+
+What is no longer blocking, and it was item 2 of this list for the life of the
+project: **the shell on hsl-web.** It was granted and used on 2026-08-31. The
+credentials and custody problem that had been open since 2013 was answered by
+somebody signing in and running read only commands, and the answer produced item
+1 above. That is what the exit criterion in `order-of-operations.md` phase 0
+meant by "if access cannot be arranged, that is the finding". Access was
+arranged, and the finding arrived anyway.
 
 ## 6. Do this next
 
@@ -242,9 +271,23 @@ phases at once.
 
 ### Not code, and they decide whether any of this ships
 
-1. Fill in two names in `people-and-custody.md` section 1. Two, not one.
-2. Ask for hsl-web access, with a date.
+1. **Name a machine that can run this**, and somebody who owns it. hsl-web
+   cannot, measured on 2026-08-31, and every phase is behind that. Section 5
+   item 1.
+2. Fill in two names in `people-and-custody.md` section 1. Two, not one.
 3. Post the two approver proposal to Hack Your Hackerspace.
+4. **Rotate three credentials that were read off hsl-web on a terminal.** The
+   Gmail app password the members site sends through, which is revocable in
+   minutes. Whatever `config/s3.yml` holds, which nobody has opened. And the
+   door controller password, which does not get rotated on impulse because the
+   same value lives in the controller and changing one side stops the door.
+   `docs/plan/hsl-web-survey.md` has the detail and none of the three is written
+   down in this repository.
+5. **Give the backup a second home.** It is one copy in a plain directory on one
+   laptop with FileVault off. Section 5 item 2.
+
+Asking for hsl-web access was item 2 of this list for the life of the project.
+It was granted and used on 2026-08-31, and what it produced is item 1.
 
 ### Finishing what is already here
 
@@ -667,18 +710,28 @@ above. These are the ones that are not, in the order they cost something.
 ### The build that is actually left
 
 Do not read the list above as nearly done. The plan has seven phases, numbered
-0 to 6, and not one of them has met its exit criterion. Phase 0 has not started
-at all, because it needs a shell on hsl-web. Phase 1 has most of its work built
-and cannot exit without a contract review. Phase 2 has the left column of its
-first row built and cannot exit without volunteers. Phases 3, 4, 5 and 6 have
-not started. Each row below splits what a session can build today from what waits on
-a person, because the two get confused and the confusion produces a phase that
-looks finished and is not.
+0 to 6, and not one of them has met its exit criterion.
+
+Phase 0 has started, which it had not before 2026-08-31, and it is further from
+exiting than anybody thought. Its first gate wanted a verified restorable backup
+of the production database, and half of that exists now: taken, read back,
+checksummed. The other half needs a machine to restore onto, and the survey of
+hsl-web found that the host the whole plan assumed cannot run any of this. So
+phase 0's blocker moved rather than cleared, from an access problem to a hardware
+one, and it is section 5 item 1.
+
+Phase 1 has most of its work built and cannot exit without a contract review.
+Phase 2 has the left column of its first row built and cannot exit without
+volunteers, though its largest unknown is now closed: the deployed `devise.rb`
+says no pepper and cost 10, so the lab's 1061 password hashes import as they
+are. Phases 3, 4, 5 and 6 have not started. Each row below splits what a session
+can build today from what waits on a person, because the two get confused and
+the confusion produces a phase that looks finished and is not.
 
 | Phase | Buildable now | Waits on a person |
 |---|---|---|
 | 2, identity | **The whole left column is built.** The identity service and its own database in the stack, the four clients, ten minute tokens with rotating refresh demonstrated through the real screens, GANTRY on those screens, and the whole synthetic half of the password proof | The real half. Ten members signing in to staging with the password they already use, which needs the production hashes and volunteers. Choose that cohort for a range of password habits, not only a range of account ages: the 72 byte defect is invisible until somebody hits it |
-| 3, member management | `services/api/`, the FastAPI service against the merged contract, connecting as `oro_api` and setting the member identity per transaction so the policies apply to it too. Repointing `apps/members` off the mock and onto it. **The migration is built and runs against a replica**, and now carries roles and waivers as well as members and cards, so what is left of it is the certifications, payments and door events | The production dump, and the six decisions section 5 of `people-and-custody.md` lists. `tools/migration/010_preflight.sql` names four of them row by row when it is run against a real copy, which turns each into a question with a list attached. What `contracts` holds and where signed waivers live are not questions about rows and it does not ask them |
+| 3, member management | `services/api/`, the FastAPI service against the merged contract, connecting as `oro_api` and setting the member identity per transaction so the policies apply to it too. Repointing `apps/members` off the mock and onto it. **The migration is built and runs against a replica**, and now carries roles and waivers as well as members and cards, so what is left of it is the certifications, payments and door events | The six decisions section 5 of `people-and-custody.md` lists. **The production dump is no longer one of them**: it was taken on 2026-09-01 and holds 1061 members, 64 cards, 8291 payments and 2.87 million door events. Running the preflight against it needs a Postgres to load it into, which is section 5 item 1. `tools/migration/010_preflight.sql` names four of them row by row when it is run against a real copy, which turns each into a question with a list attached. What `contracts` holds and where signed waivers live are not questions about rows and it does not ask them |
 | 4, admin | `apps/admin`, the two approver flow in the service over the database rules that already enforce it, card issue and revoke with a reason, waiver status for hosts | The HYH vote. If it fails, the trigger and the constraint are dropped and the portal loses a step. That branch is already written down |
 | 5, door | The door service HTTP API, the reconcile loop, the SQLite snapshot and the buffered event log, all against the fake that exists and passes the conformance suite | The real adapter, the VLAN, and a week of read only running beside the live system |
 
@@ -1098,7 +1151,9 @@ same defect for a while afterwards, with a test in place that was written to
 catch it and asserted on none of them. `members.joined_on` is safe on its own
 terms: a cast from `timestamp` to `date` involves no zone. `config.time_zone = 'America/Phoenix'` in the
 legacy `config/application.rb` is the display zone, and nothing there sets
-`config.active_record.default_timezone`, which defaults to `:utc`. One case in
+`config.active_record.default_timezone`, which defaults to `:utc`. Read off the
+deployed file on hsl-web on 2026-08-31 rather than off the committed copy, so
+this is measured on the machine that wrote the rows. One case in
 `tools/migration/tests/run.sh` runs the whole import in `America/Phoenix` and
 asserts the instant, and with the UTC read removed it fails.
 
@@ -1259,6 +1314,44 @@ comments are why anybody can read those files at 2am. Look for the seam the
 file already has: each of these three had a divider comment sitting exactly
 where the split belonged.
 
+**CentOS 6 forbids sudo without a terminal, and `ssh host "command"` gives
+none.** `Defaults requiretty` is in that distribution's shipped sudoers and it is
+on hsl-web, measured on 2026-08-31: every attempt answers `sudo: sorry, you must
+have a tty to run sudo`. So a script that signs in as a person and elevates
+cannot work there, however it is written. `ssh -t` satisfies the rule and then
+mangles binary, because a tty rewrites line endings, so a dump travelling that
+way arrives corrupt. Base64 survives it, measured, and that is a pipeline nobody
+should put a backup through. The clean answers are one line of sudoers scoped to
+one account, `Defaults:name !requiretty`, or running as somebody who is already
+root. The backup that exists was taken the third way: a script run by hand from
+a root shell the operator opened themselves.
+
+**A redirect inside `su postgres -c` is performed by postgres, and a mode 700
+directory owned by root refuses it.** Caught by reading rather than by running,
+in the script that took the backup, before it ran. `su postgres -c "pg_dump ... >
+/root/owned/file"` writes nothing and leaves an empty file that a size check has
+to catch. The redirect belongs to the caller: `su postgres -c "pg_dump ..." >
+file`, where root does the writing and postgres only produces bytes. The same
+shape bites `scp` afterwards, because a directory root created is a directory the
+person who runs `scp` cannot read.
+
+**`format()` and ordered aggregates do not exist in Postgres 8.4.** The query in
+the deploy runbook that counts every table used both, so it could not have run on
+the machine it was written for. `format()` arrived in 9.0 and `ORDER BY` inside
+an aggregate call arrived in 9.0. What works on 8.4 is asking for
+`schemaname || chr(47) || tablename` and doing the loop in the shell. Nothing
+else in this repository targets 8.4, and the legacy replica is 9.6, so this is
+the one place the difference shows.
+
+**`pg_restore` refuses an archive from a newer `pg_dump` outright, and reads
+older ones.** Measured on 2026-08-31 and 2026-09-01. `pg_restore` 14.18 reads
+what 8.4.20 wrote, 149 table of contents entries, and answers `unsupported
+version (1.16) in file header` to what 18 wrote. So the compatibility window has
+a hard edge in one direction and the check for it is cheap: `pg_restore --list`
+against the archive says immediately. A dump travelling down a pipe is fine, also
+measured: forcing a non seekable stream and reading the result back gave both a
+full listing and a working selective restore.
+
 **A legacy role flag on somebody who left is a security finding, not a data
 error.** The legacy system recorded a departure in `exit_reason` and never
 cleared the `admin` boolean, so one row says both things and an import that
@@ -1313,6 +1406,19 @@ So the next person knows what "green" is worth.
 - Every trigger claim in this file about the role import was taken from a real
   Postgres 18 rather than read off the SQL, including the four admin refusal,
   the lock the disable takes, and that it rolls back with its transaction.
+- On 2026-08-31 and 2026-09-01 somebody signed in to hsl-web for the first
+  time in this project's life, and the readings are in
+  `docs/plan/hsl-web-survey.md`. Three of the seven assumptions the deploy
+  runbook carried came back wrong, one of them fatal to the plan: that host is
+  32 bit CentOS 6.8 on a 2.6.32 kernel, so Docker is not absent but impossible,
+  and the runbook cannot be followed past step 2 there. Postgres is 8.4.20
+  rather than 9.6. The database is 520 MB rather than an unknown, and it holds
+  1061 members and 64 cards. Two assumptions this project had been building on
+  for weeks came back right, and both were read off the file that machine runs
+  rather than the copy this repository was given: no pepper, cost 10, and the
+  Rails record timezone is UTC. Then the backup was taken, read back and
+  checksummed against what the far side computed. Every number in the rows above
+  that names hsl-web came from that sitting.
 - Later on 2026-08-31 the eleven findings that audit left open were worked
   through in order, and two of them turned out to be wrong about themselves.
   Item 21 said recording a confirmed address needed a claim the token does not

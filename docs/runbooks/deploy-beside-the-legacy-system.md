@@ -1,9 +1,18 @@
 # Deploy beside the legacy system
 
-Follow this to put Project ORO on hsl-web next to the members application it
-will replace, and to take the first real backup of the members database. It
-assumes you did not build any of this, and that you have ssh as root on
-hsl-web.
+Follow this to put Project ORO next to the members application it will replace,
+and to take the first real backup of the members database. It assumes you did
+not build any of this, and that you have ssh as root on hsl-web.
+
+**Steps 3 onward cannot run on hsl-web, and that is now measured rather than
+suspected.** That host is 32 bit CentOS 6.8 on a 2.6.32 kernel, so Docker is not
+merely absent, it is not installable, and every step from 3 to 11 runs
+containers. Steps 1 and 2 do not, and they are the two that matter first: the
+survey and the backup. Everything after them waits on a machine that can run the
+stack, which is a decision nobody has taken.
+`docs/plan/hsl-web-survey.md` has the readings and what each one costs. Read the
+rest of this document as written for that machine once it exists, with the
+legacy application still on hsl-web.
 
 Read these five things before step 1.
 
@@ -16,11 +25,11 @@ the runbook for it. Rule 12 of `CLAUDE.md` puts that above every phase, so if
 you find yourself about to type something that could reach the controller or
 the legacy application's card screens, stop instead.
 
-**Nobody has seen hsl-web.** Seven things this document would otherwise guess
-at are written as assumptions below, and step 1 is where each one gets an answer.
-Do step 1 first and write the answers down. If one of them comes back
-differently from what is assumed here, that changes the work rather than being
-a detail.
+**hsl-web has been seen once, on 2026-08-31.** Seven things this document used
+to guess at have answers below, and three of them came back differently from the
+guess. Run step 1 again anyway on whatever machine you are standing in front of,
+because the answers below are that host on that day and one of them has already
+changed the work rather than being a detail.
 
 **No copy of the members database goes onto your laptop.** Rule 13. Every
 command below runs on hsl-web through your ssh session, and the table after the
@@ -34,68 +43,58 @@ deployment's routes serve a health check and the members API, with a 404 at the
 root, so there is no page for a member to open. A member sees no change at all,
 on purpose. The gaps at the end list the rest of what is missing.
 
-**The blocks below are not from hsl-web.** They come from a laptop, on
-2026-08-30 and 2026-08-31, against a Postgres 9.6 container standing in for the
-legacy database, on a machine where another stack already held the ports. The
-container names, the hostname and the port numbers are written as the ones this
-guide chooses. Nothing else in them is edited. Step 1 is where transcripts start
-coming from the real machine, and the counts you see there will be the lab's
-rather than the twelve invented members here.
+**The blocks below are not from hsl-web,** apart from the answers in the
+assumption section and in `docs/plan/hsl-web-survey.md`. They come from a laptop,
+on 2026-08-30 and 2026-08-31, against a Postgres 9.6 container standing in for
+the legacy database, on a machine where another stack already held the ports.
+The container names, the hostname and the port numbers are written as the ones
+this guide chooses. Nothing else in them is edited, and the counts you see are
+twelve invented members rather than the lab's.
 
 ---
 
-## What is assumed, and what confirms it
+## What was assumed, and what the machine said
+
+Step 1 was run against hsl-web on 2026-08-31 and every assumption below has an
+answer now. `docs/plan/hsl-web-survey.md` holds the readings in full. Four came
+back as assumed, three did not, and one of those three stops this document
+where it stands.
 
 ```
-ASSUMPTION: the legacy members application and its Postgres both run on
-  hsl-web, rather than the database living on another host.
-CONFIRM BY: step 1, the listener table and the process list.
-BLAST RADIUS: everything. If the database is elsewhere, steps 2 and 3 run
-  there instead, and this machine may not be where ORO belongs either.
+ANSWERED: the legacy members application and its Postgres both run on hsl-web.
+  Apache with Passenger serves /srv/web/members.heatsynclabs.org and Postgres
+  listens on the same host.
 
-ASSUMPTION: that Postgres is 9.6, which is the version
-  tools/migration/README.md says the fixture replica was built against.
-CONFIRM BY: step 1, select version().
-BLAST RADIUS: the flags in step 2. --no-role-passwords does not exist before
-  Postgres 10, which is measured below. The workaround there is only needed
-  while the answer is 9.6.
+WRONG: that Postgres is 9.6. It is 8.4.20, on i386, which reached end of life
+  in July 2014. The --no-role-passwords workaround in step 2 is still the right
+  one, because that flag arrived in Postgres 10 and 8.4 is further from it, not
+  nearer. What it also means is that the read back in step 2 cannot use a
+  matching image: the oldest official Postgres on Docker Hub is 9.1, checked on
+  2026-08-31.
 
-ASSUMPTION: something on hsl-web already holds ports 80 and 443.
-CONFIRM BY: step 1, the listener table.
-BLAST RADIUS: step 4 chooses ports and a certificate issuer on this basis. If
-  80 and 443 turn out to be free, read step 4 again before choosing, because
-  one thing in the stack is built on the assumption that HTTPS is on 443.
+ANSWERED: something on hsl-web holds ports 80 and 443. httpd holds both.
 
-ASSUMPTION: Docker with the compose plugin is not installed on hsl-web.
-CONFIRM BY: step 1, docker version.
-BLAST RADIUS: step 3. Installing Docker is the largest thing this document
-  asks of a production host, and it is the step to think hardest about.
+WRONG, AND IT STOPS THIS DOCUMENT: Docker is not installed on hsl-web, and it
+  cannot be. The host is i686 on kernel 2.6.32, and Docker needs x86_64 and
+  kernel 3.10 or newer. CentOS 6.8 has been out of support since November 2020,
+  so there is no repository to upgrade from either. Step 3 installs Docker and
+  steps 5 through 11 all run containers, so this runbook cannot be followed on
+  this machine. Steps 1 and 2 can, and they are the ones that matter first.
 
-ASSUMPTION: a custom format dump of the production members database is under
-  256MB. This is compose.yaml's own stated assumption, written where shm_size
-  is set, and it has never been confirmed.
-CONFIRM BY: step 2, the size of the file.
-BLAST RADIUS: tools/backup/restore.sh refuses an archive that does not fit in
-  the database container's /dev/shm. The fix is one line in compose.yaml and
-  the refusal names it.
+WRONG: the dump is not known to be under 256MB. The members database is 520 MB
+  on disk. A custom format archive is compressed and will be smaller, and
+  nobody has measured it, so step 2 measures it before writing it.
 
-ASSUMPTION: the legacy application's checkout is on hsl-web, and its config
-  directory is on disk rather than assembled from the environment.
-CONFIRM BY: step 1, the configuration block.
-BLAST RADIUS: the two values everything downstream is built on. config.stretches
-  and config.pepper in devise.rb decide whether the lab's password hashes can be
-  imported at all, and the Rails time zone decides whether every migrated date
-  is right. Both are read today from the sources this project was given, and
-  neither has been read from the file this machine runs.
+ANSWERED: the legacy application's checkout is on hsl-web with its config on
+  disk, at /srv/web/members.heatsynclabs.org. The two values everything
+  downstream is built on came back as this project assumed: no pepper, and
+  config.stretches is 10 outside the test environment. The Rails time zone is
+  America/Phoenix for display and nothing sets the record timezone, so it is
+  UTC, which is what the import reads.
 
-ASSUMPTION: hsl-web has room for about 1GB of container images plus the dump
-  held twice over, with enough left that the legacy application does not run a
-  disk out.
-CONFIRM BY: step 1, df.
-BLAST RADIUS: a full disk on the machine that opens a building. Measured on
-  2026-08-31: postgres:18 is 666MB, the identity service image is 221MB and
-  caddy:2-alpine is 84.6MB. The members API image is built on the host rather
-  than pulled, so it costs whatever its build costs on top.
+WRONG: hsl-web has no room for container images. / is 88% full with 1.1G free
+  and /srv is 98% full with 3.3G free. Even were Docker available, the three
+  images this stack pulls come to more than that.
 ```
 
 ## Where every copy of the members database lives
@@ -191,12 +190,13 @@ grep -nE 'config\.(pepper|stretches)' $APP/config/initializers/devise.rb
 ```
 
 Read: whether `config.pepper` is commented out, and the number in
-`config.stretches`. The committed sources this project was given say pepper off
-and stretches 10, and ADR 0004 says that still wants confirming against the
-deployed file, because a hand edit on this host is invisible everywhere else.
-**If a pepper is set, stop.** Every hash in that database was made with a secret
-this project does not have, none of them can be imported as they are, and that
-changes phase 2 rather than being a detail.
+`config.stretches`. Answered on 2026-08-31, and the answer is the one this
+project needed: pepper commented out, stretches `Rails.env.test? ? 1 : 10`.
+Read it again anyway on whatever machine you are standing in front of, because
+a hand edit on a host is invisible everywhere else and that is the whole reason
+this step exists. **If a pepper is set, stop.** Every hash in that database was
+made with a secret this project does not have, none of them can be imported as
+they are, and that changes phase 2 rather than being a detail.
 
 ```
 grep -nE 'time_zone|default_timezone' $APP/config/application.rb

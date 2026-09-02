@@ -35,7 +35,17 @@ recorded as such, visibly, rather than left looking complete.
 ## 2. Production access is the first blocker, and it is not a technical one
 
 Phase 0 requires a verified restore of the production database. That requires a
-shell on hsl-web. That is the problem this lab has not solved since 2013.
+shell on hsl-web, which was the problem this lab had not solved since 2013.
+
+**It was solved on 2026-08-31.** Somebody signed in, ran the survey in
+`docs/plan/hsl-web-survey.md`, and on 2026-09-01 took the first backup of the
+members database this project has ever held. What that did not solve is the
+restore, because the survey found hsl-web cannot run the stack and there is
+nowhere to restore onto. The custody question moved rather than closing: it is
+no longer who can reach that machine, it is who owns the machine this runs on
+instead, and who holds the only copy of the backup. Today that copy is a plain
+directory on one laptop with no disk encryption, which is a custody arrangement
+nobody chose and nobody has written down until this sentence.
 
 The evidence that it is unsolved is structural, not personal. Server access has
 at times been unavailable even to the person who wrote the application. Deploy
